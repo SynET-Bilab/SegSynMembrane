@@ -14,7 +14,6 @@ Methods:
     tv3d_dask(S, alpha, sigma) -> S_tv[z,y,x], alpha_tv[z,y,x]
 """
 
-import os
 import functools
 import pathlib
 import tempfile
