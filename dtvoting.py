@@ -9,13 +9,19 @@ Tensor voting:
 
 Methods:
     precalc_vmfft(nrow, ncol, sigma) -> vmfft
-    tv2d(S, alpha, vmfft) -> S_tv, alpha_tv
+    tv2d(S, alpha, vmfft) -> S_tv[y,x], alpha_tv[y,x]
+    tv3d(S, alpha, sigma) -> S_tv[z,y,x], alpha_tv[z,y,x]
+    tv3d_dask(S, alpha, sigma) -> S_tv[z,y,x], alpha_tv[z,y,x]
 """
 
+import os
+import functools
+import pathlib
+import tempfile
 import numpy as np
 import numpy.fft as fft
-import multiprocessing
-import functools
+import dask
+import dask.distributed
 
 def precalc_vmfft(nrow, ncol, sigma):
     """ precalculate vmfft
@@ -66,14 +72,9 @@ def tv2d(S, alpha, vmfft):
     alpha_tv = 0.5*np.angle(Um2)
     return S_tv, alpha_tv
 
-def tv2d_slice(S, alpha, vmfft, i):
-    """ tv2d on slice i for the 3d inputs(S, alpha)
-    param S, alpha: shape=(nz,ny,nx)
-    """
-    return tv2d(S[i], alpha[i], vmfft)
-
 def tv3d(S, alpha, sigma):
     """ tv for 3d volume
+    return: S_tv, alpha_tv
     """
     # precalc vmfft
     nz, ny, nx = S.shape
@@ -86,22 +87,59 @@ def tv3d(S, alpha, sigma):
         S_tv[i], alpha_tv[i] = tv2d(S[i], alpha[i], vmfft)
     return S_tv, alpha_tv
 
-def tv3d_mp(S, alpha, sigma):
-    """ tv for 3d volume, multiprocessing
+def _tv3d_dask_slice(input_paths, i):
+    """ tv for 3d volume, auxiliary function for a 2d slice
+    param input_paths: dict(S,alpha,vmfft) to path of npys
+    param i: index of slice
+    return: S_tv_i, alpha_tv_i
+    """
+    # load slice using memmap mode
+    S_i = np.load(input_paths["S"], mmap_mode="r")[i]
+    alpha_i = np.load(input_paths["alpha"], mmap_mode="r")[i]
+    vmfft = np.load(input_paths["vmfft"], mmap_mode="r")
+    # tv2d
+    S_tv_i, alpha_tv_i = tv2d(S_i, alpha_i, vmfft)
+    return S_tv_i, alpha_tv_i
+
+def tv3d_dask(S, alpha, sigma):
+    """ tv for 3d volume, multiprocessing using dask
+    return: S_tv, alpha_tv
     """
     # precalc vmfft
     nz, ny, nx = S.shape
     vmfft = precalc_vmfft(nrow=ny, ncol=nx, sigma=sigma)
 
-    # calc S, alpha for each slice
-    tv2d_partial = functools.partial(tv2d_slice, S, alpha, vmfft)
-    p = multiprocessing.Pool()
-    result = p.map(tv2d_partial, list(range(nz)))
+    # save as tempfile npy
+    input_paths = {
+        arr: tempfile.NamedTemporaryFile(
+            delete=False, suffix=".npy").name
+        for arr in ["S", "alpha", "vmfft"]
+    }
+    np.save(input_paths["S"], S)
+    np.save(input_paths["alpha"], alpha)
+    np.save(input_paths["vmfft"], vmfft)
 
-    # assemble result
+    # distributed computing using dask
+    # add input_paths to tv2d
+    tv2d_partial = functools.partial(_tv3d_dask_slice, input_paths)
+    # dask: client - map - gather
+    client = dask.distributed.Client()
+    futures = client.map(tv2d_partial, range(nz))
+    results = client.gather(futures)
+
+    # clean-up
+    # close client
+    client.close()
+    # delete tempfiles
+    for arr in ["S", "alpha", "vmfft"]:
+        pathlib.Path(input_paths[arr]).unlink(missing_ok=True)
+
+    # assemble results
     S_tv = np.zeros_like(S)
     alpha_tv = np.zeros_like(alpha)
     for i in range(nz):
-        S_tv[i] = result[i][0]
-        alpha_tv[i] = result[i][1]
+        S_tv[i] = results[i][0]
+        alpha_tv[i] = results[i][1]
+
+    # return
     return S_tv, alpha_tv
