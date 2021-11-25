@@ -13,14 +13,19 @@ Methods:
     tv3d(S, O, sigma, method="numba") -> S_tv[z,y,x], O_tv[z,y,x]
 """
 
-import functools
-import pathlib
-import tempfile
 import numpy as np
 import numpy.fft as fft
 import numba
+# import functools
+# import pathlib
+# import tempfile
 # import dask
 # import dask.distributed
+
+
+#=========================
+# tv2d
+#=========================
 
 def precalc_vmfft(nrow, ncol, sigma):
     """ precalculate vmfft
@@ -71,6 +76,11 @@ def tv2d(S, O, vmfft):
     O_tv = 0.5*np.angle(U)
     return S_tv, O_tv
 
+
+#=========================
+# tv3d
+#=========================
+
 def tv3d_python(S, O, sigma):
     """ tv for 3d volume
     return: S_tv, O_tv
@@ -85,7 +95,6 @@ def tv3d_python(S, O, sigma):
     for i in range(nz):
         S_tv[i], O_tv[i] = tv2d(S[i], O[i], vmfft)
     return S_tv, O_tv
-
 
 @numba.njit(parallel=True)
 def tv3d_numba(S, O, sigma):
