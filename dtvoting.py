@@ -101,7 +101,7 @@ def tv2d(S, O, sigma):
 #=========================
 
 def tv3d_python(S, O, sigma):
-    """ tv for 3d volume, using python
+    """ tv for 2d stack, using python
     return: S_tv, O_tv
     """
     # precalc vmfft
@@ -117,7 +117,7 @@ def tv3d_python(S, O, sigma):
 
 @numba.njit(parallel=True)
 def tv3d_numba(S, O, sigma):
-    """ tv for 3d volume, using numba parallel
+    """ tv for 2d stack, using numba parallel
     return: S_tv, O_tv
     """
     nz, ny, nx = S.shape
@@ -134,7 +134,7 @@ def tv3d_numba(S, O, sigma):
     return S_tv, O_tv
 
 def tv3d(S, O, sigma, method="numba"):
-    """ tv for 3d volume
+    """ tv for 2d stack
     param S, O: shape=(nz,ny,nx)
     param sigma: scale in pixel
     param method: python or numba
