@@ -27,20 +27,20 @@ import numba
 # tv2d
 #=========================
 
-def precalc_vmfft(nrow, ncol, sigma):
+def precalc_vmfft(ny, nx, sigma):
     """ precalculate vmfft
-    param nrow, ncol: col-x, row-y
-    return: vmfft, shape=(5,nrow,ncol)
+    param ny, nx: ny=nrow, nx=ncol
+    return: vmfft, shape=(5,ny,nx)
     """
     # spatial coords: col-x, row-y, in image convention
     # fftfreq is used to easily construct x/y in correct order
-    cc = fft.fftfreq(ncol, d=1/ncol).reshape((1, ncol))
-    rr = fft.fftfreq(nrow, d=1/nrow).reshape((nrow, 1))
+    x = fft.fftfreq(nx, d=1/nx).reshape((1, nx))
+    y = fft.fftfreq(ny, d=1/ny).reshape((ny, 1))
 
     # spatial terms
-    rc2 = cc**2 + rr**2
-    term_exp = np.exp(-rc2/(2*sigma*sigma))
-    term_frac = (cc+1j*rr)/np.sqrt(rc2)
+    r2 = x**2 + y**2
+    term_exp = np.exp(-r2/(2*sigma*sigma))
+    term_frac = (x+1j*y)/np.sqrt(r2)
     term_frac[0, 0] = 1.  # set the term at origin to 1
 
     # prefactor gamma
@@ -87,7 +87,7 @@ def tv3d_python(S, O, sigma):
     """
     # precalc vmfft
     nz, ny, nx = S.shape
-    vmfft = precalc_vmfft(nrow=ny, ncol=nx, sigma=sigma)
+    vmfft = precalc_vmfft(ny=ny, nx=nx, sigma=sigma)
 
     # calc S, O for each slice
     S_tv = np.zeros_like(S)
@@ -103,7 +103,7 @@ def tv3d_numba(S, O, sigma):
     """
     nz, ny, nx = S.shape
     with numba.objmode(vmfft='complex128[:,:,:]'):
-        vmfft = precalc_vmfft(nrow=ny, ncol=nx, sigma=sigma)
+        vmfft = precalc_vmfft(ny=ny, nx=nx, sigma=sigma)
     # calc S, O for each slice
     S_tv = np.zeros_like(S)
     O_tv = np.zeros_like(O)
