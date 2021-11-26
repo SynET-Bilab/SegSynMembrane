@@ -3,30 +3,40 @@
 """
 
 import numpy as np
-import skimage
-import skimage.feature
+import skimage.filters
+
+__all__ = [
+    # basics
+    "zscore", "negate", "gaussian",
+    # hessian
+    "hessian_matrix", "features_hessian", "features_hessian2",
+    # non-max suppression
+    "nonmaxsup"
+]
 
 #=========================
 # basics
 #=========================
 
-def zscore(img):
-    """ return zscore of img """
-    I = np.array(img)
-    z = (I-I.mean())/I.std()
+def zscore(I):
+    """ return zscore of I """
+    z = (I-np.mean(I))/np.std(I)
     return z
 
-def negate(img):
+def negate(I):
     """ switch foreground between white and dark
     zscore then negate
     """
-    I = np.array(img)
-    std = I.std()
+    std = np.std(I)
     if std > 0:
-        return -(I-I.mean())/std
+        return -(I-np.mean(I))/std
     else:
         return np.zeros_like(I)
 
+def gaussian(I, sigma):
+    """ gaussian smoothing, a wrapper of skimage.filters.gaussian
+    """
+    return skimage.filters.gaussian(I, sigma)
 
 #=========================
 # hessian
@@ -37,7 +47,8 @@ def hessian_matrix(I, sigma):
     """
     # referenced skimage.feature.hessian_matrix
     # here x,y are made explicit
-    Ig = skimage.filters.gaussian(I, sigma=sigma, mode="nearest")
+    # I[y,x]
+    Ig = gaussian(I, sigma)
     Hx = np.gradient(Ig, axis=1)
     Hy = np.gradient(Ig, axis=0)
     Hxx = np.gradient(Hx, axis=1)

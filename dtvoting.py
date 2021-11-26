@@ -14,14 +14,22 @@ Methods:
 """
 
 import numpy as np
-import numpy.fft as fft
+from numpy import fft
 import numba
+
 # import functools
 # import pathlib
 # import tempfile
 # import dask
 # import dask.distributed
 
+
+__all__ = [
+    # tv2d
+    "precalc_vmfft", "tv2d_vmfft", "tv2d",
+    # tv3d
+    "tv3d"
+]
 
 #=========================
 # tv2d
@@ -53,8 +61,8 @@ def precalc_vmfft(ny, nx, sigma):
     ])
     return vmfft
 
-def tv2d(S, O, vmfft):
-    """ tv for 2d slice
+def tv2d_vmfft(S, O, vmfft):
+    """ tv for 2d slice, provide precalculated vmfft
     param S, O: shape=(ny,nx)
     param vmfft: array of 5 elements, each with shape=(ny,nx)
     return: S_tv, O_tv
@@ -76,13 +84,24 @@ def tv2d(S, O, vmfft):
     O_tv = 0.5*np.angle(U)
     return S_tv, O_tv
 
+def tv2d(S, O, sigma):
+    """ tv for 2d slice
+    param S, O: shape=(ny,nx)
+    param sigma: scale in pixel
+    return: S_tv, O_tv
+    """
+    ny, nx = S.shape
+    vmfft = precalc_vmfft(ny, nx, sigma)
+    S_tv, O_tv = tv2d_vmfft(S, O, vmfft)
+    return S_tv, O_tv
+
 
 #=========================
 # tv3d
 #=========================
 
 def tv3d_python(S, O, sigma):
-    """ tv for 3d volume
+    """ tv for 3d volume, using python
     return: S_tv, O_tv
     """
     # precalc vmfft
@@ -93,7 +112,7 @@ def tv3d_python(S, O, sigma):
     S_tv = np.zeros_like(S)
     O_tv = np.zeros_like(O)
     for i in range(nz):
-        S_tv[i], O_tv[i] = tv2d(S[i], O[i], vmfft)
+        S_tv[i], O_tv[i] = tv2d_vmfft(S[i], O[i], vmfft)
     return S_tv, O_tv
 
 @numba.njit(parallel=True)
@@ -109,7 +128,7 @@ def tv3d_numba(S, O, sigma):
     O_tv = np.zeros_like(O)
     for i in numba.prange(nz):
         with numba.objmode(S_tv_i='float64[:,:]', O_tv_i='float64[:,:]'):
-            S_tv_i, O_tv_i = tv2d(S[i], O[i], vmfft)
+            S_tv_i, O_tv_i = tv2d_vmfft(S[i], O[i], vmfft)
         S_tv[i] = S_tv_i
         O_tv[i] = O_tv_i
     return S_tv, O_tv
@@ -139,7 +158,7 @@ def tv3d(S, O, sigma, method="numba"):
 #     O_i = np.load(input_paths["O"], mmap_mode="r")[i]
 #     vmfft = np.load(input_paths["vmfft"], mmap_mode="r")
 #     # tv2d
-#     S_tv_i, O_tv_i = tv2d(S_i, O_i, vmfft)
+#     S_tv_i, O_tv_i = tv2d_vmfft(S_i, O_i, vmfft)
 #     return S_tv_i, O_tv_i
 
 # def tv3d_dask(S, O, sigma):
