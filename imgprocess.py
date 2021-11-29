@@ -99,25 +99,46 @@ def features2d_hessian2(I, sigma):
     O2 = mask_tr*0.5*np.angle(-H2xx+H2yy-2j*H2xy)
     return S2, O2
 
-def features3d_hessian(I, sigma, method="hessian2"):
-    """ stickness and orientation based on 2d Hessian for each slice
-    param method: hessian1 - H, hessian2 - HH 
+# def features3d_hessian(I, sigma, method="hessian2"):
+#     """ stickness and orientation based on 2d Hessian for each slice
+#     param method: hessian1 - H, hessian2 - HH 
+#     return: S - saliency, O - tangent of max-amp-eigvec
+#     """
+#     if method == "hessian2":
+#         func_hessian = features2d_hessian2
+#     elif method == "hessian":
+#         func_hessian = features2d_hessian1
+
+#     S = np.zeros(I.shape, dtype=float)
+#     O = np.zeros_like(S)
+#     nz = S.shape[0]
+
+#     for i in range(nz):
+#         S[i], O[i] = func_hessian(I[i], sigma)
+
+#     return S, O
+
+@numba.njit(parallel=True)
+def features3d_hessian(I, sigma):
+    """ stickness and orientation based on 2d Hessian2 for each slice
+    param I: shape=(nz,ny,nx)
     return: S - saliency, O - tangent of max-amp-eigvec
     """
-    if method == "hessian2":
-        func_hessian = features2d_hessian2
-    elif method == "hessian":
-        func_hessian = features2d_hessian1
+    # notes on the removal of method selection:
+    #   numba.njit does not support skimage.filters.gaussian
+    #   numba.objmode does not support if-else
 
-    S = np.zeros(I.shape, dtype=float)
-    O = np.zeros_like(S)
+    S = np.zeros(I.shape, dtype=np.float64)
+    O = np.zeros(I.shape, dtype=np.float64)
     nz = S.shape[0]
 
-    for i in range(nz):
-        S[i], O[i] = func_hessian(I[i], sigma)
+    for i in numba.prange(nz):
+        with numba.objmode(S_i="float64[:,:]", O_i="float64[:,:]"):
+            S_i, O_i = features2d_hessian2(I[i], sigma)
+        S[i] = S_i
+        O[i] = O_i
 
     return S, O
-
 
 #=========================
 # non-maximum suppression
