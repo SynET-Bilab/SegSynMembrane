@@ -8,7 +8,7 @@ import numba
 
 __all__ = [
     # basics
-    "zscore", "negate", "gaussian",
+    "zscore", "negate", "gaussian", "mask_to_coord", "coord_to_mask", "revert_coord",
     # hessian
     "hessian_matrix", "features2d_hessian1", "features2d_hessian2", "features3d_hessian",
     # non-max suppression
@@ -42,6 +42,32 @@ def gaussian(I, sigma):
         return I
     else:
         return skimage.filters.gaussian(I, sigma)
+
+def mask_to_coord(mask):
+    """ convert mask[y,x] to coordinates (y,x) of points>0
+    return: coord, shape=(npts, mask.ndim)
+    """
+    coord = np.argwhere(mask)
+    return coord
+
+def coord_to_mask(coord, shape):
+    """ convert coordindates (y,x) to mask[y,x] with 1's on pts
+    return: mask
+    """
+    mask = np.zeros(shape, dtype=int)
+    index = tuple(
+        coord[:, i] for i in range(coord.shape[1])
+    )
+    mask[index] = 1
+    return mask
+
+def reverse_coord(coord):
+    """ convert (y,x) to (x,y)
+    return: reversed coord
+    """
+    index_rev = np.arange(coord.shape[1])[::-1]
+    return coord[:, index_rev]
+
 
 #=========================
 # hessian
