@@ -17,18 +17,9 @@ import numpy as np
 from numpy import fft
 import numba
 
-# import functools
-# import pathlib
-# import tempfile
-# import dask
-# import dask.distributed
-
-
 __all__ = [
-    # tv2d
-    "precalc_vmfft", "tv2d_vmfft", "tv2d",
-    # tv3d
-    "tv3d"
+    "precalc_vmfft", "tv2d_vmfft", 
+    "tv2d", "tv3d"
 ]
 
 #=========================
@@ -37,8 +28,8 @@ __all__ = [
 
 def precalc_vmfft(ny, nx, sigma):
     """ precalculate vmfft
-    param ny, nx: ny=nrow, nx=ncol
-    return: vmfft, shape=(5,ny,nx)
+    :param ny, nx: ny=nrow, nx=ncol
+    :return: vmfft, shape=(5,ny,nx)
     """
     # spatial coords: col-x, row-y, in image convention
     # fftfreq is used to easily construct x/y in correct order
@@ -63,9 +54,9 @@ def precalc_vmfft(ny, nx, sigma):
 
 def tv2d_vmfft(S, O, vmfft):
     """ tv for 2d slice, provide precalculated vmfft
-    param S, O: shape=(ny,nx)
-    param vmfft: array of 5 elements, each with shape=(ny,nx)
-    return: S_tv, O_tv
+    :param S, O: shape=(ny,nx)
+    :param vmfft: array of 5 elements, each with shape=(ny,nx)
+    :return: S_tv, O_tv
     """
     # orientation term
     km_234 = [np.exp(-2j*(m-1)*O) for m in [2, 3, 4]]
@@ -86,9 +77,9 @@ def tv2d_vmfft(S, O, vmfft):
 
 def tv2d(S, O, sigma):
     """ tv for 2d slice
-    param S, O: shape=(ny,nx)
-    param sigma: scale in pixel
-    return: S_tv, O_tv
+    :param S, O: shape=(ny,nx)
+    :param sigma: scale in pixel
+    :return: S_tv, O_tv
     """
     ny, nx = S.shape
     vmfft = precalc_vmfft(ny, nx, sigma)
@@ -102,7 +93,7 @@ def tv2d(S, O, sigma):
 
 def tv3d_python(S, O, sigma):
     """ tv for 2d stack, using python
-    return: S_tv, O_tv
+    :return: S_tv, O_tv
     """
     # precalc vmfft
     nz, ny, nx = S.shape
@@ -118,7 +109,7 @@ def tv3d_python(S, O, sigma):
 @numba.njit(parallel=True)
 def tv3d_numba(S, O, sigma):
     """ tv for 2d stack, using numba parallel
-    return: S_tv, O_tv
+    :return: S_tv, O_tv
     """
     nz, ny, nx = S.shape
     with numba.objmode(vmfft='complex128[:,:,:]'):
@@ -135,10 +126,10 @@ def tv3d_numba(S, O, sigma):
 
 def tv3d(S, O, sigma, method="numba"):
     """ tv for 2d stack
-    param S, O: shape=(nz,ny,nx)
-    param sigma: scale in pixel
-    param method: python or numba
-    return: S_tv, O_tv
+    :param S, O: shape=(nz,ny,nx)
+    :param sigma: scale in pixel
+    :param method: python or numba
+    :return: S_tv, O_tv
     """
     if method == "numba":
         return tv3d_numba(S, O, sigma)
@@ -146,6 +137,21 @@ def tv3d(S, O, sigma, method="numba"):
         return tv3d_python(S, O, sigma)
     else:
         raise ValueError("method: python or numba")
+
+
+#=========================
+# using dask (deprecated)
+#=========================
+
+# issues with dask route
+#   - port issues when not starting client from `__main__` ([github issue](https: // github.com/dask/distributed/issues/726))
+#   - generated tempfile npy's, which may not be removed if execution is terminated halfway
+
+# import functools
+# import pathlib
+# import tempfile
+# import dask
+# import dask.distributed
 
 # def _tv3d_dask_slice(input_paths, i):
 #     """ tv for 3d volume, auxiliary function for a 2d slice
