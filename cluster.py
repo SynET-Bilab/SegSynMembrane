@@ -102,7 +102,7 @@ def dist_xyo(xyo1, xyo2, scale_xy=3, scale_o=10):
 def cluster2d(nms2d, O2d,
         scale_xy=3, scale_o=10,
         eps=2, min_samples=4,
-        core_only=True, min_cluster_size=20, remove_noise=True
+        core_only=True, remove_noise=True, min_cluster_size=20
     ):
     """ cluster on 2d slice using custom metric and DBSCAN
     :param nms2d, O2d: nms and O, shape=(ny,nx)
@@ -132,26 +132,32 @@ def cluster2d(nms2d, O2d,
     # use core to reduce possibility of unwanted overlaps
     if core_only:
         mask_core = np.isin(
-            np.arange(len(xyo)), clust.core_sample_indices_
+            np.arange(len(labels)), clust.core_sample_indices_
         )
         xyo = xyo[mask_core]
         labels = labels[mask_core]
-
-    # filter out clusters with size < min
-    labels_df = (pd.Series(labels)
-        .value_counts()  # count by number of each label
-        .to_frame("count").reset_index()  # frame colums=[index, count]
-    )
-    labels_df = labels_df[labels_df["count"]>=min_cluster_size]
     
     # filter out noise
     if remove_noise:
-        labels_df = labels_df[labels_df["index"]!=-1]
+        mask_noise = (labels!=-1)
+        xyo = xyo[mask_noise]
+        labels = labels[mask_noise]
 
-    # mask based on cluster
+    # filter out clusters with size < min
+    labels_df = (pd.Series(labels)
+        .value_counts(ascending=False)  # count by number of each label
+        .to_frame("count").reset_index()  # frame colums=[index, count]
+        .reset_index()  # frame columns=[level_0, index, count]
+        .rename(columns={"level_0": "label_size"})
+    )
+    labels_df = labels_df[labels_df["count"]>=min_cluster_size]
     mask_cluster = np.isin(labels, labels_df["index"])
     xyo = xyo[mask_cluster]
     labels = labels[mask_cluster]
+
+    # reindex based on cluster size
+    labels_map = dict(labels_df[["index", "label_size"]].values)
+    labels = [labels_map[l] for l in labels]
 
     return xyo, labels
 
