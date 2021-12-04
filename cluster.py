@@ -35,7 +35,7 @@ def coord_to_mask(coord, shape):
     """
     mask = np.zeros(shape, dtype=int)
     index = tuple(
-        coord[:, i] for i in range(coord.shape[1])
+        coord[:, i].astype(int) for i in range(coord.shape[1])
     )
     mask[index] = 1
     return mask
