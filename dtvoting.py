@@ -18,7 +18,7 @@ from numpy import fft
 import numba
 
 __all__ = [
-    "precalc_vmfft", "tv2d_vmfft", 
+    "precalc_vmfft", "tv2d_vmfft",
     "tv2d", "tv3d"
 ]
 

@@ -157,7 +157,7 @@ def cluster2d(nms2d, O2d,
 
     # reindex based on cluster size
     labels_map = dict(labels_df[["index", "label_size"]].values)
-    labels = [labels_map[l] for l in labels]
+    labels = np.array([labels_map[l] for l in labels])
 
     return xyo, labels
 

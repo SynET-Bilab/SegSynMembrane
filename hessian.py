@@ -3,45 +3,12 @@
 """
 
 import numpy as np
-import skimage.filters
 import numba
-
+from synseg.utils import gaussian
 
 __all__ = [
-    # basics
-    "zscore", "negate", "gaussian",
-    # hessian
     "hessian2d", "features2d_hessian1", "features2d_hessian2", "features3d_hessian"
 ]
-
-
-#=========================
-# basics
-#=========================
-
-def zscore(I):
-    """ return zscore of I """
-    z = (I-np.mean(I))/np.std(I)
-    return z
-
-def negate(I):
-    """ switch foreground between white and dark
-    zscore then negate
-    """
-    std = np.std(I)
-    if std > 0:
-        return -(I-np.mean(I))/std
-    else:
-        return np.zeros_like(I)
-
-def gaussian(I, sigma):
-    """ gaussian smoothing, a wrapper of skimage.filters.gaussian
-    :param sigma: if sigma=0, return I
-    """
-    if sigma == 0:
-        return I
-    else:
-        return skimage.filters.gaussian(I, sigma)
 
 
 #=========================
