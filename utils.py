@@ -29,8 +29,7 @@ def zscore(I):
     return z
 
 def negate(I):
-    """ switch foreground between white and dark
-    zscore then negate
+    """ switch between white and dark foreground, zscore->negate
     """
     std = np.std(I)
     if std > 0:
@@ -63,9 +62,10 @@ def coord_to_mask(coord, shape):
     """ convert coordinates (y,x) to mask[y,x] with 1's on points
     :return: mask
     """
-    mask = np.zeros(shape, dtype=int)
+    mask = np.zeros(shape, dtype=np.int_)
     index = tuple(
-        coord[:, i].astype(int) for i in range(coord.shape[1])
+        coord[:, i].astype(np.int_)
+        for i in range(coord.shape[1])
     )
     mask[index] = 1
     return mask
@@ -82,13 +82,17 @@ def reverse_coord(coord):
 # mrc
 #=========================
 
-def read_mrc(mrcname):
+def read_mrc(mrcname, return_negated=False):
     """ read 3d data from mrc
+    :param return_negated: if True, return negated image
+        convenient for loading original black foreground tomo
     :return: data, voxel_size
     """
     with mrcfile.open(mrcname, permissive=True) as mrc:
         data = mrc.data
         voxel_size = mrc.voxel_size
+    if negate:
+        data = negate(data)
     return data, voxel_size
 
 def write_mrc(data, mrcname, voxel_size=None, dtype=None):
