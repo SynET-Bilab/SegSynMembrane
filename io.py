@@ -6,16 +6,16 @@ import tempfile
 import subprocess
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+import skimage
 import mrcfile
 
 __all__ = [
     # basics
     "zscore", "negate",
-    # mrc
-    "read_mrc", "write_mrc",
-    # model
-    "read_model",
+    # read/write
+    "read_mrc", "write_mrc", "read_model",
+    # processing
+    "read_clip_tomo", "model_to_mask"
 ]
 
 
@@ -124,170 +124,71 @@ def read_model(model_file):
 
 
 #=========================
-# plotting
+# processing tomo, model
 #=========================
 
-def setup_subplots(n, shape, figsize1):
-    """ setup subplots
-    :param n: number of subplots, can be different from shape
-    :param shape: (nrows, ncols), either can be None
-    :param figsize1: size of one subplot
-    :return: fig, axes
+def read_clip_tomo(mrc_file, model_file):
+    """ clip mrc according to the range of model
+    :param mrc_file, model_file: filename of mrc, model
+    :return: data, model, voxel_size, clip_range
+        data, model are clipped
+        voxel_size: read with mrcfile
+        clip_range: {x: (min,max), y:..., z:...}
     """
-    # setup shape
-    if shape is None:
-        shape = (1, n)
-    elif (shape[0] is None) and (shape[1] is None):
-        shape = (1, n)
-    elif shape[0] is None:  # (None, ncols)
-        shape = (int(np.ceil(n/shape[1])), shape[1])
-    elif shape[1] is None:  # (nrows, None)
-        shape = (shape[0], int(np.ceil(n/shape[0])))
+    # read model
+    model = read_model(model_file)
 
-    # setup figure
-    figsize = (
-        figsize1[0]*shape[1],  # size_x * ncols
-        figsize1[1]*shape[0]  # size_y * nrows
-    )
-    fig, axes = plt.subplots(
-        nrows=shape[0], ncols=shape[1],
-        sharex=True, sharey=True,
-        figsize=figsize,
-        constrained_layout=True,
-        squeeze=False  # always return axes as 2d array
-    )
-    return fig, axes
-
-def imshow(
-        I_arr, shape=None, style="custom",
-        vrange=None, qrange=(0, 1),
-        cmap="gray", colorbar=True, colorbar_shrink=0.6,
-        title_arr=None, suptitle=None,
-        supxlabel="x/pixel", supylabel="y/pixel",
-        figsize1=(3.5, 3.5), save=None
-    ):
-    """ show multiple images
-    :param I_arr: a 1d list of images
-    :param shape: (nrows, ncols), will auto set if either is None
-    :param style: custom, gray, orient
-    :param vrange, qrange: range of value(v) or quantile(q)
-    :param cmap, colorbar, colorbar_shrink: set colors
-    :param title_arr, suptitle, supxlabel, supylabel: set labels
-    :param figsize1: size of one subplot
-    :param save: name to save fig
-    :return: fig, axes
-    """
-    # setup styles
-    # grayscale image: adjust qrange
-    if style == "gray":
-        cmap = "gray"
-        vrange = None
-        qrange = (0.02, 0.98)
-    # orientation: circular cmap, convert rad to deg
-    elif style == "orient":
-        cmap = "hsv"
-        vrange = (0, 180)
-        I_arr = [np.mod(I, np.pi)/np.pi*180 for I in I_arr]
-    elif style == "custom":
-        pass
-    else:
-        raise ValueError("style options: custom, gray, orient")
-
-    # setup subplots
-    fig, axes = setup_subplots(len(I_arr), shape, figsize1)
-    shape = axes.shape
-
-    # plot on each ax
-    for idx1d, I in enumerate(I_arr):
-        # get 2d index
-        idx2d = np.unravel_index(idx1d, shape)
-
-        # setup vrange
-        if vrange is not None:
-            vmin, vmax = vrange
-        else:
-            vmin = np.quantile(I, qrange[0])
-            vmax = np.quantile(I, qrange[1])
-        
-        # plot
-        axes[idx2d].set_aspect(1)
-        im = axes[idx2d].imshow(
-            I, vmin=vmin, vmax=vmax,
-            cmap=cmap, origin="lower"
+    # set the range of clipping
+    # use np.floor/ceil -> int to ensure integers
+    clip_range = {
+        i: (
+            int(np.floor(model[i].min())),
+            int(np.ceil(model[i].max()))
         )
+        for i in ["x", "y", "z"]
+    }
 
-        # setup colorbar, title
-        if colorbar:
-            fig.colorbar(im, ax=axes[idx2d], shrink=colorbar_shrink)
-        if title_arr is not None:
-            axes[idx2d].set_title(title_arr[idx1d])
-        
-    # setup fig title
-    fig.suptitle(suptitle)
-    fig.supxlabel(supxlabel)
-    fig.supylabel(supylabel)
+    # read mrc data within clip_range
+    sub = tuple(
+        slice(clip_range[i][0], clip_range[i][1]+1)
+        for i in ["z", "y", "x"]
+    )
+    with mrcfile.mmap(mrc_file, permissive=True) as mrc:
+        data = mrc.data[sub]
+        voxel_size = mrc.voxel_size
 
-    # save fig
-    if save is not None:
-        fig.savefig(save)
+    # clip model to clip_range
+    for i in ["x", "y", "z"]:
+        model[i] -= clip_range[i][0]
 
-    return fig, axes
+    return data, model, voxel_size, clip_range
 
-
-def scatter(
-        xy_arr,
-        labels_arr=None,
-        shape=None,
-        marker_size=0.1,
-        cmap="viridis", colorbar=True, colorbar_shrink=0.6,
-        title_arr=None, suptitle=None,
-        supxlabel="x/pixel", supylabel="y/pixel",
-        figsize1=(3.5, 3.5), save=None
-    ):
-    """ show multiple scatters
-    :param xy_arr: 1d list of 2d array [x, y]
-    :param labels_arr: 1d list of labels for each xy
-    :param shape: (nrows, ncols), will auto set if either is None
-    :param cmap, colorbar, colorbar_shrink: set colors
-    :param title_arr, suptitle, supxlabel, supylabel: set labels
-    :param figsize1: size of one subplot
-    :param save: name to save fig
-    :return: fig, axes
+def model_to_mask(model, yx_shape):
+    """ convert model to mask, interpolate at missing z's
+    :param model: DataFrame, result of read_model() or clip_tomo()
+    :param yx_shape: shape in yx-dims
     """
-    # regularize labels_arr
-    if labels_arr is None:
-        labels_arr = [None]*len(xy_arr)
+    # prepare array to be filled
+    #   shape in z: max value + 1
+    #   dtype: set to float first, to allow for interpolation
+    mask = np.zeros((model["z"].max()+1, *yx_shape))
 
-    # setup subplots
-    fig, axes = setup_subplots(len(xy_arr), shape, figsize1)
-    shape = axes.shape
+    # setup mask at given slices
+    z_given = model["z"].unique()
+    for z in z_given:
+        mask_yx = model[model["z"] == z][["y", "x"]].values
+        mask[z] = skimage.draw.polygon2mask(
+            yx_shape, mask_yx
+        ).astype(float)
 
-    # plot on each ax
-    for idx1d, (xy, labels) in enumerate(zip(xy_arr, labels_arr)):
-        # get 2d index
-        idx2d = np.unravel_index(idx1d, shape)
+    # interpolate at z's between slices
+    z_pairs = zip(z_given[:-1], z_given[1:])
+    for z_low, z_high in z_pairs:
+        for z in range(z_low+1, z_high):
+            mask[z] = (mask[z_low]*(z_high-z)
+                       + mask[z_high]*(z-z_low)
+                       ) / (z_high-z_low)
 
-        # plot
-        axes[idx2d].set_aspect(1)
-        im = axes[idx2d].scatter(
-            xy[:, 0], xy[:, 1],
-            s=marker_size,
-            c=labels, cmap=cmap
-        )
-
-        # setup colorbar, title
-        if colorbar:
-            fig.colorbar(im, ax=axes[idx2d], shrink=colorbar_shrink)
-        if title_arr is not None:
-            axes[idx2d].set_title(title_arr[idx1d])
-
-    # setup fig title
-    fig.suptitle(suptitle)
-    fig.supxlabel(supxlabel)
-    fig.supylabel(supylabel)
-
-    # save fig
-    if save is not None:
-        fig.savefig(save)
-
-    return fig, axes
+    # round to int
+    mask = np.round(mask).astype(int)
+    return mask
