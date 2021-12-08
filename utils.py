@@ -2,7 +2,10 @@
 """ utils: utilities
 """
 
+import tempfile
+import subprocess
 import numpy as np
+import pandas as pd
 import skimage.filters
 import matplotlib.pyplot as plt
 import mrcfile
@@ -14,8 +17,10 @@ __all__ = [
     "mask_to_coord", "coord_to_mask", "reverse_coord",
     # mrc
     "read_mrc", "write_mrc",
+    # model
+    "read_model",
     # plotting
-    "imshow"
+    "imshow", "scatter"
 ]
 
 
@@ -91,7 +96,7 @@ def read_mrc(mrcname, return_negated=False):
     with mrcfile.open(mrcname, permissive=True) as mrc:
         data = mrc.data
         voxel_size = mrc.voxel_size
-    if negate:
+    if return_negated:
         data = negate(data)
     return data, voxel_size
 
@@ -128,6 +133,39 @@ def write_mrc(data, mrcname, voxel_size=None, dtype=None):
         mrc.set_data(data)
         if voxel_size is not None:
             mrc.voxel_size = voxel_size
+
+
+#=========================
+# imod model
+#=========================
+
+def read_model(model_file):
+    """ load xyz from model file
+    :return: DataFrame[object,contour,x,y,z] with correct dtypes
+        dtypes: z is also int
+        range: object,contour are 1-based; x,y,z are 0-based
+    """
+    # model2point
+    temp_file = tempfile.NamedTemporaryFile(suffix=".point")
+    point_file = temp_file.name
+    cmd = f"model2point -ob {model_file} {point_file} >/dev/null"
+    subprocess.call(cmd, shell=True)
+
+    # load point
+    point = np.loadtxt(point_file)
+
+    # convert to dataframe
+    columns = ["object", "contour", "x", "y", "z"]
+    dtypes = [int, int, float, float, int]
+    point_struct = np.array(
+        list(map(tuple, point)), # [(ob1,c1,x1,y1,z1), ...]
+        dtype=list(zip(columns, dtypes)) # [("object", int), ...]
+    )
+    df = pd.DataFrame.from_records(point_struct)
+    
+    # close tempfile
+    temp_file.close()
+    return df
 
 
 #=========================
