@@ -4,7 +4,7 @@
 
 import numpy as np
 import numba
-from synseg.utils import gaussian
+from synseg.hessian import gaussian
 
 __all__ = [
     "nms2d", "nms3d"

@@ -5,6 +5,6 @@ __version__ = "0.1"
 #     "numpy", "numba", "scikit-learn", "scikit-image", "mrcfile"
 # ]
 
-from synseg import utils
+from synseg import io, plot
 from synseg import hessian, dtvoting, nonmaxsup
-from synseg import cluster
+from synseg import cluster, stitch
