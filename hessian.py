@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-""" imgprocess: for image processing
+""" hessian
 """
 
 import numpy as np
@@ -7,7 +7,7 @@ import numba
 from synseg.utils import gaussian
 
 __all__ = [
-    "hessian2d", "features2d_hessian1", "features2d_hessian2", "features3d_hessian"
+    "hessian2d", "features2d_H1", "features2d_H2", "features3d"
 ]
 
 
@@ -17,6 +17,7 @@ __all__ = [
 
 def hessian2d(I, sigma):
     """ calculate hessian
+    :param sigma: if sigma=0, no gaussian smoothing
     """
     # referenced skimage.feature.hessian_matrix
     # here x,y are made explicit
@@ -29,7 +30,7 @@ def hessian2d(I, sigma):
     Hyy = np.gradient(Hy, axis=0)
     return Hxx, Hxy, Hyy
 
-def features2d_hessian1(I, sigma):
+def features2d_H1(I, sigma):
     """ stickness and orientation based on 2d Hesssian
     :return: S - saliency, O - tangent of max-amp-eigvec
     """
@@ -46,7 +47,7 @@ def features2d_hessian1(I, sigma):
     O = mask_tr*0.5*np.angle(Hxx-Hyy+2j*Hxy)
     return S, O
 
-def features2d_hessian2(I, sigma):
+def features2d_H2(I, sigma):
     """ stickness and orientation based on 2d Hesssian^2
     :return: S2 - saliency, O2 - tangent of max-amp-eigvec
     """
@@ -67,15 +68,15 @@ def features2d_hessian2(I, sigma):
     O2 = mask_tr*0.5*np.angle(-H2xx+H2yy-2j*H2xy)
     return S2, O2
 
-# def features3d_hessian(I, sigma, method="hessian2"):
+# def features3d(I, sigma, method="hessian2"):
 #     """ stickness and orientation based on 2d Hessian for each slice
 #     param method: hessian1 - H, hessian2 - HH 
 #     return: S - saliency, O - tangent of max-amp-eigvec
 #     """
 #     if method == "hessian2":
-#         func_hessian = features2d_hessian2
+#         func_hessian = features2d_H2
 #     elif method == "hessian":
-#         func_hessian = features2d_hessian1
+#         func_hessian = features2d_H1
 
 #     S = np.zeros(I.shape, dtype=float)
 #     O = np.zeros_like(S)
@@ -87,7 +88,7 @@ def features2d_hessian2(I, sigma):
 #     return S, O
 
 @numba.njit(parallel=True)
-def features3d_hessian(I, sigma):
+def features3d(I, sigma):
     """ stickness and orientation based on 2d Hessian2 for each slice
     :param I: shape=(nz,ny,nx)
     :return: S - saliency, O - tangent of max-amp-eigvec
@@ -95,14 +96,20 @@ def features3d_hessian(I, sigma):
     # notes on the removal of method selection:
     #   numba.njit does not support skimage.filters.gaussian
     #   numba.objmode does not support if-else
+    
+    # gaussian on 3d image
+    with numba.objmode(Ig="float64[:,:,:]"):
+        Ig = gaussian(I.astype(np.float64), sigma)
 
-    S = np.zeros(I.shape, dtype=np.float64)
-    O = np.zeros(I.shape, dtype=np.float64)
+    # create arrays
+    S = np.zeros(Ig.shape, dtype=np.float64)
+    O = np.zeros(Ig.shape, dtype=np.float64)
     nz = S.shape[0]
 
     for i in numba.prange(nz):
         with numba.objmode(S_i="float64[:,:]", O_i="float64[:,:]"):
-            S_i, O_i = features2d_hessian2(I[i], sigma)
+            # note sigma=0 because 3d gaussian is already applied
+            S_i, O_i = features2d_H2(Ig[i], 0)
         S[i] = S_i
         O[i] = O_i
 

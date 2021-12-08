@@ -10,6 +10,8 @@ import mrcfile
 __all__ = [
     # basics
     "zscore", "negate", "gaussian",
+    # coordinates
+    "mask_to_coord", "coord_to_mask", "reverse_coord",
     # mrc
     "read_mrc", "write_mrc",
     # plotting
@@ -26,7 +28,6 @@ def zscore(I):
     z = (I-np.mean(I))/np.std(I)
     return z
 
-
 def negate(I):
     """ switch foreground between white and dark
     zscore then negate
@@ -37,7 +38,6 @@ def negate(I):
     else:
         return np.zeros_like(I)
 
-
 def gaussian(I, sigma):
     """ gaussian smoothing, a wrapper of skimage.filters.gaussian
     :param sigma: if sigma=0, return I
@@ -46,6 +46,37 @@ def gaussian(I, sigma):
         return I
     else:
         return skimage.filters.gaussian(I, sigma, mode="nearest")
+
+
+#=========================
+# coordinates tools
+#=========================
+
+def mask_to_coord(mask):
+    """ convert mask[y,x] to coordinates (y,x) of points>0
+    :return: coord, shape=(npts, mask.ndim)
+    """
+    coord = np.argwhere(mask)
+    return coord
+
+def coord_to_mask(coord, shape):
+    """ convert coordinates (y,x) to mask[y,x] with 1's on points
+    :return: mask
+    """
+    mask = np.zeros(shape, dtype=int)
+    index = tuple(
+        coord[:, i].astype(int) for i in range(coord.shape[1])
+    )
+    mask[index] = 1
+    return mask
+
+def reverse_coord(coord):
+    """ convert (y,x) to (x,y)
+    :return: reversed coord
+    """
+    index_rev = np.arange(coord.shape[1])[::-1]
+    return coord[:, index_rev]
+
 
 #=========================
 # mrc
