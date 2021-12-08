@@ -83,17 +83,47 @@ def reverse_coord(coord):
 #=========================
 
 def read_mrc(mrcname):
-    """ read 3d data from mrc """
-    #TODO: read headers
+    """ read 3d data from mrc
+    :return: data, voxel_size
+    """
     with mrcfile.open(mrcname, permissive=True) as mrc:
         data = mrc.data
-    return data
+        voxel_size = mrc.voxel_size
+    return data, voxel_size
 
-def write_mrc(data, mrcname, dtype=np.float32):
-    """ write 3d data to mrc """
-    #TODO: set header
+def write_mrc(data, mrcname, voxel_size=None, dtype=None):
+    """ write 3d data to mrc
+    :param voxel_size: (x,y,z), or None for auto
+    :param dtype: datatype, if None use data.dtype
+        mrc-compatible: int8/16, uint8/16, float32, complex64
+    """
+    # ensure data is numpy array
+    data = np.asarray(data)
+
+    # set mrc-compatible dtype (see mrc doc)
+    # https://mrcfile.readthedocs.io/en/latest/usage_guide.html#data-types
+    if dtype is None:
+        dtype = data.dtype
+    if np.issubdtype(dtype, np.signedinteger):
+        if dtype not in [np.int8, np.int16]:
+            dtype = np.int16
+    elif np.issubdtype(dtype, np.unsignedinteger):
+        if dtype not in [np.uint8, np.uint16]:
+            dtype = np.uint16
+    elif np.issubdtype(dtype, np.floating):
+        if dtype not in [np.float32]:
+            dtype = np.float32
+    elif np.issubdtype(dtype, np.complexfloating):
+        if dtype not in [np.complex64]:
+            dtype = np.complex64
+
+    # write new mrc
+    # note: first set data, then set voxel_size
+    data = data.astype(dtype)
     with mrcfile.new(mrcname, overwrite=True) as mrc:
-        mrc.set_data(data.astype(dtype))
+        mrc.set_data(data)
+        if voxel_size is not None:
+            mrc.voxel_size = voxel_size
 
 
 #=========================
