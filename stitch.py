@@ -159,7 +159,7 @@ def build_graph(xyo_stack, labels_stack, yx_shape):
     edge: clusters connected in adjacent z's, weight = no. overlaps
     :param xyo_stack, labels_stack: results of cluster3d()
     :param yx_shape: image boundary [ny,nx]
-    :return: igraph.Graph(), cid_map_32
+    :return: g=igraph.Graph()
         vertices: 0 to n, attrs=[weight, c3d, iz, c2d]
         edges: attrs=[weight]
     """
@@ -188,7 +188,7 @@ def build_graph(xyo_stack, labels_stack, yx_shape):
 def graph_components(g):
     """ 
     :param: graph from build_graph()
-    :return:
+    :return: df_comps, g_comps
         df_comps: columns=[index,nv,ne,v_weight,e_weight,iz_min,iz_max,iz_span]
         g_comps: [vs of comp0, vs of comp1, ...]
     """

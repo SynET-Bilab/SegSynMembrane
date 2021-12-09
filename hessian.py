@@ -20,6 +20,7 @@ __all__ = [
 def hessian2d(I, sigma):
     """ calculate hessian
     :param sigma: if sigma=0, no gaussian smoothing
+    :return: Hxx, Hxy, Hyy
     """
     # referenced skimage.feature.hessian_matrix
     # here x,y are made explicit

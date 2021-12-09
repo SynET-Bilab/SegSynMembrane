@@ -147,9 +147,9 @@ def cluster3d(I, O,
     :param core_only: use only core points
         note this filter is applied before min_cluster_size and noise
     :param min_cluster_size, remove_noise: filter on clusters
-    :return: 
-        xyo_stack = array of xyo[npts, 3]
-        labels_stack = array of labels[npts]
+    :return: xyo_stack, labels_stack
+        xyo_stack: array of xyo[npts, 3]
+        labels_stack: array of labels[npts]
     """
     nz = I.shape[0]
     xyo_stack = []
@@ -157,7 +157,7 @@ def cluster3d(I, O,
 
     for i in range(nz):
         xyo, labels = cluster2d(
-            I[i], O[i], 
+            I[i], O[i],
             scale_xy=scale_xy, scale_o=scale_o,
             eps=eps, min_samples=min_samples,
             core_only=core_only, remove_noise=remove_noise, min_cluster_size=min_cluster_size

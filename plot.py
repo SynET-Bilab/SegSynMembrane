@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-""" utils: utilities
+""" plot: plotting
 """
 
 import numpy as np
@@ -8,7 +8,7 @@ import napari
 from synseg.utils import minmax_image
 
 __all__ = [
-    "imshow", "scatter", "imoverlay"
+    "imshow", "scatter", "imshow3d"
 ]
 
 
@@ -176,20 +176,23 @@ def scatter(
 
     return fig, axes
 
-def imoverlay(
-        I_back, I_fronts,
+def imshow3d(
+        I_back, I_fronts=None,
         opacity_back=0.75, opacity_front=1,
         cmap_back="gray", cmap_fronts="default"
     ):
     """ overlay images using napari, through different channels
     :param I_back: single background image
     :param I_fronts: array of front images
+    :param isin_01: is I already in range 01, otherwise minmax scale
     :param opacity_back, opacity_front: setup opacity
     :param cmap_back: colormap
     :param cmap_fronts: default=["green", "yellow", "cyan", "magenta",
         "bop blue", "bop orange", "bop purple", "red", "blue"]
     """
     # setup cmap, opacity according to number of front images
+    if I_fronts is None:
+        I_fronts = []
     n_fronts = len(I_fronts)
     if cmap_fronts == "default":
         cmap_fronts = [
@@ -200,10 +203,11 @@ def imoverlay(
     opacity_fronts = [opacity_front]*n_fronts
     name_fronts = [f"foreground {i}" for i in range(1, n_fronts+1)]
 
-    # scale to (0, 1) to match napari's rule
-    I_back = minmax_image(I_back, qrange=(0.02, 0.98), vrange=(0, 1))
-    I_fronts = [minmax_image(I, qrange=(0, 1), vrange=(0, 1))
-                for I in I_fronts]
+    # # scale to (0, 1) to match napari's doc --- seems no need
+    # if not isin_01:
+    #     I_back = minmax_image(I_back, qrange=(0.02, 0.98), vrange=(0, 1))
+    #     I_fronts = [minmax_image(I, qrange=(0, 1), vrange=(0, 1))
+    #                 for I in I_fronts]
     
     # flip y-axis, napari doesn't seem to support orient="lower" as in imshow
     I_back = np.flip(I_back, -2)
