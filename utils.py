@@ -20,7 +20,7 @@ def zscore_image(I):
     z = (I-np.mean(I))/np.std(I)
     return z
 
-def minmax_image(I, qrange=(0.02, 0.98), vrange=(0, 1)):
+def minmax_image(I, qrange=(0, 1), vrange=(0, 1)):
     """ minmax-scale of image I
     :param qrange: clip I by quantile range
     :param vrange: target range of values

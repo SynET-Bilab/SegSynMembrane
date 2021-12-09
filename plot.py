@@ -4,9 +4,11 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import napari
+from synseg.utils import minmax_image
 
 __all__ = [
-    "imshow", "scatter"
+    "imshow", "scatter", "imoverlay"
 ]
 
 
@@ -173,3 +175,48 @@ def scatter(
         fig.savefig(save)
 
     return fig, axes
+
+def imoverlay(
+        I_back, I_fronts,
+        opacity_back=0.75, opacity_front=1,
+        cmap_back="gray", cmap_fronts="default"
+    ):
+    """ overlay images using napari, through different channels
+    :param I_back: single background image
+    :param I_fronts: array of front images
+    :param opacity_back, opacity_front: setup opacity
+    :param cmap_back: colormap
+    :param cmap_fronts: default=["green", "yellow", "cyan", "magenta",
+        "bop blue", "bop orange", "bop purple", "red", "blue"]
+    """
+    # setup cmap, opacity according to number of front images
+    n_fronts = len(I_fronts)
+    if cmap_fronts == "default":
+        cmap_fronts = [
+            "green", "yellow", "cyan", "magenta",
+            "bop blue", "bop orange", "bop purple", "red", "blue"
+        ]
+        cmap_fronts = cmap_fronts[:n_fronts]
+    opacity_fronts = [opacity_front]*n_fronts
+    name_fronts = [f"foreground {i}" for i in range(1, n_fronts+1)]
+
+    # scale to (0, 1) to match napari's rule
+    I_back = minmax_image(I_back, qrange=(0.02, 0.98), vrange=(0, 1))
+    I_fronts = [minmax_image(I, qrange=(0, 1), vrange=(0, 1))
+                for I in I_fronts]
+    
+    # flip y-axis, napari doesn't seem to support orient="lower" as in imshow
+    I_back = np.flip(I_back, -2)
+    I_fronts = [np.flip(I, -2) for I in I_fronts]
+
+    # stack images along axis-0
+    I_stack = np.stack([I_back, *I_fronts], axis=0)
+
+    # view images via channels
+    viewer = napari.view_image(
+        I_stack, channel_axis=0,
+        name=["background", *name_fronts],
+        colormap=[cmap_back, *cmap_fronts],
+        opacity=[opacity_back, *opacity_fronts]
+    )
+    return viewer
