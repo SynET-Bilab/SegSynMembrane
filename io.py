@@ -8,10 +8,9 @@ import numpy as np
 import pandas as pd
 import skimage
 import mrcfile
+from synseg.utils import negate_image
 
 __all__ = [
-    # basics
-    "zscore", "negate",
     # read/write
     "read_mrc", "write_mrc", "read_model",
     # processing
@@ -20,39 +19,20 @@ __all__ = [
 
 
 #=========================
-# basic processing
-#=========================
-
-def zscore(I):
-    """ return zscore of I """
-    z = (I-np.mean(I))/np.std(I)
-    return z
-
-def negate(I):
-    """ switch between white and dark foreground, zscore->negate
-    """
-    std = np.std(I)
-    if std > 0:
-        return -(I-np.mean(I))/std
-    else:
-        return np.zeros_like(I)
-
-
-#=========================
 # mrc
 #=========================
 
-def read_mrc(mrcname, return_negated=False):
+def read_mrc(mrcname, negate=False):
     """ read 3d data from mrc
-    :param return_negated: if True, return negated image
+    :param negate: if True, return negated image
         convenient for loading original black foreground tomo
     :return: data, voxel_size
     """
     with mrcfile.open(mrcname, permissive=True) as mrc:
         data = mrc.data
         voxel_size = mrc.voxel_size
-    if return_negated:
-        data = negate(data)
+    if negate:
+        data = negate_image(data)
     return data, voxel_size
 
 def write_mrc(data, mrcname, voxel_size=None, dtype=None):

@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import igraph
 import bidict
-from synseg.cluster import coord_to_mask, reverse_coord
+from synseg.utils import coord_to_mask, reverse_coord
 
 __all__ = [
     # stitching

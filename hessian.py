@@ -4,27 +4,13 @@
 
 import numpy as np
 import numba
-import skimage.filters
+from synseg.utils import gaussian
 
 __all__ = [
-    "gaussian", "hessian2d",
+    "hessian2d",
     "features2d_H1", "features2d_H2",
     "features3d"
 ]
-
-
-#=========================
-# gaussian
-#=========================
-
-def gaussian(I, sigma):
-    """ gaussian smoothing, a wrapper of skimage.filters.gaussian
-    :param sigma: if sigma=0, return I
-    """
-    if sigma == 0:
-        return I
-    else:
-        return skimage.filters.gaussian(I, sigma, mode="nearest")
 
 
 #=========================

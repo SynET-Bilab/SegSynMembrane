@@ -8,11 +8,11 @@ import pandas as pd
 import sklearn
 import sklearn.cluster
 import sklearn.metrics
-
+from synseg.utils import mask_to_coord, reverse_coord
 
 __all__ = [
     # coordinates
-    "mask_to_coord", "coord_to_mask", "reverse_coord", "prep_xyo",
+    "prep_xyo",
     # distance metrics
     "dist_xy", "dist_o", "dist_xyo",
     # clustering
@@ -21,34 +21,8 @@ __all__ = [
 
 
 #=========================
-# coordinates tools
+# distance metrics
 #=========================
-
-def mask_to_coord(mask):
-    """ convert mask[y,x] to coordinates (y,x) of points>0
-    :return: coord, shape=(npts, mask.ndim)
-    """
-    coord = np.argwhere(mask)
-    return coord
-
-def coord_to_mask(coord, shape):
-    """ convert coordinates (y,x) to mask[y,x] with 1's on points
-    :return: mask
-    """
-    mask = np.zeros(shape, dtype=np.int_)
-    index = tuple(
-        coord[:, i].astype(np.int_)
-        for i in range(coord.shape[1])
-    )
-    mask[index] = 1
-    return mask
-
-def reverse_coord(coord):
-    """ convert (y,x) to (x,y)
-    :return: reversed coord
-    """
-    index_rev = np.arange(coord.shape[1])[::-1]
-    return coord[:, index_rev]
 
 def prep_xyo(I, O):
     """ prepare xyo from >0 points in image I and orientation O
@@ -57,7 +31,7 @@ def prep_xyo(I, O):
     :return: [x, y, o], shape=(n points, 3)
     """
     # set mask
-    mask = I>0
+    mask = I > 0
     # get xy array
     yx = mask_to_coord(mask)
     xy = reverse_coord(yx)
@@ -66,11 +40,6 @@ def prep_xyo(I, O):
     # concat to xyo
     xyo = np.concatenate((xy, o[:, np.newaxis]), axis=1)
     return xyo
-
-
-#=========================
-# distance metrics
-#=========================
 
 def dist_xy(xyo1, xyo2):
     """ Euclidean distance in xy
