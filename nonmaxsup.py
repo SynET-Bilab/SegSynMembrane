@@ -4,6 +4,7 @@
 
 from functools import reduce
 import numpy as np
+import numba
 
 __all__ = [
     "nms2d", "nms3d"
@@ -142,6 +143,7 @@ def nms2d(S, O, S_threshold=0, suppress=True):
     # return int-type array
     return local_max.astype(np.int_)
 
+@numba.njit(parallel=True)
 def nms3d(S, O, S_threshold=0, suppress=True):
     """ non-maximum suppresion of S[nz, ny, nx], python version
     :param S: assumed already gaussian-smoothed
@@ -149,12 +151,14 @@ def nms3d(S, O, S_threshold=0, suppress=True):
     # find local max for each slice
     local_max = np.zeros(S.shape, dtype=np.int64)
     nz = S.shape[0]
-    for i in range(nz):
-        local_max[i] = nms2d(
-            S[i], O[i],
-            S_threshold=S_threshold,
-            suppress=suppress
-        )
+    for i in numba.prange(nz):
+        with numba.objmode(local_max_i="int64[:,:]"):
+            local_max_i = nms2d(
+                S[i], O[i],
+                S_threshold=S_threshold,
+                suppress=suppress
+            )
+        local_max[i] = local_max_i
     return local_max
 
 
