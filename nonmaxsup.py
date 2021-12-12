@@ -52,7 +52,6 @@ def compare_local(N_range, x, y, S, N, mask):
         local_max: bool, shape=S.shape, true if the pixel is local max
         local_supp: bool, shape=S.shape, true if the pixel is suppressed
     """
-    # return: is local max, is suppressed
     # pts in N_range
     pts = mask & (N >= N_range[0]) & (N < N_range[1])
 
@@ -97,11 +96,11 @@ def set_mask_boundary(I):
 # non-max suppression
 #=========================
 
-def nms2d(S, O, S_threshold=0, suppress=True):
+def nms2d(S, O, S_threshold=1e-6, suppress=True):
     """ non-maximum suppresion of S[ny, nx]
     :param S: saliency
     :param O: orientation (tangent)
-    :param S_threshold: threshold on S, usually 0
+    :param S_threshold: threshold on S, usually a small value
     :param suppress: if exclude suppressed pixels
     :return: local_max
         local_max: int, shape=S.shape, 1 if the pixel is local max
