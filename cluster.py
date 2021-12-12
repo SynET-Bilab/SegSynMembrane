@@ -68,6 +68,7 @@ def dist_xyo(xyo1, xyo2, scale_xy=3, scale_o=10):
     d = dxy/scale_xy + do/np.pi*180/scale_o
     return d
 
+
 #=========================
 # clustering
 #=========================
@@ -134,7 +135,6 @@ def cluster2d(I, O,
 
     return xyo, labels
 
-
 def cluster3d(I, O,
         scale_xy=3, scale_o=10,
         eps=2, min_samples=4,
@@ -166,4 +166,9 @@ def cluster3d(I, O,
         labels_stack.append(labels)
     
     return xyo_stack, labels_stack
+
+
+#=========================
+# convert xy,labels to image
+#=========================
 
