@@ -6,5 +6,5 @@ __version__ = "0.1"
 # ]
 
 from synseg import utils, io, plot
-from synseg import hessian, dtvoting, nonmaxsup
+from synseg import hessian, dtvoting, nonmaxsup, normalsup
 from synseg import cluster, stitch

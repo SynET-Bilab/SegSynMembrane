@@ -143,7 +143,7 @@ def nms2d(S, O, S_threshold=1e-6, suppress=True):
     return local_max.astype(np.int_)
 
 @numba.njit(parallel=True)
-def nms3d(S, O, S_threshold=0, suppress=True):
+def nms3d(S, O, S_threshold=1e-6, suppress=True):
     """ non-maximum suppresion of S[nz, ny, nx], python version
     :param S: assumed already gaussian-smoothed
     """
