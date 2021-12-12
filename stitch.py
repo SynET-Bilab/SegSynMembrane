@@ -15,136 +15,79 @@ __all__ = [
     "graph_components", "subgraph_to_image",
 ]
 
-
 #=========================
 # stitch clusters
 #=========================
 
-def gen_cid_bidict(df3d):
-    """ generate cid bidict from df3d
-    :param df3d: pd.DataFrame(columns=["c3d", "iz", "c2d"])
-    :return: bidict(c3d:(iz, c2d))
-    """
-    cid_map_32 = bidict.bidict(
-        list(zip(
-            df3d["c3d"].values,
-            zip(*df3d[["iz", "c2d"]].values.T)
-        ))
-    )
-    return cid_map_32
 
-
-def build_graph_vertices(labels_stack):
+def build_graph_vertices(labels3d):
     """ build vertices from each cluster(label)
-    :param labels_stack: [labels_z0, labels_z1, ...]
-    :return:
-        vertices: array of vertices, start from 0
-        vs_attrs: {c3d, iz, c2d, weight}
-        cid_map_32: bidict( c3d:(iz, c2d) )
+    :param label3d: array[nz,ny,nx], clusters are indexed from 1
+    :return: vertices, vs_attrs
+        vertices: array of vertices, start from 0 (label-1)
+        vs_attrs: {weight}
     """
-    # get c2ds and weights(no. of pixels) for each iz
-    # df2d: columns=[iz, c2d, weight]
-    df2d_arr = []
-    for iz, labels in enumerate(labels_stack):
-        df2d = (pd.Series(labels)
-                .value_counts().to_frame("weight")  # sort by weight
-                .reset_index().rename(columns={"index": "c2d"})
-                )
-        df2d["iz"] = iz
-        df2d_arr.append(df2d)
-
-    # combine iz's, reindex
-    # df3d: columns=[c3d, iz, c2d, weight]
-    df3d = (pd.concat(df2d_arr)
-            .reset_index(drop=True)  # reindex from 0
-            .reset_index().rename(columns={"index": "c3d"})
+    # use pandas to sort clusters by weight
+    df3d = (pd.Series(labels3d[labels3d > 0])
+            .value_counts().to_frame("weight")
+            .reset_index()
             )
 
     # extract index and attributes
-    vertices = df3d["c3d"].to_list()
+    vertices = (df3d["index"]-1).to_list()
     vs_attrs = dict(
-        c3d=df3d["c3d"].to_list(),
-        iz=df3d["iz"].to_list(),
-        c2d=df3d["c2d"].to_list(),
         weight=df3d["weight"].to_list(),
     )
-
-    # generate bidict: {c3d: (iz, c2d)}
-    cid_map_32 = gen_cid_bidict(df3d)
-    return vertices, vs_attrs, cid_map_32
+    return vertices, vs_attrs
 
 
-def build_graph_edges_adjacent(iz, xyo_stack, labels_stack, yx_shape, cid_map_32):
+def build_graph_edges_adjacent(iz, labels3d):
     """ stitch vertices in adjacent slices iz and iz-1
-    strategy: convert xy to 2d mask, calculate overlaps
     :param iz: z index, should >=1
-    :param xyo_stack, labels_stack: results of cluster3d()
-    :param yx_shape: image boundary [ny,nx]
-    :param cid_map_32: bidict(c3d=(iz, c2d))
-    :return:
+    :param label3d: array[nz,ny,nx], clusters are indexed from 1
+    :return: edges, es_attrs
         edges: array of edges, (v1, v2)
         es_attrs: {weight}
     """
-    # check iz >=1
-    if iz == 0:
-        raise ValueError("iz should >= 1")
-    elif iz >= len(xyo_stack):
-        raise ValueError("iz should < len(xyo_stack)")
-
-    # convert yx_prev to mask
-    # all clusters are combined to the same mask
-    # cluster-i is assigned with value i+1 (i starts from 0)
-    yx_prev = xyo_stack[iz-1][:, [1, 0]]
-    labels_prev = np.asarray(labels_stack[iz-1])
-    mask_prev = np.zeros(yx_shape, dtype=int)
-    for i in np.unique(labels_prev):
-        yx_prev_i = yx_prev[labels_prev == i]
-        mask_prev_i = (i+1)*coord_to_mask(yx_prev_i, yx_shape)
-        mask_prev += mask_prev_i
-
     # calculate overlap between curr and prev, get edges
     edges = []
     es_attrs = {"weight": []}
-    yx_curr = xyo_stack[iz][:, [1, 0]]
-    labels_curr = np.asarray(labels_stack[iz])
     # loop over current clusters
-    for i in np.unique(labels_curr):
-        # convert yx_curr to mask
-        yx_curr_i = yx_curr[labels_curr == i]
-        mask_curr_i = coord_to_mask(yx_curr_i, yx_shape)
+    yx_shape = labels3d[0].shape
+    labels_prev = labels3d[iz-1]
+    labels_curr = labels3d[iz]
 
+    for i in np.unique(labels_curr):
         # calculate overlap
         # count number of each elements using pandas
         # value=j+1 indicates overlap with prev cluster-j
-        overlap = mask_curr_i * mask_prev
+        mask_curr_i = np.zeros(yx_shape, dtype=int)
+        mask_curr_i[labels_curr == i] = 1
+        overlap = mask_curr_i * labels_prev
         counts = pd.Series(overlap[overlap > 0]).value_counts()
 
         # generate edges
-        c3d_i = cid_map_32.inv[(iz, i)]
-        for j, weight in zip(counts.index-1, counts.values):
-            c3d_j = cid_map_32.inv[(iz-1, j)]
-            edges.append((c3d_i, c3d_j))
+        for j, weight in zip(counts.index, counts.values):
+            edges.append((i-1, j-1))
             es_attrs["weight"].append(weight)
 
     return edges, es_attrs
 
 
-def build_graph_edges(xyo_stack, labels_stack, yx_shape, cid_map_32):
+def build_graph_edges(labels3d):
     """ stitch vertices through all slices in the stack
-    :param xyo_stack, labels_stack: results of cluster3d()
-    :param yx_shape: image boundary [ny,nx]
-    :param cid_map_32: bidict(c3d=(iz, c2d))
-    :return:
+        :param label3d: array[nz,ny,nx], clusters are indexed from 1
+    :return: edges, es_attrs
         edges: array of edges, (v1, v2)
         es_attrs: {weight}
     """
     edges = []
     es_attrs = dict()
-    nz = len(xyo_stack)
+    nz = labels3d.shape[0]
     # stitch adjacent slices one by one
     for iz in range(1, nz):
         edges_i, es_attrs_i = build_graph_edges_adjacent(
-            iz, xyo_stack, labels_stack, yx_shape, cid_map_32
+            iz, labels3d
         )
         edges.extend(edges_i)
         for key, value in es_attrs_i.items():
@@ -153,22 +96,18 @@ def build_graph_edges(xyo_stack, labels_stack, yx_shape, cid_map_32):
     return edges, es_attrs
 
 
-def build_graph(xyo_stack, labels_stack, yx_shape):
+def build_graph(labels3d):
     """ build graph from clusters
-    vertex: each cluster, weight = cluster size
-    edge: clusters connected in adjacent z's, weight = no. overlaps
-    :param xyo_stack, labels_stack: results of cluster3d()
-    :param yx_shape: image boundary [ny,nx]
+    :param label3d: array[nz,ny,nx], clusters are indexed from 1
     :return: g=igraph.Graph()
         vertices: 0 to n, attrs=[weight, c3d, iz, c2d]
         edges: attrs=[weight]
     """
     # get vertices and weights
-    vertices, vs_attrs, cid_map_32 = build_graph_vertices(labels_stack)
+    vertices, vs_attrs = build_graph_vertices(labels3d)
 
     # get edges and weights
-    edges, es_attrs = build_graph_edges(
-        xyo_stack, labels_stack, yx_shape, cid_map_32)
+    edges, es_attrs = build_graph_edges(labels3d)
 
     # build graph
     g = igraph.Graph()
@@ -260,3 +199,168 @@ def subgraph_to_image(
     zyx = reverse_coord(xyz)
     I = coord_to_mask(zyx, zyx_shape)
     return I
+
+
+# #=========================
+# # stitch clusters
+# #=========================
+
+# def gen_cid_bidict(df3d):
+#     """ generate cid bidict from df3d
+#     :param df3d: pd.DataFrame(columns=["c3d", "iz", "c2d"])
+#     :return: bidict(c3d:(iz, c2d))
+#     """
+#     cid_map_32 = bidict.bidict(
+#         list(zip(
+#             df3d["c3d"].values,
+#             zip(*df3d[["iz", "c2d"]].values.T)
+#         ))
+#     )
+#     return cid_map_32
+
+
+# def build_graph_vertices(labels_stack):
+#     """ build vertices from each cluster(label)
+#     :param labels_stack: [labels_z0, labels_z1, ...]
+#     :return:
+#         vertices: array of vertices, start from 0
+#         vs_attrs: {c3d, iz, c2d, weight}
+#         cid_map_32: bidict( c3d:(iz, c2d) )
+#     """
+#     # get c2ds and weights(no. of pixels) for each iz
+#     # df2d: columns=[iz, c2d, weight]
+#     df2d_arr = []
+#     for iz, labels in enumerate(labels_stack):
+#         df2d = (pd.Series(labels)
+#                 .value_counts().to_frame("weight")  # sort by weight
+#                 .reset_index().rename(columns={"index": "c2d"})
+#                 )
+#         df2d["iz"] = iz
+#         df2d_arr.append(df2d)
+
+#     # combine iz's, reindex
+#     # df3d: columns=[c3d, iz, c2d, weight]
+#     df3d = (pd.concat(df2d_arr)
+#             .reset_index(drop=True)  # reindex from 0
+#             .reset_index().rename(columns={"index": "c3d"})
+#             )
+
+#     # extract index and attributes
+#     vertices = df3d["c3d"].to_list()
+#     vs_attrs = dict(
+#         c3d=df3d["c3d"].to_list(),
+#         iz=df3d["iz"].to_list(),
+#         c2d=df3d["c2d"].to_list(),
+#         weight=df3d["weight"].to_list(),
+#     )
+
+#     # generate bidict: {c3d: (iz, c2d)}
+#     cid_map_32 = gen_cid_bidict(df3d)
+#     return vertices, vs_attrs, cid_map_32
+
+
+# def build_graph_edges_adjacent(iz, xyo_stack, labels_stack, yx_shape, cid_map_32):
+#     """ stitch vertices in adjacent slices iz and iz-1
+#     strategy: convert xy to 2d mask, calculate overlaps
+#     :param iz: z index, should >=1
+#     :param xyo_stack, labels_stack: results of cluster3d()
+#     :param yx_shape: image boundary [ny,nx]
+#     :param cid_map_32: bidict(c3d=(iz, c2d))
+#     :return:
+#         edges: array of edges, (v1, v2)
+#         es_attrs: {weight}
+#     """
+#     # check iz >=1
+#     if iz == 0:
+#         raise ValueError("iz should >= 1")
+#     elif iz >= len(xyo_stack):
+#         raise ValueError("iz should < len(xyo_stack)")
+
+#     # convert yx_prev to mask
+#     # all clusters are combined to the same mask
+#     # cluster-i is assigned with value i+1 (i starts from 0)
+#     yx_prev = xyo_stack[iz-1][:, [1, 0]]
+#     labels_prev = np.asarray(labels_stack[iz-1])
+#     mask_prev = np.zeros(yx_shape, dtype=int)
+#     for i in np.unique(labels_prev):
+#         yx_prev_i = yx_prev[labels_prev == i]
+#         mask_prev_i = (i+1)*coord_to_mask(yx_prev_i, yx_shape)
+#         mask_prev += mask_prev_i
+
+#     # calculate overlap between curr and prev, get edges
+#     edges = []
+#     es_attrs = {"weight": []}
+#     yx_curr = xyo_stack[iz][:, [1, 0]]
+#     labels_curr = np.asarray(labels_stack[iz])
+#     # loop over current clusters
+#     for i in np.unique(labels_curr):
+#         # convert yx_curr to mask
+#         yx_curr_i = yx_curr[labels_curr == i]
+#         mask_curr_i = coord_to_mask(yx_curr_i, yx_shape)
+
+#         # calculate overlap
+#         # count number of each elements using pandas
+#         # value=j+1 indicates overlap with prev cluster-j
+#         overlap = mask_curr_i * mask_prev
+#         counts = pd.Series(overlap[overlap > 0]).value_counts()
+
+#         # generate edges
+#         c3d_i = cid_map_32.inv[(iz, i)]
+#         for j, weight in zip(counts.index-1, counts.values):
+#             c3d_j = cid_map_32.inv[(iz-1, j)]
+#             edges.append((c3d_i, c3d_j))
+#             es_attrs["weight"].append(weight)
+
+#     return edges, es_attrs
+
+
+# def build_graph_edges(xyo_stack, labels_stack, yx_shape, cid_map_32):
+#     """ stitch vertices through all slices in the stack
+#     :param xyo_stack, labels_stack: results of cluster3d()
+#     :param yx_shape: image boundary [ny,nx]
+#     :param cid_map_32: bidict(c3d=(iz, c2d))
+#     :return:
+#         edges: array of edges, (v1, v2)
+#         es_attrs: {weight}
+#     """
+#     edges = []
+#     es_attrs = dict()
+#     nz = len(xyo_stack)
+#     # stitch adjacent slices one by one
+#     for iz in range(1, nz):
+#         edges_i, es_attrs_i = build_graph_edges_adjacent(
+#             iz, xyo_stack, labels_stack, yx_shape, cid_map_32
+#         )
+#         edges.extend(edges_i)
+#         for key, value in es_attrs_i.items():
+#             # setdefault: can assign to [] if key is not present
+#             es_attrs.setdefault(key, []).extend(value)
+#     return edges, es_attrs
+
+
+# def build_graph(xyo_stack, labels_stack, yx_shape):
+#     """ build graph from clusters
+#     vertex: each cluster, weight = cluster size
+#     edge: clusters connected in adjacent z's, weight = no. overlaps
+#     :param xyo_stack, labels_stack: results of cluster3d()
+#     :param yx_shape: image boundary [ny,nx]
+#     :return: g=igraph.Graph()
+#         vertices: 0 to n, attrs=[weight, c3d, iz, c2d]
+#         edges: attrs=[weight]
+#     """
+#     # get vertices and weights
+#     vertices, vs_attrs, cid_map_32 = build_graph_vertices(labels_stack)
+
+#     # get edges and weights
+#     edges, es_attrs = build_graph_edges(
+#         xyo_stack, labels_stack, yx_shape, cid_map_32)
+
+#     # build graph
+#     g = igraph.Graph()
+#     g.add_vertices(vertices)
+#     g.add_edges(edges)
+#     for key, value in vs_attrs.items():
+#         g.vs[key] = value
+#     for key, value in es_attrs.items():
+#         g.es[key] = value
+#     return g

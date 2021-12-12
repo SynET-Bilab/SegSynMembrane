@@ -8,7 +8,7 @@ import pandas as pd
 import sklearn
 import sklearn.cluster
 import sklearn.metrics
-from synseg.utils import mask_to_coord, reverse_coord
+from synseg.utils import mask_to_coord, coord_to_mask, reverse_coord
 
 __all__ = [
     # coordinates
@@ -17,6 +17,8 @@ __all__ = [
     "dist_xy", "dist_o", "dist_xyo",
     # clustering
     "cluster2d", "cluster3d",
+    # labeling
+    "labels_to_2dimage", "labels_reindex3d",
 ]
 
 
@@ -172,3 +174,39 @@ def cluster3d(I, O,
 # convert xy,labels to image
 #=========================
 
+def labels_to_2dimage(xyo, labels, yx_shape):
+    """ convert results from dbscan to 2d image
+    :param xyo: array of [x_i, y_i, o_i]
+    :param labels: assumed to range from 0 to n, consecutively
+    :param yx_shape: (ny, nx) for the image
+    :return: labels2d
+        labels2d: image[ny,nx] with labels on corresponding pixels; labeling indexes are shifted by 1, to 1->n+1
+    """
+    labels2d = np.zeros(yx_shape, dtype=np.int64)
+    yx = reverse_coord(xyo[:, :2])
+    for i in np.unique(labels):
+        yx_i = yx[labels == i]
+        labels2d_i = (i+1)*coord_to_mask(yx_i, yx_shape)
+        labels2d += labels2d_i
+    return labels2d
+
+def labels_reindex3d(labels3d):
+    """ reindex stack of labels2d, making labels in each slice distint
+    :param labels3d: stack of labels2d, clusters in each slice are indexed from 1->n
+    :return: labels3d
+        labels3d: reindexed all clusters from 1 consecutively, no overlap between slices
+    """
+    nz = len(labels3d)
+    # max index of previous slice
+    prev = 0
+    # reindex slice by slice
+    for iz in range(nz):
+        # max of current slice before reindexing
+        label_iz_max = labels3d[iz].max()
+        # select real clusters with label>0
+        mask = labels3d[iz] > 0
+        # shift cluster 
+        labels3d[iz][mask] += prev
+        # update prev
+        prev += label_iz_max
+    return labels3d
