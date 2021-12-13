@@ -10,7 +10,7 @@ from synseg.utils import coord_to_mask, reverse_coord
 
 __all__ = [
     # stitching
-    "gen_cid_bidict", "build_graph",
+    "build_graph",
     # extraction
     "graph_components", "subgraph_to_image",
 ]
@@ -18,7 +18,6 @@ __all__ = [
 #=========================
 # stitch clusters
 #=========================
-
 
 def build_graph_vertices(labels3d):
     """ build vertices from each cluster(label)
@@ -57,7 +56,7 @@ def build_graph_edges_adjacent(iz, labels3d):
     labels_prev = labels3d[iz-1]
     labels_curr = labels3d[iz]
 
-    for i in np.unique(labels_curr):
+    for i in np.unique(labels_curr[labels_curr>0]):
         # calculate overlap
         # count number of each elements using pandas
         # value=j+1 indicates overlap with prev cluster-j
@@ -134,8 +133,7 @@ def graph_components(g):
     # fields to collect
     columns = [
         "index", "nv", "ne",
-        "v_weight", "e_weight",
-        "iz_min", "iz_max", "iz_span"
+        "v_weight", "e_weight"
     ]
 
     # collect info for each component
@@ -145,12 +143,9 @@ def graph_components(g):
         gi = g.subgraph(vi)
         v_weight = np.sum(gi.vs["weight"])
         e_weight = np.sum(gi.es["weight"])
-        iz_min = np.min(gi.vs["iz"])
-        iz_max = np.max(gi.vs["iz"])
         comp_i = (
             i, gi.vcount(), gi.ecount(),
-            v_weight, e_weight,
-            iz_min, iz_max, iz_max-iz_min
+            v_weight, e_weight
         )
         comp_arr.append(comp_i)
 
