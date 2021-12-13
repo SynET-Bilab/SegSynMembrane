@@ -7,10 +7,10 @@ import pandas as pd
 import igraph
 
 __all__ = [
-    # stitching
-    "build_graph",
+    # graph method
+    "build_graph", "graph_components",
     # extraction
-    "graph_components", "labels_to_image"
+    "labels_to_image", "extract_connected"
 ]
 
 #=========================
@@ -189,8 +189,8 @@ def extract_connected(labels3d, n_largest=2):
     """ extract connected clusters
     :param label3d: array[nz,ny,nx], clusters are indexed from 1
     :param n_largest: return n_largest connected components
-    :return: L, df_comps
-        L: image of components, labeled from 1
+    :return: seg_arr, df_comps
+        seg_arr: array of segmented binary image of components
         df_comps: columns=[index,nv,ne,v_weight,e_weight]
     """
     # find connected
@@ -198,12 +198,12 @@ def extract_connected(labels3d, n_largest=2):
     df_comps, label_comps = graph_components(g)
 
     # convert to image
-    L = np.zeros(labels3d.shape, dtype=np.int_)
+    seg_arr = []
     for i in range(n_largest):
         idx = df_comps["index"][i]
         L_i = labels_to_image(labels3d, label_comps[idx])
-        L += (i+1)*L_i
-    return L, df_comps
+        seg_arr.append(L_i)
+    return seg_arr, df_comps
 
 # def subgraph_to_image(
 #         g, vertices,

@@ -14,7 +14,9 @@ __all__ = [
     # read/write
     "read_mrc", "write_mrc", "read_model",
     # processing
-    "read_clip_tomo", "model_to_mask"
+    "read_clip_tomo", "model_to_mask",
+    # segmentation
+    "segs_to_model"
 ]
 
 
@@ -84,7 +86,7 @@ def read_model(model_file):
     temp_file = tempfile.NamedTemporaryFile(suffix=".point")
     point_file = temp_file.name
     cmd = f"model2point -ob {model_file} {point_file} >/dev/null"
-    subprocess.call(cmd, shell=True)
+    subprocess.run(cmd, shell=True, check=True)
 
     # load point
     point = np.loadtxt(point_file)
@@ -101,6 +103,44 @@ def read_model(model_file):
     # close tempfile
     temp_file.close()
     return df
+
+def segs_to_model(seg_arr, model_name, voxel_size):
+    """ convert segmentations to model
+    :param seg_arr: [seg1,seg2,...], binary images
+    :param model_name: name for output models, without .mod
+    :param voxel_size: (x,y,z), or None for auto
+    :return: None
+        outputs model file model_name.mod
+    """
+    # for each seg, convert to mrc, then to mod
+    mod_name_arr = []
+    for i, seg in enumerate(seg_arr):
+        # write seg to a temp mrc
+        mrc = tempfile.NamedTemporaryFile(suffix=".mrc")
+        mrc_name = mrc.name
+        write_mrc(seg, mrc_name, voxel_size=voxel_size)
+
+        # convert mrc to mod
+        # imodauto options
+        # -h find contours around pixels higher than this value
+        # -n find inside contours in closed, annular regions
+        # -m minimum are for each contour
+        mod_name_i = f"{model_name}_{i}.mod"
+        subprocess.run(
+            f"imodauto -h 1 -n -m 1 {mrc_name} {mod_name_i}",
+            shell=True, check=True
+        )
+        mod_name_arr.append(mod_name_i)
+        mrc.close()
+    
+    # imodjoin options:
+    # -c change colors of objects being copied to first model
+    mod_name_str = " ".join(mod_name_arr)
+    mod_name_joined = f"{model_name}.mod"
+    subprocess.run(
+        f"imodjoin -c {mod_name_str} {mod_name_joined}",
+        shell=True
+    )
 
 
 #=========================
