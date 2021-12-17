@@ -79,7 +79,7 @@ def nsfield3d(S, O, sigma, excluded_r2=3):
     :return: S_supp[nz,ny,nx]
     """
     # find local max for each slice
-    S_supp = np.zeros(S.shape, dtype=np.int64)
+    S_supp = np.zeros(S.shape, dtype=np.float64)
     nz = S.shape[0]
     for i in numba.prange(nz):
         with numba.objmode(S_supp_i="float64[:,:]"):
