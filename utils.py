@@ -7,6 +7,8 @@ import skimage.filters
 __all__ = [
     # basics
     "zscore_image", "minmax_image", "negate_image", "gaussian",
+    # orientation
+    "rotate_orient",
     # coordinates
     "mask_to_coord", "coord_to_mask", "reverse_coord",
 ]
@@ -51,6 +53,12 @@ def gaussian(I, sigma):
         return I
     else:
         return skimage.filters.gaussian(I, sigma, mode="nearest")
+
+def rotate_orient(O):
+    """ rotate orientation by pi/2, then mod pi
+    :return: mod(O+pi/2, pi)
+    """
+    return np.mod(O+np.pi/2, np.pi)
 
 #=========================
 # coordinates tools
