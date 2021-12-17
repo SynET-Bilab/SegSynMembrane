@@ -30,11 +30,12 @@ __all__ = [
 # prepare wmfft general
 #=========================
 
-def prep_wmfft(ny, nx, sigma, origin, n_terms):
-    """ prepare wmfft
+def prep_wmfft(ny, nx, sigma, m, origin, n_terms):
+    """ prepare wmfft, radial function f(r)=r^m e^(-r^2/2sigma^2)
     :param ny, nx: ny=nrow, nx=ncol
+    :param sigma, m: parameters of radial function
     :param origin: value at origin
-    :param n_terms: take the first n terms in wmfft
+    :param n_terms: take the first n terms in wmfft, 5 for stick field, 3 for ball field
     :return: wmfft
         wmfft: fft of [w0,w2,w4,w6,w8][:n_terms], shape of wi=(ny,nx)
     """
@@ -44,10 +45,13 @@ def prep_wmfft(ny, nx, sigma, origin, n_terms):
     x = fft.fftfreq(nx, d=1/nx).reshape((1, nx))
     y = fft.fftfreq(ny, d=1/ny).reshape((ny, 1))
 
-    # spatial terms
+    # spatial terms, scaled so that max=1
     r2 = x**2 + y**2
-    term_exp = np.exp(-r2/(2*sigma**2))
+    term_exp_max = (m**0.5*sigma)**m*np.exp(-m/2)
+    # divide by 16, the scale factor for orientation (Franken2006)
+    term_exp = r2**(m/2)*np.exp(-r2/(2*sigma**2)) / term_exp_max / 16
     term_frac2 = (x+1j*y)**2/r2
+    # set origin to avoid nan
     term_frac2[0, 0] = origin
 
     # calculate wm accumulatively
@@ -66,11 +70,11 @@ def prep_wmfft(ny, nx, sigma, origin, n_terms):
 #=========================
 
 def prep_wmfft_stick(ny, nx, sigma):
-    """ prepare wmfft for stick field, origin=1
+    """ prepare wmfft for stick field, e^(-r^2/2sigma^2), origin=1
     :param ny, nx: ny=nrow, nx=ncol
     :return: wmfft=[w0,w2,w4,w6,w8], shape=(5,ny,nx)
     """
-    wmfft = prep_wmfft(ny, nx, sigma, origin=1., n_terms=5)
+    wmfft = prep_wmfft(ny, nx, sigma, m=0, origin=1., n_terms=5)
     return wmfft
 
 def stick2d_wmfft(S, O, wmfft):
@@ -105,7 +109,7 @@ def stick2d_wmfft(S, O, wmfft):
     return S_tv, O_tv
 
 def stick2d(S, O, sigma):
-    """ tv for 2d slice
+    """ tv for 2d slice, e^(-r^2/2sigma^2), origin=1
     :param S, O: shape=(ny,nx)
     :param sigma: scale in pixel
     :return: S_tv, O_tv
@@ -141,16 +145,16 @@ def stick3d(S, O, sigma):
 #=========================
 
 def prep_wmfft_ball(ny, nx, sigma):
-    """ prepare wmfft for ball field, origin=0
+    """ prepare wmfft for ball field, r^2e^(-r^2/2sigma^2), origin=0
     :param ny, nx: ny=nrow, nx=ncol
     :return: wmfft
         wmfft: fft of [w0,w2,w4], shape=(3,ny,nx)
     """
-    wmfft = prep_wmfft(ny, nx, sigma, origin=0., n_terms=3)
+    wmfft = prep_wmfft(ny, nx, sigma, m=2, origin=0., n_terms=3)
     return wmfft
 
 def ball2d_wmfft(S, O, wmfft):
-    """ ball field tv for 2d slice
+    """ ball field tv for 2d slice, r^2e^(-r^2/2sigma^2), origin=0
     :param S, O: shape=(ny,nx)
     :param wmfft: fft of [w0,w2,w4,w6,w8]
     :return: S_tv, O_tv
