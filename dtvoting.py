@@ -30,11 +30,12 @@ __all__ = [
 # prepare wmfft general
 #=========================
 
-def prep_wmfft(ny, nx, sigma, m, origin, n_terms):
+def prep_wmfft(ny, nx, sigma, m, excluded_r2, origin, n_terms):
     """ prepare wmfft, radial function f(r)=r^m e^(-r^2/2sigma^2)
     :param ny, nx: ny=nrow, nx=ncol
     :param sigma, m: parameters of radial function
-    :param origin: value at origin
+    :param excluded_r2: set r2<excluded_r2 to zero
+    :param origin: value at origin, to avoid nan
     :param n_terms: take the first n terms in wmfft, 5 for stick field, 3 for ball field
     :return: wmfft
         wmfft: fft of [w0,w2,w4,w6,w8][:n_terms], shape of wi=(ny,nx)
@@ -45,11 +46,14 @@ def prep_wmfft(ny, nx, sigma, m, origin, n_terms):
     x = fft.fftfreq(nx, d=1/nx).reshape((1, nx))
     y = fft.fftfreq(ny, d=1/ny).reshape((ny, 1))
 
-    # spatial terms, scaled so that max=1
+    # radial terms, scaled so that max=1
     r2 = x**2 + y**2
     term_exp_max = (m**0.5*sigma)**m*np.exp(-m/2)
     # divide by 16, the scale factor for orientation (Franken2006)
     term_exp = r2**(m/2)*np.exp(-r2/(2*sigma**2)) / term_exp_max / 16
+    term_exp[r2<excluded_r2] = 0
+
+    # fraction term
     term_frac2 = (x+1j*y)**2/r2
     # set origin to avoid nan
     term_frac2[0, 0] = origin
@@ -71,10 +75,13 @@ def prep_wmfft(ny, nx, sigma, m, origin, n_terms):
 
 def prep_wmfft_stick(ny, nx, sigma):
     """ prepare wmfft for stick field, e^(-r^2/2sigma^2), origin=1
+    excluded_r2 is set to 1, due to some steertv issues at r=0
     :param ny, nx: ny=nrow, nx=ncol
     :return: wmfft=[w0,w2,w4,w6,w8], shape=(5,ny,nx)
     """
-    wmfft = prep_wmfft(ny, nx, sigma, m=0, origin=1., n_terms=5)
+    wmfft = prep_wmfft(ny, nx, sigma,
+        m=0, excluded_r2=1, origin=1, n_terms=5
+    )
     return wmfft
 
 def stick2d_wmfft(S, O, wmfft):
@@ -86,7 +93,7 @@ def stick2d_wmfft(S, O, wmfft):
     # orientation term
     term_exp2 = np.exp(-2j*O)
     c0 = S
-    c2 = S*term_exp2
+    c2 = c0*term_exp2
     c4 = c2*term_exp2
     c6 = c4*term_exp2
     c2c = np.conj(c2)
@@ -145,12 +152,15 @@ def stick3d(S, O, sigma):
 #=========================
 
 def prep_wmfft_ball(ny, nx, sigma):
-    """ prepare wmfft for ball field, r^2e^(-r^2/2sigma^2), origin=0
+    """ prepare wmfft for ball field, e^(-r^2/2sigma^2), origin=0
+    excluded_r2 is set to 3, to avoid normalsup of membrane pixels
     :param ny, nx: ny=nrow, nx=ncol
     :return: wmfft
         wmfft: fft of [w0,w2,w4], shape=(3,ny,nx)
     """
-    wmfft = prep_wmfft(ny, nx, sigma, m=2, origin=0., n_terms=3)
+    wmfft = prep_wmfft(ny, nx, sigma,
+        m=0, excluded_r2=3, origin=0, n_terms=3
+    )
     return wmfft
 
 def ball2d_wmfft(S, O, wmfft):
@@ -162,7 +172,7 @@ def ball2d_wmfft(S, O, wmfft):
     # orientation term
     term_exp2 = np.exp(-2j*O)
     c0 = S
-    c2 = S*term_exp2
+    c2 = c0*term_exp2
     c4 = c2*term_exp2
     c_arr = [c0, c2, c4]
 
