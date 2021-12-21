@@ -134,15 +134,16 @@ def neighbor_distance(S, O, r):
 
 def cluster2d(
         S, O,
-        eps_r=2.9, eps_O=np.deg2rad(10),
-        min_samples=4,
-        min_cluster_size=5
+        eps_r=1.5, eps_O=np.deg2rad(3), min_samples=2,
+        core_only=False, min_cluster_size=5
     ):
     """ cluster on 2d slice based on orientational distance and DBSCAN
     filters: keep only core samples; remove noise; sort by cluster size; remove small clusters; label clusters according to size
 
     :param S, O: shape=(ny,nx)
-    :param eps_r, eps_O, min_samples: parameters of DBSCAN
+    :param eps_r: only search neighbors with radius <= eps_r
+    :param eps_O, min_samples: DBSCAN parameters
+    :param core_only: whether to only keep core points
     :param min_cluster_size: keep clusters with size >= min_cluster_size
     :return: labels2d[ny,nx]
         labels2d: 1-based for points
@@ -167,11 +168,12 @@ def cluster2d(
 
     # keep only core points
     # use core to reduce possibility of unwanted overlaps
-    mask_core = np.isin(
-        np.arange(len(index_clust)), clust.core_sample_indices_
-    )
-    pos_pts = tuple(p[mask_core] for p in pos_pts)
-    index_clust = index_clust[mask_core]
+    if core_only:
+        mask_core = np.isin(
+            np.arange(len(index_clust)), clust.core_sample_indices_
+        )
+        pos_pts = tuple(p[mask_core] for p in pos_pts)
+        index_clust = index_clust[mask_core]
 
     # filter out noise
     mask_noise = (index_clust != -1) # index of noise cluster is -1
@@ -206,14 +208,14 @@ def cluster2d(
 @numba.njit(parallel=True)
 def cluster3d_loop(
         S, O,
-        eps_r=2.9, eps_O=np.deg2rad(10),
-        min_samples=4,
-        min_cluster_size=5
+        eps_r, eps_O, min_samples,
+        core_only, min_cluster_size
     ):
     """ cluster on 2d stack based on orientational distance and DBSCAN
     :param S, O: shape=(nz,ny,nx)
-    :param eps_r, eps_O, min_samples: parameters of DBSCAN
-    :param min_cluster_size: keep clusters with size >= min_cluster_size
+    :param eps_r: only search neighbors with radius <= eps_r
+    :param eps_O, min_samples: DBSCAN parameters
+    :param core_only: whether to only keep core points
     :return: labels3d[nz,ny,nx]
         labels3d: 1-based for each slice, but labels between slices are not regulated
     """
@@ -226,9 +228,8 @@ def cluster3d_loop(
         with numba.objmode(labels3d_i="intp[:,:]"):
             labels3d_i = cluster2d(
                 S[i], O[i],
-                eps_r=eps_r, eps_O=eps_O,
-                min_samples=min_samples,
-                min_cluster_size=min_cluster_size
+                eps_r=eps_r, eps_O=eps_O, min_samples=min_samples,
+                core_only=core_only, min_cluster_size=min_cluster_size
             )
         labels3d[i] = labels3d_i
     return labels3d
@@ -255,22 +256,22 @@ def cluster3d_relabel(labels3d):
 
 def cluster3d(
         S, O,
-        eps_r=2.9, eps_O=np.deg2rad(10),
-        min_samples=4,
-        min_cluster_size=5
+        eps_r=1.5, eps_O=np.deg2rad(3), min_samples=2,
+        core_only=False, min_cluster_size=5
     ):
     """ cluster on 2d stack based on orientational distance and DBSCAN
     :param S, O: shape=(nz,ny,nx)
-    :param eps_r, eps_O, min_samples: parameters of DBSCAN
+    :param eps_r: only search neighbors with radius <= eps_r
+    :param eps_O, min_samples: DBSCAN parameters
+    :param core_only: whether to only keep core points
     :param min_cluster_size: keep clusters with size >= min_cluster_size
     :return: labels3d[nz,ny,nx]
         labels3d: 1-based for each slice, no duplicates between slices
     """
     labels3d = cluster3d_loop(
         S, O,
-        eps_r=eps_r, eps_O=eps_O,
-        min_samples=min_samples,
-        min_cluster_size=min_cluster_size
+        eps_r=eps_r, eps_O=eps_O, min_samples=min_samples,
+        core_only=core_only, min_cluster_size=min_cluster_size
     )
     labels3d = cluster3d_relabel(labels3d)
     return labels3d
