@@ -22,7 +22,9 @@ __all__ = [
     # stick tv
     "prep_wmfft_stick", "stick2d_wmfft", "stick2d", "stick3d",
     # ball tv
-    "prep_wmfft_ball", "ball2d_wmfft", "ball2d", "ball3d"
+    "prep_wmfft_ball", "ball2d_wmfft", "ball2d", "ball3d",
+    # suppression
+    "suppress_byO"
 ]
 
 
@@ -214,6 +216,28 @@ def ball3d(S, O, sigma):
             S_tv_i = ball2d_wmfft(S[i], O[i], wmfft)
         S_tv[i] = S_tv_i
     return S_tv
+
+
+#=========================
+# suppress by orientation
+#=========================
+
+def suppress_byO(nms, O, sigma, dO_threshold=np.pi/6):
+    """ apply strong tv field, suppress pixels where change in O is large
+    :param nms, O: shape=(nz,ny,nx)
+    :param dO_threshold: threshold of change in O
+    :return: supp
+        supp: binary mask of image after suppression
+    """
+    # apply strong tv field
+    _, Otv = stick3d(nms, O, sigma)
+    # calculate change in O
+    dO = np.abs(Otv-O)*nms
+    mask_dO = dO>np.pi/2
+    dO[mask_dO] = np.pi - dO[mask_dO]
+    # mask of pixels with small dO
+    supp = nms*(dO<dO_threshold)
+    return supp
 
 
 # #=========================
