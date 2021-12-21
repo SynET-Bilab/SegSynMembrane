@@ -100,21 +100,3 @@ def features3d(I, sigma):
     return S, O
 
 
-# def features3d(I, sigma, method="hessian2"):
-#     """ stickness and orientation based on 2d Hessian for each slice
-#     param method: hessian1 - H, hessian2 - HH
-#     return: S - saliency, O - tangent of max-amp-eigvec
-#     """
-#     if method == "hessian2":
-#         func_hessian = features2d_H2
-#     elif method == "hessian":
-#         func_hessian = features2d_H1
-
-#     S = np.zeros(I.shape, dtype=float)
-#     O = np.zeros_like(S)
-#     nz = S.shape[0]
-
-#     for i in range(nz):
-#         S[i], O[i] = func_hessian(I[i], sigma)
-
-#     return S, O

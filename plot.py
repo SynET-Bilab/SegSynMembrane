@@ -203,12 +203,6 @@ def imshow3d(
     opacity_fronts = [opacity_front]*n_fronts
     name_fronts = [f"foreground {i}" for i in range(1, n_fronts+1)]
 
-    # # scale to (0, 1) to match napari's doc --- seems no need
-    # if not isin_01:
-    #     I_back = minmax_image(I_back, qrange=(0.02, 0.98), vrange=(0, 1))
-    #     I_fronts = [minmax_image(I, qrange=(0, 1), vrange=(0, 1))
-    #                 for I in I_fronts]
-    
     # flip y-axis, napari doesn't seem to support orient="lower" as in imshow
     I_back = np.flip(I_back, -2)
     I_fronts = [np.flip(I, -2) for I in I_fronts]
