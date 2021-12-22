@@ -139,8 +139,8 @@ def stick3d(S, O, sigma):
 
 
     # calc S, O for each slice
-    S_tv = np.zeros_like(S)
-    O_tv = np.zeros_like(O)
+    S_tv = np.zeros(S.shape, dtype=np.float64)
+    O_tv = np.zeros(O.shape, dtype=np.float64)
     for i in numba.prange(nz):
         with numba.objmode(S_tv_i='float64[:,:]', O_tv_i='float64[:,:]'):
             S_tv_i, O_tv_i = stick2d_wmfft(S[i], O[i], wmfft)
@@ -210,7 +210,7 @@ def ball3d(S, O, sigma):
     with numba.objmode(wmfft='complex128[:,:,:]'):
         wmfft = prep_wmfft_ball(ny=ny, nx=nx, sigma=sigma)
     # calc S, O for each slice
-    S_tv = np.zeros_like(S)
+    S_tv = np.zeros(S.shape, dtype=np.float64)
     for i in numba.prange(nz):
         with numba.objmode(S_tv_i='float64[:,:]'):
             S_tv_i = ball2d_wmfft(S[i], O[i], wmfft)
