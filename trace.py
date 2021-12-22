@@ -5,10 +5,10 @@
 import numpy as np
 
 __all__ = [
-    "trace_direction", "trace_segment"
+    "trace_within_seg", "encode_seg_ends"
 ]
 
-def find_next_yxs(d_curr):
+def within_seg_next_yxs(d_curr):
     """ find next yx candidates according to current direction
     :param d_curr: current direction
     :return: dydx_candidates
@@ -47,7 +47,7 @@ def find_next_yxs(d_curr):
     dydx_candidates = map_dydx[loc_bin]
     return dydx_candidates
 
-def find_next_direction(d_curr, o_next):
+def within_seg_next_direction(d_curr, o_next):
     """ convert next orientation to direction that's closest to current direction
     :param d_curr: current direction
     :param o_next: next orientation
@@ -65,8 +65,8 @@ def find_next_direction(d_curr, o_next):
     d_next = d_curr + diff
     return d_next
 
-def trace_direction(yx_curr, trace, map_yxd):
-    """ trace segment from current (y,x)
+def within_seg_one_direction(yx_curr, trace, map_yxd):
+    """ trace segment from current (y,x) in one direction
     :param yx_curr: current (y,x)
     :param trace: list of (y,x)'s in the trace
     :param map_yxd: {(y,x): direction}
@@ -79,7 +79,7 @@ def trace_direction(yx_curr, trace, map_yxd):
 
     # find next yx's
     d_curr = map_yxd[yx_curr]
-    dydx_candidates = find_next_yxs(d_curr)
+    dydx_candidates = within_seg_next_yxs(d_curr)
 
     # visit next yx's
     idx = 0
@@ -92,10 +92,10 @@ def trace_direction(yx_curr, trace, map_yxd):
         # next pixel is still in segment, trace from it
         elif yx_next in map_yxd:
             # convert next orientation to direction, update dict
-            d_next = find_next_direction(d_curr, map_yxd[yx_next])
+            d_next = within_seg_next_direction(d_curr, map_yxd[yx_next])
             map_yxd[yx_next] = d_next
             # trace next
-            return trace_direction(yx_next, trace, map_yxd)
+            return within_seg_one_direction(yx_next, trace, map_yxd)
         else:
             idx += 1
             # previous dydx candidate not found, to visit next
@@ -105,33 +105,33 @@ def trace_direction(yx_curr, trace, map_yxd):
             else:
                 return True
 
-def trace_segment(nms, O):
+def trace_within_seg(nms, O):
     """ trace a 8-connected segment
     :param nms: shape=(ny,nx), nonmaxsup'ed image
     :param O: orientation
     :return: yx_trace, d_trace, success
-        yx_trace: yx's, [(y1,x1),...]
-        d_trace: directions, [d1,d2,...]
+        yx_trace: sequence of yx's, [(y1,x1),...]
+        d_trace: directions from front to end, [d1,d2,...]
         success: True if no loop, otherwise False
     """
     # get position of pixels
     pos = np.nonzero(nms)
 
-    # set starting point
+    # set starting point: as a midpoint
     idx_start = int(len(pos[0])/2)
     yx_start = tuple(pos[i][idx_start] for i in [0, 1])
 
     # trace direction of orientation
     map_yxd_plus = dict(zip(zip(*pos), O[pos]))
     yx_plus = []
-    success_plus = trace_direction(yx_start, yx_plus, map_yxd_plus)
+    success_plus = within_seg_one_direction(yx_start, yx_plus, map_yxd_plus)
     d_plus = [map_yxd_plus[yx] for yx in yx_plus]
 
     # trace direction of orientation+pi
     map_yxd_minus = dict(zip(zip(*pos), O[pos]))
     map_yxd_minus[yx_start] = O[yx_start]+np.pi
     yx_minus = []
-    success_minus = trace_direction(yx_start, yx_minus, map_yxd_minus)
+    success_minus = within_seg_one_direction(yx_start, yx_minus, map_yxd_minus)
     # reverse sequence, align direction with d_plus
     yx_minus_reverse = yx_minus[-1:0:-1]
     d_minus_reverse = [map_yxd_minus[yx]-np.pi for yx in yx_minus_reverse]
@@ -141,3 +141,35 @@ def trace_segment(nms, O):
     d_trace = d_minus_reverse + d_plus
     success = success_plus and success_minus
     return yx_trace, d_trace, success
+
+
+def encode_seg_ends(L, O, n_davg):
+    """ encode segments by ends
+    :param L: 2d label-image
+    :param O: 2d orientation-image
+    :param n_davg: n pixels for direction averaging
+    :return: L_ends, D_ends
+        L_ends and D_ends: 2d image, pixels placed at segments' ends
+        L_ends: value=label
+        D_ends: value=avg direction of last n_davg points
+    """
+    L_ends = np.zeros(L.shape, dtype=np.int_)
+    D_ends = np.zeros(O.shape, dtype=np.float_)
+    # encode for each segment-l
+    for l in np.unique(L[L > 0]):
+        # trace segment
+        Ll = L*(L == l)
+        yx_trace, d_trace, success = trace_within_seg(Ll, O)
+        # encode segment
+        if success:  # skip cyclic segments
+            # yx of ends
+            yx1 = yx_trace[0]
+            yx2 = yx_trace[-1]
+            # assign label
+            L_ends[yx1] = l
+            L_ends[yx2] = l
+            # assign direction: from inside of segment towards outside
+            D_ends[yx1] = np.mean(d_trace[:n_davg])+np.pi  # +pi: point outwards
+            D_ends[yx2] = np.mean(d_trace[-n_davg:])
+
+    return L_ends, D_ends

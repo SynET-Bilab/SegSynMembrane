@@ -7,4 +7,4 @@ __version__ = "0.1"
 
 from synseg import utils, io, plot  # auxiliary
 from synseg import hessian, dtvoting, nonmaxsup  # membrane detection
-from synseg import cluster, extract  # membrane extraction
+from synseg import cluster, trace, extract  # membrane extraction
