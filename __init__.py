@@ -5,6 +5,6 @@ __version__ = "0.1"
 #     "numpy", "numba", "scikit-learn", "scikit-image", "mrcfile"
 # ]
 
-from synseg import extract, utils, io, plot
-from synseg import hessian, dtvoting, nonmaxsup, normalsup
-from synseg import cluster
+from synseg import utils, io, plot  # auxiliary
+from synseg import hessian, dtvoting, nonmaxsup  # membrane detection
+from synseg import cluster, extract  # membrane extraction
