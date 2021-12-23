@@ -7,6 +7,7 @@ import scipy as sp
 import pandas as pd
 import networkx as nx
 from synseg.utils import draw_line
+from synseg.dtvoting import stick2d
 
 __all__ = [
     # trace within segment
@@ -15,6 +16,7 @@ __all__ = [
     "across_next_seg",
     # graph methods
     "pathL_to_LE", "pathLE_to_yx", "pathLEs_distance",
+    "order_segs_by_tv",
     "MemGraph"
 ]
 
@@ -375,8 +377,45 @@ def across_next_seg(label, end, df_segs, search_dist_thresh):
 
     return df_next
 
+
+#=========================
+# build membrane graph
+#=========================
+
+def order_segs_by_tv(L, O, sigma, stats=np.median):
+    """ apply tv, order by stats (e.g. median)
+    :param L, O: 2d label, orientation
+    :param sigma: sigma for sticktv, e.g. 2*cleft
+    :param stats: function to calculate stats
+    :return: df["label", "count", "S_stats"]
+        df: sorted by S_stats, descending
+    """
+    # tv on binary image
+    nms = (L>0).astype(np.int_)
+    Stv, _ = stick2d(nms, O, sigma)
+
+    # stat for each label
+    columns = ["label", "count", "S_stats"]
+    data = []
+    for l in np.unique(L[L>0]):
+        pos_l = np.nonzero(L==l)
+        Stv_l = Stv[pos_l]
+        data_l = [
+            l, len(pos_l[0]), stats(Stv_l)
+        ]
+        data.append(data_l)
+
+    # make dataframe, sort
+    df = pd.DataFrame(data=data, columns=columns)
+    df = (df.sort_values("S_stats", ascending=False)
+        .reset_index(drop=True)
+    )
+
+    return df
 class MemGraph():
     """ class for building membrane graph recursively
+    usage: mg=MemGraph(); Gs,traces_yx=mg.build_prepost(L,O,sigma)
+
     __init__: parameters
         search_dist_thresh: search next segment within this threshold
         path_dist_thresh: add new edge only if dist >= this threshold
@@ -384,17 +423,68 @@ class MemGraph():
     build_graph_one: parameters
         label, end: segment's label and end
         G: networkx.DiGraph()
+    build_prepost: parameters
+        L, O, sigma, n_avg
     """
-    def __init__(
-        self, df_segs, traces_yx,
-        search_dist_thresh=50, path_dist_thresh=2, dd_thresh=np.pi/2
+    def __init__(self,
+            search_dist_thresh=50,
+            path_dist_thresh=2,
+            dd_thresh=np.pi/2
         ):
         """ init, save parameters """
-        self.df_segs = df_segs
-        self.traces_yx = traces_yx
         self.search_dist_thresh = search_dist_thresh
         self.path_dist_thresh = path_dist_thresh
         self.dd_thresh = dd_thresh
+
+    def set_traced(self, df_segs, traces_yx):
+        """ save result of trace_within_labels()
+        """
+        self.df_segs = df_segs
+        self.traces_yx = traces_yx
+
+    def build_prepost(self, L, O, sigma, n_avg=5):
+        """ find prepost membranes starting with 2d labels
+        :param L, O: 2d label, orientation
+        :param sigma: sigma for sticktv, e.g. 2*cleft
+        :param n_avg: param for trace_within_labels()
+        :return: Gs, traces_yx
+            Gs: array with 4 graphs for two membranes
+        """
+        # setup trace
+        df_segs, traces = trace_within_labels(L, O, n_avg)
+        self.set_traced(df_segs, traces["yx"])
+        
+        # setup search dist: cleft+n_avg
+        self.search_dist_thresh = sigma/2 + n_avg*2
+
+        # sort labels by tv
+        labels_sorted = (order_segs_by_tv(L, O, sigma)["label"]
+            .values.astype(np.int_)
+        )
+        
+        # trace both ends of membrane 1, with largest stv
+        Gs = []
+        label1 = labels_sorted[0]
+        for end in [1, -1]:
+            Gi = nx.DiGraph()
+            self.build_graph_one(label1, end, Gi)
+            Gs.append(Gi)
+
+        # find segment with largest stv from remainings
+        labels_used = np.concatenate([list(g.nodes) for g in Gs])
+        labels_remained = labels_sorted[
+            np.isin(labels_sorted, labels_used, invert=True)
+        ]
+        label2 = labels_remained[0]
+
+        # trace both ends of membrane 2
+        for end in [1, -1]:
+            Gi = nx.DiGraph()
+            self.build_graph_one(label2, end, Gi)
+            Gs.append(Gi)
+
+        return Gs, traces["yx"]
+        
 
     def build_graph_one(self, label, end, G):
         """ build graph starting from (label,end)
