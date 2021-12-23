@@ -11,6 +11,8 @@ __all__ = [
     "rotate_orient",
     # coordinates
     "mask_to_coord", "coord_to_mask", "reverse_coord",
+    # draw
+    "draw_line"
 ]
 
 #=========================
@@ -89,3 +91,19 @@ def reverse_coord(coord):
     """
     index_rev = np.arange(coord.shape[1])[::-1]
     return coord[:, index_rev]
+
+#=========================
+# draw
+#=========================
+
+def draw_line(yx0, yx1):
+    """ wraps skimage.draw.line
+    :param yx0, yx1: [y0,x0], [y1,x1]
+    :return: line_yx=[[y0,x0],...,[yi,xi],...,[y1,x1]]
+    """
+    line_rc = skimage.draw.line(
+        yx0[0], yx0[1],
+        yx1[0], yx1[1],
+    )
+    line_yx = np.transpose(line_rc)
+    return line_yx

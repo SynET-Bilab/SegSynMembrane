@@ -5,12 +5,23 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import napari
+import plotly
+
 from synseg.utils import minmax_image
 
 __all__ = [
-    "imshow", "scatter", "imshow3d"
+    # matplotlib: 2d plot
+    "imshow", "scatter",
+    # napari: 3d viewer
+    "imshow3d",
+    # plotly: tooltips
+    "imshowly"
 ]
 
+
+#=========================
+# matplotlib
+#=========================
 
 def setup_subplots(n, shape, figsize1):
     """ setup subplots
@@ -176,6 +187,11 @@ def scatter(
 
     return fig, axes
 
+
+#=========================
+# napari
+#=========================
+
 def imshow3d(
         I_back, I_fronts=None,
         opacity_back=0.75, opacity_front=1,
@@ -218,3 +234,30 @@ def imshow3d(
         opacity=[opacity_back, *opacity_fronts]
     )
     return viewer
+
+
+#=========================
+# plotly
+#=========================
+
+def imshowly(I_arr, cmap=None, renderers="vscode"):
+    """ 2d imshow using plotly (more interactive)
+    :param I_arr: a 1d list of images
+    :param cmap: set colorscale
+    """
+    # setup
+    plotly.io.renderers.default = renderers
+    n = len(I_arr)
+    fig = plotly.subplots.make_subplots(rows=1, cols=n)
+    fig.update_layout(yaxis=dict(scaleanchor='x'))
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
+    
+    # plot
+    for i in range(n):
+        fig.add_trace(
+            plotly.graph_objects.Heatmap(
+                z=I_arr[i], colorscale=cmap
+            ),
+            row=1, col=i+1  # 1-based
+        )
+    return fig
