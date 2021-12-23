@@ -3,12 +3,21 @@
 """
 
 import numpy as np
+import pandas as pd
 
 __all__ = [
-    "trace_within_seg", "encode_seg_ends"
+    # trace within segment
+    "trace_within_seg", "segs_to_frame",
+    # trace across segments
+    "across_next_seg"
 ]
 
-def within_seg_next_yxs(d_curr):
+
+#=========================
+# trace within segment
+#=========================
+
+def within_next_yxs(d_curr):
     """ find next yx candidates according to current direction
     :param d_curr: current direction
     :return: dydx_candidates
@@ -47,7 +56,7 @@ def within_seg_next_yxs(d_curr):
     dydx_candidates = map_dydx[loc_bin]
     return dydx_candidates
 
-def within_seg_next_direction(d_curr, o_next):
+def within_next_direction(d_curr, o_next):
     """ convert next orientation to direction that's closest to current direction
     :param d_curr: current direction
     :param o_next: next orientation
@@ -65,7 +74,7 @@ def within_seg_next_direction(d_curr, o_next):
     d_next = d_curr + diff
     return d_next
 
-def within_seg_one_direction(yx_curr, trace, map_yxd):
+def trace_within_one(yx_curr, trace, map_yxd):
     """ trace segment from current (y,x) in one direction
     :param yx_curr: current (y,x)
     :param trace: list of (y,x)'s in the trace
@@ -79,7 +88,7 @@ def within_seg_one_direction(yx_curr, trace, map_yxd):
 
     # find next yx's
     d_curr = map_yxd[yx_curr]
-    dydx_candidates = within_seg_next_yxs(d_curr)
+    dydx_candidates = within_next_yxs(d_curr)
 
     # visit next yx's
     idx = 0
@@ -92,10 +101,10 @@ def within_seg_one_direction(yx_curr, trace, map_yxd):
         # next pixel is still in segment, trace from it
         elif yx_next in map_yxd:
             # convert next orientation to direction, update dict
-            d_next = within_seg_next_direction(d_curr, map_yxd[yx_next])
+            d_next = within_next_direction(d_curr, map_yxd[yx_next])
             map_yxd[yx_next] = d_next
             # trace next
-            return within_seg_one_direction(yx_next, trace, map_yxd)
+            return trace_within_one(yx_next, trace, map_yxd)
         else:
             idx += 1
             # previous dydx candidate not found, to visit next
@@ -124,14 +133,14 @@ def trace_within_seg(nms, O):
     # trace direction of orientation
     map_yxd_plus = dict(zip(zip(*pos), O[pos]))
     yx_plus = []
-    success_plus = within_seg_one_direction(yx_start, yx_plus, map_yxd_plus)
+    success_plus = trace_within_one(yx_start, yx_plus, map_yxd_plus)
     d_plus = [map_yxd_plus[yx] for yx in yx_plus]
 
     # trace direction of orientation+pi
     map_yxd_minus = dict(zip(zip(*pos), O[pos]))
     map_yxd_minus[yx_start] = O[yx_start]+np.pi
     yx_minus = []
-    success_minus = within_seg_one_direction(yx_start, yx_minus, map_yxd_minus)
+    success_minus = trace_within_one(yx_start, yx_minus, map_yxd_minus)
     # reverse sequence, align direction with d_plus
     yx_minus_reverse = yx_minus[-1:0:-1]
     d_minus_reverse = [map_yxd_minus[yx]-np.pi for yx in yx_minus_reverse]
@@ -142,34 +151,139 @@ def trace_within_seg(nms, O):
     success = success_plus and success_minus
     return yx_trace, d_trace, success
 
-
-def encode_seg_ends(L, O, n_davg):
-    """ encode segments by ends
+def segs_to_frame(L, O, n_avg):
+    """ convert segments ends info to dataframe
     :param L: 2d label-image
     :param O: 2d orientation-image
-    :param n_davg: n pixels for direction averaging
-    :return: L_ends, D_ends
-        L_ends and D_ends: 2d image, pixels placed at segments' ends
-        L_ends: value=label
-        D_ends: value=avg direction of last n_davg points
+    :param n_avg: last n pixels for averaging
+    :return: df["label", "end", "y", "x", "d"]
+        index: (label,end), looks redundant but is convenient
+        end: -1 or 1
+        y, x: average coord of the last n_avg points
+            reducing the probability that ends "nearly overlap"
+        d: average outward direction of the last n_avg points,
+            d(1)-(d(-1)+pi) gives continuous change of directions
     """
-    L_ends = np.zeros(L.shape, dtype=np.int_)
-    D_ends = np.zeros(O.shape, dtype=np.float_)
-    # encode for each segment-l
-    for l in np.unique(L[L > 0]):
+    labels = np.unique(L[L > 0])
+    columns = ["label", "end", "y", "x", "d"]
+    data = []
+    # loop over segments
+    for l in labels:
         # trace segment
         Ll = L*(L == l)
         yx_trace, d_trace, success = trace_within_seg(Ll, O)
-        # encode segment
-        if success:  # skip cyclic segments
-            # yx of ends
-            yx1 = yx_trace[0]
-            yx2 = yx_trace[-1]
-            # assign label
-            L_ends[yx1] = l
-            L_ends[yx2] = l
-            # assign direction: from inside of segment towards outside
-            D_ends[yx1] = np.mean(d_trace[:n_davg])+np.pi  # +pi: point outwards
-            D_ends[yx2] = np.mean(d_trace[-n_davg:])
+        # process non-cyclic segments
+        if success:
+            # end -1
+            data_i1 = [
+                l, -1,  # label, end
+                *np.mean(yx_trace[:n_avg], axis=0),  # y, x
+                np.mean(d_trace[:n_avg])-np.pi,  # d1, -pi to point outwards
+            ]
+            data.append(data_i1)
+            # end 1
+            data_i2 = [
+                l, 1,  # label, end
+                *np.mean(yx_trace[-n_avg:], axis=0),  # y, x
+                np.mean(d_trace[-n_avg:])  # d
+            ]
+            data.append(data_i2)
+    
+    # make dataframe, correct dtype, set index
+    df = pd.DataFrame(data=data, columns=columns)
+    df = df.astype({f: int for f in ["label", "end", "y", "x"]})
+    df = df.set_index(zip(df["label"], df["end"]))
+    return df
 
-    return L_ends, D_ends
+
+#=========================
+# trace across segments
+#=========================
+
+def across_next_seg_1end(df_curr, df_next):
+    """ find the end (1 or -1) of the next segment
+    :param df_next: df_segs subset to end=1 or -1
+    :param df_curr: df_segs subset to curr (label,end)
+    :return: mask={pos,dir,angle,dist,combined}
+        pos: position in plus direction
+        dir: direction wrt connection < pi/2
+        angle: direction wrt d_curr < pi/2
+    """
+    # quantities: from curr to next
+    # connecting-line
+    dxdy_next = df_next[["x", "y"]].values-df_curr[["x", "y"]].values
+    # vector for d_curr
+    dvec_curr = np.array([np.cos(df_curr["d"]), np.sin(df_curr["d"])])
+    # vector for d_next: "-" for pointing from curr to next
+    dvec_next = np.transpose([
+        -np.cos(df_next["d"].values),
+        -np.sin(df_next["d"].values),
+    ])
+
+    # masks
+    mask = {}
+    # position of next wrt curr direction: should > 0
+    mask["pos"] = np.sum(dxdy_next*dvec_curr, axis=1) > 0
+    # direction of next wrt connecting-line: should < pi/2
+    mask["dir"] = np.sum(dxdy_next*dvec_next, axis=1) > 0
+    # direction of next wrt curr direction: should < pi/2
+    mask["angle"] = np.sum(dvec_curr*dvec_next, axis=1) > 0
+    # combine masks
+    mask["combined"] = mask["dir"]&mask["angle"]
+    return mask
+
+def across_next_seg(label, end, df_segs, dist_cutoff):
+    """ find next segment starting from current one
+    :param label, end: segment's label and end
+    :param df_segs: result of segs_to_frame()
+    :param dist_cutoff: discard points >= cutoff
+    :return: df_next[label,end,y,x,d,dist,dd_segs,dd_ends]
+        dist: from curr end to next end
+        dd_segs: directional change from curr seg to next
+        dd_ends: directional change from next seg end to the other end
+    """
+    # subset df_segs to curr and next 1 and -1
+    df_curr = df_segs.loc[(label, end)]
+    df_next1 = df_segs[df_segs["end"] == 1].sort_values("label")
+    df_next2 = df_segs[df_segs["end"] == -1].sort_values("label")
+    assert np.all(df_next1["label"].values == df_next2["label"].values)
+
+    # get masks for two ends of next
+    mask1 = across_next_seg_1end(df_curr, df_next1)
+    mask2 = across_next_seg_1end(df_curr, df_next2)
+    # both ends in plus direction
+    mask_pos = mask1["pos"] & mask2["pos"]
+    # only one end has a small direction change
+    mask_dir = np.logical_xor(mask1["dir"], mask2["dir"])
+
+    # combine all masks
+    # &dir: the end with small dir change is retained
+    df_next = pd.concat([
+        df_next1[mask_pos & mask_dir & mask1["dir"] & mask1["angle"]],
+        df_next2[mask_pos & mask_dir & mask2["dir"] & mask2["angle"]]
+    ])
+
+    # distance: calculate, thresholding, sort
+    dxdy_next = df_next[["x", "y"]].values-df_curr[["x", "y"]].values
+    df_next["dist"] = np.linalg.norm(dxdy_next, axis=1)
+    df_next = df_next[
+        df_next["dist"] < dist_cutoff
+    ].sort_values("dist")
+
+    # change in directions from current segment to the next
+    dd_segs = np.mod(
+        df_next["d"].values+np.pi-df_curr["d"],
+        2*np.pi
+    )
+    dd_segs = np.where(dd_segs<=np.pi, dd_segs, dd_segs-2*np.pi)
+    df_next["dd_segs"] = dd_segs
+
+    # change in directions from next segment's end-in to end-out
+    n_next = len(df_next)
+    d_end1 = df_segs.loc[zip(df_next["label"], [1]*n_next), "d"].values
+    d_end2 = df_segs.loc[zip(df_next["label"], [-1]*n_next), "d"].values
+    dd_ends = d_end1 - (d_end2 + np.pi)  # d-change from end -1 to 1
+    dd_ends = dd_ends*(-df_next["end"].values)  # consider actual end
+    df_next["dd_ends"] = dd_ends
+
+    return df_next
