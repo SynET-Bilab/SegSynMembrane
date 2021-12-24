@@ -403,10 +403,10 @@ def graph_to_image(L, G):
     I[mask] = 1
     return I
 
+
 #=========================
 # build membrane graph
 #=========================
-
 
 class MemGraph():
     """ class for building membrane graph recursively
@@ -461,27 +461,22 @@ class MemGraph():
         """ add node to graph if not existed
         :param label, end_out: for current node
         :param node_next: next node defined in build_graph_one()
-        :return: added
-            added: True/False for whether the node is added
+        :return: add
+            add: True/False for whether to add the node
         """
         # threshold on direction change
         if ((np.abs(node_next.d) >= self.dd_thresh)
             or (np.abs(node_next.d_out) >= self.dd_thresh)):
             return False
-        
-        # calculate smoothness via NURBS control points
+
+        # smoothness test: via NURBS control points
         pathLE_new = ((label, -end_out), (node_next.label, node_next.end))
         fit_new = self.curve_fit_pathLE_cached(pathLE_new)
         smooth = curve_fit_smooth(fit_new)
-        
-        # if smooth, add node and visit
         if smooth:
-            self.G.add_node(
-                node_next.label,
-                end_in=node_next.end, d_in=node_next.d,
-                end_out=-node_next.end, d_out=node_next.d_out
-            )
             return True
+
+        # otherwise
         else:
             return False
 
@@ -489,8 +484,8 @@ class MemGraph():
         """ add edge to graph if no overlap
         :param label, end_out: for current node
         :param node_next: next node defined in build_graph_one()
-        :return: added
-            added: True/False for whether the node is added
+        :return: add
+            add: True/False for whether to add the edge
         """
         # fit new
         pathLE_new = ((label, -end_out), (node_next.label, node_next.end))
@@ -513,7 +508,6 @@ class MemGraph():
                 return False
 
         # if new is not close to any existed, add edge
-        self.G.add_edge(label, node_next.label)
         return True
 
     def build_graph_one(self, label, end_out):
@@ -542,17 +536,25 @@ class MemGraph():
         for node_next in df_next.itertuples():
             # add new node
             if node_next.label not in self.G:
-                node_added = self.graph_add_node(label, end_out, node_next)
+                add_node = self.graph_add_node(label, end_out, node_next)
+                if add_node:
+                    self.G.add_node(
+                        node_next.label,
+                        end_in=node_next.end, d_in=node_next.d,
+                        end_out=-node_next.end, d_out=node_next.d_out
+                    )
             else:
-                node_added = False
+                add_node = False
 
             # add new edge
             # if node existed before or newly added
-            if (node_next.label in self.G) or node_added:
-                edge_added = self.graph_add_edge(label, end_out, node_next)
+            if (node_next.label in self.G) or add_node:
+                add_edge = self.graph_add_edge(label, end_out, node_next)
+                if add_edge:
+                    self.G.add_edge(label, node_next.label)
             
             # if new node is added, visit next
-            if node_added:
+            if add_node:
                 self.build_graph_one(node_next.label, -node_next.end)
         return
 
