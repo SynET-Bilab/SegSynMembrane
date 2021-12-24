@@ -15,10 +15,11 @@ __all__ = [
     "trace_within_seg", "trace_within_labels",
     # trace across segments
     "across_next_seg",
-    # graph methods
+    # graph tools
     "pathL_to_LE", "pathLE_to_yx",
     "curve_fit_pathLE", "curve_fit_smooth",
-    "order_segs_by_tv",
+    "graph_to_image",
+    # build graph
     "MemGraph"
 ]
 
@@ -389,6 +390,18 @@ def curve_fit_smooth(fit):
     dots = np.sum(dydx[1:]*dydx[:-1], axis=1)
     test = np.all(dots>=0)
     return test
+
+def graph_to_image(L, G):
+    """ convert graph to image
+    :param L: 2d label image
+    :param G: graph, nodes are labels
+    :return: I
+        I: binary image, 1 at positions corresponding to graph
+    """
+    I = np.zeros(L.shape, dtype=np.int_)
+    mask = np.isin(L, G.nodes)
+    I[mask] = 1
+    return I
 
 #=========================
 # build membrane graph
