@@ -2,11 +2,12 @@
 """ trace
 """
 
+import functools
 import numpy as np
 import scipy as sp
 import pandas as pd
 import networkx as nx
-from synseg.utils import draw_line
+import geomdl.fitting
 from synseg.dtvoting import stick2d
 
 __all__ = [
@@ -15,7 +16,8 @@ __all__ = [
     # trace across segments
     "across_next_seg",
     # graph methods
-    "pathL_to_LE", "pathLE_to_yx", "pathLEs_distance",
+    "pathL_to_LE", "pathLE_to_yx",
+    "curve_fit_pathLE", "curve_fit_smooth",
     "order_segs_by_tv",
     "MemGraph"
 ]
@@ -313,18 +315,17 @@ def pathL_to_LE(path_l, G):
     """ convert path of labels to path of (label,end_in)
     :param path_l: [label1,label2,...]
     :param G: graph, provides end_in info for each node(label)
-    :return: path_le=[(label1, end_in1),...]
+    :return: path_le=((label1, end_in1),...)
     """
-    path_le = [(i, G.nodes[i]["end_in"]) for i in path_l]
+    path_le = tuple((i, G.nodes[i]["end_in"]) for i in path_l)
     return path_le
 
-def pathLE_to_yx(path, traces_yx, endsegs=(False, False), n_last=1, fill_inter=False):
+def pathLE_to_yx(path, traces_yx, endsegs=(False, False), n_last=1):
     """ convert path of (label,end_in) to yx
-    :param path: [(label1, end_in1),...], at least two elements
+    :param path: ((label1, end_in1),...), at least two elements
     :param traces_yx: {label1: yx_trace1,...}
     :param endsegs: if include whole start/end segments
     :param n_last: start/end if not included in full, use n_last points
-    :param fill_inter: if fills inter-segment gaps by line
     :return: yx=[(y1,x1),...]
     """
     if len(path) < 2:
@@ -342,40 +343,47 @@ def pathLE_to_yx(path, traces_yx, endsegs=(False, False), n_last=1, fill_inter=F
     for i in range(1, len(path)-1):
         label_i, end_i = path[i]
         yx_i = traces_yx[label_i][::end_i]
-        # fill inter if selected
-        if fill_inter:
-            inter_yx = list(draw_line(yx[-1], yx_i[0]))
-            yx.extend(inter_yx)
         yx.extend(yx_i)
 
     # ending segment
     label_e, end_e = path[-1]
     yx_e = traces_yx[label_e][::end_e]
     yx_e = yx_e if endsegs[1] else yx_e[:n_last]
-    if fill_inter:
-        inter_yx = list(draw_line(yx[-1], yx_e[0]))
-        yx.extend(inter_yx)
     yx.extend(yx_e)
 
     yx = np.asarray(yx)
     return yx
 
-def pathLEs_distance(path1, path2, traces_yx):
-    """ Hausdorff distance between two paths of (label,end_in)
-    :param path1, path2: [(label11, end_in11),...], at least two elements
+def curve_fit_pathLE(path, traces_yx, n_last=5):
+    """ NURBS curve fitting of pathLE
+    :param path: ((label1, end_in1),...), at least two elements
     :param traces_yx: {label1: yx_trace1,...}
-    :return: dist(Hausdorff distance)
+    :param n_last: use n_last points for segments at ends
+    :return: fit, yx
+        fit: geomdl Curve
+        yx: original data points
     """
-    # convert paths to yxs
-    kwargs = dict(traces_yx=traces_yx, fill_inter=True)
-    yx1 = pathLE_to_yx(path1, **kwargs)
-    yx2 = pathLE_to_yx(path2, **kwargs)
+    # convert path to yx
+    yx = pathLE_to_yx(path, traces_yx, 
+        n_last=n_last, endsegs=(False, False))
+    # ctrlpts: 1 for every 5 samples, 2 for each gap
+    ctrlpts_size = int(np.round(len(yx)/n_last))+2*(len(path)-1)
+    # nurbs fit
+    fit = geomdl.fitting.approximate_curve(
+        yx.tolist(), degree=3, ctrlpts_size=ctrlpts_size
+    )
+    return fit, yx
 
-    # compute symmetric Hausdorff distance
-    h12 = sp.spatial.distance.directed_hausdorff(yx1, yx2)[0]
-    h21 = sp.spatial.distance.directed_hausdorff(yx2, yx1)[0]
-    dist = max(h12, h21)
-    return dist
+def curve_fit_smooth(fit):
+    """ test if fitting is smooth
+    :param fit: geomdl Curve from fitting
+    :return: True/False
+        True if all ctrl pts are in the same direction
+    """
+    dydx = np.diff(fit.ctrlpts, axis=0)
+    dots = np.sum(dydx[1:]*dydx[:-1], axis=1)
+    test = np.all(dots>=0)
+    return test
 
 #=========================
 # build membrane graph
@@ -426,22 +434,140 @@ class MemGraph():
         L, O, sigma, n_avg
     """
     def __init__(self,
+            subseg_size=5,
             search_dist_thresh=50,
             path_dist_thresh=2,
             dd_thresh=np.pi/2
         ):
         """ init, save parameters """
+        # params
+        self.subseg_size = subseg_size
         self.search_dist_thresh = search_dist_thresh
         self.path_dist_thresh = path_dist_thresh
         self.dd_thresh = dd_thresh
+        # variables to be used later
+        self.df_segs = pd.DataFrame()
+        self.traces_yx = {}
+        self.G = nx.DiGraph()
 
-    def set_traced(self, df_segs, traces_yx):
+    def set_traced_segs(self, df_segs, traces_yx):
         """ save result of trace_within_labels()
         """
         self.df_segs = df_segs
         self.traces_yx = traces_yx
 
-    def build_prepost(self, L, O, sigma, n_avg=5):
+    def reset_graph(self):
+        """ reset directed graph, clear cache for fitting """
+        self.G = nx.DiGraph()
+        self.curve_fit_pathLE_cached.cache_clear()
+
+    @functools.lru_cache
+    def curve_fit_pathLE_cached(self, pathLE):
+        fit, _ = curve_fit_pathLE(
+            pathLE, self.traces_yx, n_last=self.subseg_size
+        )
+        return fit
+
+    def graph_add_node(self, label, end_out, node_next):
+        """ add node to graph if not existed
+        :param label, end_out: for current node
+        :param node_next: next node defined in build_graph_one()
+        :return: added
+            added: True/False for whether the node is added
+        """
+        # threshold on direction change
+        if ((np.abs(node_next.d) >= self.dd_thresh)
+            or (np.abs(node_next.d_out) >= self.dd_thresh)):
+            return False
+        
+        # calculate smoothness via NURBS control points
+        pathLE_new = ((label, -end_out), (node_next.label, node_next.end))
+        fit_new = self.curve_fit_pathLE_cached(pathLE_new)
+        smooth = curve_fit_smooth(fit_new)
+        
+        # if smooth, add node and visit
+        if smooth:
+            self.G.add_node(
+                node_next.label,
+                end_in=node_next.end, d_in=node_next.d,
+                end_out=-node_next.end, d_out=node_next.d_out
+            )
+            return True
+        else:
+            return False
+
+    def graph_add_edge(self, label, end_out, node_next):
+        """ add edge to graph if no overlap
+        :param label, end_out: for current node
+        :param node_next: next node defined in build_graph_one()
+        :return: added
+            added: True/False for whether the node is added
+        """
+        # fit new
+        pathLE_new = ((label, -end_out), (node_next.label, node_next.end))
+        fit_new = self.curve_fit_pathLE_cached(pathLE_new)
+
+        # loop through existed paths
+        pathL_exist_arr = nx.all_simple_paths(
+            self.G, label, node_next.label)
+        for pathL_exist in pathL_exist_arr:
+            # fit exist
+            pathLE_exist = tuple(pathL_to_LE(pathL_exist, self.G))
+            fit_exist = self.curve_fit_pathLE_cached(pathLE_exist)
+
+            # distance from new to exist
+            dist_path = sp.spatial.distance.directed_hausdorff(
+                fit_new.evalpts, fit_exist.evalpts
+            )[0]
+            # if two fits are close, do not add edge
+            if dist_path < self.path_dist_thresh:
+                return False
+
+        # if new is not close to any existed, add edge
+        self.G.add_edge(label, node_next.label)
+        return True
+
+    def build_graph_one(self, label, end_out):
+        """ build graph starting from (label,end_out)
+        :param label, end: identity of segment end
+        :param G: networkx.DiGraph()
+            node attrs: {end_in, d_in, end_out, d_out}
+                d_in, d_out: wrt root's direction of end_out
+        """
+        # if label not in G, create node
+        if label not in self.G:
+            self.G.add_node(
+                label,
+                end_in=-end_out, d_in=None,
+                end_out=end_out, d_out=0.
+            )
+
+        # find next segs
+        df_next = across_next_seg(
+            label, end_out, self.df_segs, self.search_dist_thresh)
+        # update direction
+        df_next["d"] = self.G.nodes[label]["d_out"] + df_next["dd_segs"].values
+        df_next["d_out"] = df_next["d"].values + df_next["dd_ends"].values
+
+        # update graph and visit next node
+        for node_next in df_next.itertuples():
+            # add new node
+            if node_next.label not in self.G:
+                node_added = self.graph_add_node(label, end_out, node_next)
+            else:
+                node_added = False
+
+            # add new edge
+            # if node existed before or newly added
+            if (node_next.label in self.G) or node_added:
+                edge_added = self.graph_add_edge(label, end_out, node_next)
+            
+            # if new node is added, visit next
+            if node_added:
+                self.build_graph_one(node_next.label, -node_next.end)
+        return
+
+    def build_prepost(self, L, O, sigma):
         """ find prepost membranes starting with 2d labels
         :param L, O: 2d label, orientation
         :param sigma: sigma for sticktv, e.g. 2*cleft
@@ -450,11 +576,11 @@ class MemGraph():
             Gs: array with 4 graphs for two membranes
         """
         # setup trace
-        df_segs, traces = trace_within_labels(L, O, n_avg)
-        self.set_traced(df_segs, traces["yx"])
+        df_segs, traces = trace_within_labels(L, O, n_avg=self.subseg_size)
+        self.set_traced_segs(df_segs, traces["yx"])
         
         # setup search dist: cleft+n_avg
-        self.search_dist_thresh = sigma/2 + n_avg*2
+        self.search_dist_thresh = sigma/2 + self.subseg_size*2
 
         # sort labels by tv
         labels_sorted = (order_segs_by_tv(L, O, sigma)["label"]
@@ -465,9 +591,9 @@ class MemGraph():
         Gs = []
         label1 = labels_sorted[0]
         for end in [1, -1]:
-            Gi = nx.DiGraph()
-            self.build_graph_one(label1, end, Gi)
-            Gs.append(Gi)
+            self.reset_graph()
+            self.build_graph_one(label1, end)
+            Gs.append(self.G)
 
         # find segment with largest stv from remainings
         labels_used = np.concatenate([list(g.nodes) for g in Gs])
@@ -478,70 +604,9 @@ class MemGraph():
 
         # trace both ends of membrane 2
         for end in [1, -1]:
-            Gi = nx.DiGraph()
-            self.build_graph_one(label2, end, Gi)
-            Gs.append(Gi)
+            self.reset_graph()
+            self.build_graph_one(label2, end)
+            Gs.append(self.G)
 
+        self.reset_graph()
         return Gs, traces["yx"]
-        
-
-    def build_graph_one(self, label, end, G):
-        """ build graph starting from (label,end)
-        :param label, end: identity of segment end
-        :param G: networkx.DiGraph()
-            node attrs: {end_in, d_in, end_out, d_out}
-                d_in, d_out: wrt root's direction of end_out
-        """
-        # if label not in G, create node
-        if label not in G:
-            G.add_node(
-                label,
-                end_in=-end, d_in=None,
-                end_out=end, d_out=0.
-            )
-
-        # find next segs
-        df_next = across_next_seg(label, end, self.df_segs, self.search_dist_thresh)
-        # update direction 
-        df_next["d"] = G.nodes[label]["d_out"] + df_next["dd_segs"].values
-        df_next["d_out"] = df_next["d"].values + df_next["dd_ends"].values
-
-        for next in df_next.itertuples():
-            # skip if total change in direction >= thresh
-            if ((np.abs(next.d)>=self.dd_thresh)
-                or (np.abs(next.d_out)>=self.dd_thresh)):
-                continue
-
-            # add new node (if not existed)
-            # prepare for visiting the new node
-            if next.label not in G:
-                G.add_node(
-                    next.label,
-                    end_in=next.end, d_in=next.d,
-                    end_out=-next.end, d_out=next.d_out
-                )
-                visit_next = True
-            else:
-                visit_next = False
-
-            # add new edge
-            # (if tentative new edge is not close to existing ones)
-            # can still add edge if node existed
-            add_new_edge = True
-            pathLE_new = pathL_to_LE([label, next.label], G)
-            for pathL_exist in nx.all_simple_paths(G, label, next.label):
-                pathLE_exist = pathL_to_LE(pathL_exist, G)
-                dist_path = pathLEs_distance(
-                    pathLE_new, pathLE_exist, self.traces_yx
-                )
-                # if new is close to one existed, do not add new edge
-                if dist_path < self.path_dist_thresh:
-                    add_new_edge = False
-                    break
-            if add_new_edge:
-                G.add_edge(label, next.label)
-
-            # build graph from new (label,end)
-            if visit_next:
-                self.build_graph_one(next.label, -next.end, G)
-        return
