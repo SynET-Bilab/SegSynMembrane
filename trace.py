@@ -213,79 +213,6 @@ def trace_within_labels(L, O, n_avg):
 
 
 #=========================
-# graph tools
-#=========================
-
-def pathL_to_LE(path_l, G):
-    """ convert path of labels to path of (label,end_in)
-    :param path_l: [label1,label2,...]
-    :param G: graph, provides end_in info for each node(label)
-    :return: path_le=[(label1, end_in1),...]
-    """
-    path_le = [(i, G.nodes[i]["end_in"]) for i in path_l]
-    return path_le
-
-def pathLE_to_yx(path, traces_yx, endsegs=(False, False), n_last=1, fill_inter=False):
-    """ convert path of (label,end_in) to yx
-    :param path: [(label1, end_in1),...], at least two elements
-    :param traces_yx: {label1: yx_trace1,...}
-    :param endsegs: if include whole start/end segments
-    :param n_last: start/end if not included in full, use n_last points
-    :param fill_inter: if fills inter-segment gaps by line
-    :return: yx=[(y1,x1),...]
-    """
-    if len(path) < 2:
-        raise ValueError("len(path) should >= 2")
-
-    yx = []
-    # starting segment
-    # end: can be used as step
-    label_s, end_s = path[0]
-    yx_s = traces_yx[label_s][::end_s]
-    yx_s = yx_s if endsegs[0] else yx_s[-n_last:]
-    yx.extend(yx_s)
-
-    # middle segments
-    for i in range(1, len(path)-1):
-        label_i, end_i = path[i]
-        yx_i = traces_yx[label_i][::end_i]
-        # fill inter if selected
-        if fill_inter:
-            inter_yx = list(draw_line(yx[-1], yx_i[0]))
-            yx.extend(inter_yx)
-        yx.extend(yx_i)
-
-    # ending segment
-    label_e, end_e = path[-1]
-    yx_e = traces_yx[label_e][::end_e]
-    yx_e = yx_e if endsegs[1] else yx_e[:n_last]
-    if fill_inter:
-        inter_yx = list(draw_line(yx[-1], yx_e[0]))
-        yx.extend(inter_yx)
-    yx.extend(yx_e)
-
-    yx = np.asarray(yx)
-    return yx
-
-def pathLEs_distance(path1, path2, traces_yx):
-    """ Hausdorff distance between two paths of (label,end_in)
-    :param path1, path2: [(label11, end_in11),...], at least two elements
-    :param traces_yx: {label1: yx_trace1,...}
-    :return: dist(Hausdorff distance)
-    """
-    # convert paths to yxs
-    kwargs = dict(traces_yx=traces_yx, fill_inter=True)
-    yx1 = pathLE_to_yx(path1, **kwargs)
-    yx2 = pathLE_to_yx(path2, **kwargs)
-
-    # compute symmetric Hausdorff distance
-    h12 = sp.spatial.distance.directed_hausdorff(yx1, yx2)[0]
-    h21 = sp.spatial.distance.directed_hausdorff(yx2, yx1)[0]
-    dist = max(h12, h21)
-    return dist
-
-
-#=========================
 # trace across segments
 #=========================
 
@@ -377,6 +304,78 @@ def across_next_seg(label, end, df_segs, search_dist_thresh):
 
     return df_next
 
+
+#=========================
+# graph tools
+#=========================
+
+def pathL_to_LE(path_l, G):
+    """ convert path of labels to path of (label,end_in)
+    :param path_l: [label1,label2,...]
+    :param G: graph, provides end_in info for each node(label)
+    :return: path_le=[(label1, end_in1),...]
+    """
+    path_le = [(i, G.nodes[i]["end_in"]) for i in path_l]
+    return path_le
+
+def pathLE_to_yx(path, traces_yx, endsegs=(False, False), n_last=1, fill_inter=False):
+    """ convert path of (label,end_in) to yx
+    :param path: [(label1, end_in1),...], at least two elements
+    :param traces_yx: {label1: yx_trace1,...}
+    :param endsegs: if include whole start/end segments
+    :param n_last: start/end if not included in full, use n_last points
+    :param fill_inter: if fills inter-segment gaps by line
+    :return: yx=[(y1,x1),...]
+    """
+    if len(path) < 2:
+        raise ValueError("len(path) should >= 2")
+
+    yx = []
+    # starting segment
+    # end: can be used as step
+    label_s, end_s = path[0]
+    yx_s = traces_yx[label_s][::end_s]
+    yx_s = yx_s if endsegs[0] else yx_s[-n_last:]
+    yx.extend(yx_s)
+
+    # middle segments
+    for i in range(1, len(path)-1):
+        label_i, end_i = path[i]
+        yx_i = traces_yx[label_i][::end_i]
+        # fill inter if selected
+        if fill_inter:
+            inter_yx = list(draw_line(yx[-1], yx_i[0]))
+            yx.extend(inter_yx)
+        yx.extend(yx_i)
+
+    # ending segment
+    label_e, end_e = path[-1]
+    yx_e = traces_yx[label_e][::end_e]
+    yx_e = yx_e if endsegs[1] else yx_e[:n_last]
+    if fill_inter:
+        inter_yx = list(draw_line(yx[-1], yx_e[0]))
+        yx.extend(inter_yx)
+    yx.extend(yx_e)
+
+    yx = np.asarray(yx)
+    return yx
+
+def pathLEs_distance(path1, path2, traces_yx):
+    """ Hausdorff distance between two paths of (label,end_in)
+    :param path1, path2: [(label11, end_in11),...], at least two elements
+    :param traces_yx: {label1: yx_trace1,...}
+    :return: dist(Hausdorff distance)
+    """
+    # convert paths to yxs
+    kwargs = dict(traces_yx=traces_yx, fill_inter=True)
+    yx1 = pathLE_to_yx(path1, **kwargs)
+    yx2 = pathLE_to_yx(path2, **kwargs)
+
+    # compute symmetric Hausdorff distance
+    h12 = sp.spatial.distance.directed_hausdorff(yx1, yx2)[0]
+    h21 = sp.spatial.distance.directed_hausdorff(yx2, yx1)[0]
+    dist = max(h12, h21)
+    return dist
 
 #=========================
 # build membrane graph
