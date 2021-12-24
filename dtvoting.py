@@ -225,7 +225,7 @@ def ball3d(S, O, sigma):
 # suppress by orientation
 #=========================
 
-def suppress_by_orient(nms, O, sigma, dO_threshold=np.pi/6):
+def suppress_by_orient(nms, O, sigma, dO_threshold=np.pi/4):
     """ apply strong tv field, suppress pixels where change in O is large
     :param nms, O: shape=(nz,ny,nx)
     :param dO_threshold: threshold of change in O
