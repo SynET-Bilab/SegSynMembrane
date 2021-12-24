@@ -8,7 +8,7 @@ import scipy as sp
 import pandas as pd
 import networkx as nx
 import geomdl.fitting
-from synseg.dtvoting import stick2d
+from synseg.dtvoting import stats_by_seg
 
 __all__ = [
     # trace within segment
@@ -389,36 +389,7 @@ def curve_fit_smooth(fit):
 # build membrane graph
 #=========================
 
-def order_segs_by_tv(L, O, sigma, stats=np.median):
-    """ apply tv, order by stats (e.g. median)
-    :param L, O: 2d label, orientation
-    :param sigma: sigma for sticktv, e.g. 2*cleft
-    :param stats: function to calculate stats
-    :return: df["label", "count", "S_stats"]
-        df: sorted by S_stats, descending
-    """
-    # tv on binary image
-    nms = (L>0).astype(np.int_)
-    Stv, _ = stick2d(nms, O, sigma)
 
-    # stat for each label
-    columns = ["label", "count", "S_stats"]
-    data = []
-    for l in np.unique(L[L>0]):
-        pos_l = np.nonzero(L==l)
-        Stv_l = Stv[pos_l]
-        data_l = [
-            l, len(pos_l[0]), stats(Stv_l)
-        ]
-        data.append(data_l)
-
-    # make dataframe, sort
-    df = pd.DataFrame(data=data, columns=columns)
-    df = (df.sort_values("S_stats", ascending=False)
-        .reset_index(drop=True)
-    )
-
-    return df
 class MemGraph():
     """ class for building membrane graph recursively
     usage: mg=MemGraph(); Gs,traces_yx=mg.build_prepost(L,O,sigma)
@@ -583,9 +554,7 @@ class MemGraph():
         self.search_dist_thresh = sigma/2 + self.subseg_size*2
 
         # sort labels by tv
-        labels_sorted = (order_segs_by_tv(L, O, sigma)["label"]
-            .values.astype(np.int_)
-        )
+        labels_sorted = stats_by_seg(L, O, sigma, stats=np.sum)["label"].values
         
         # trace both ends of membrane 1, with largest stv
         Gs = []

@@ -17,6 +17,7 @@ SteerTV:
 import numpy as np
 from numpy import fft
 import numba
+import pandas as pd
 
 __all__ = [
     # stick tv
@@ -24,7 +25,9 @@ __all__ = [
     # ball tv
     "prep_wmfft_ball", "ball2d_wmfft", "ball2d", "ball3d",
     # suppression
-    "suppress_byO"
+    "suppress_by_orient",
+    # stats
+    "stats_by_seg"
 ]
 
 
@@ -222,7 +225,7 @@ def ball3d(S, O, sigma):
 # suppress by orientation
 #=========================
 
-def suppress_byO(nms, O, sigma, dO_threshold=np.pi/6):
+def suppress_by_orient(nms, O, sigma, dO_threshold=np.pi/6):
     """ apply strong tv field, suppress pixels where change in O is large
     :param nms, O: shape=(nz,ny,nx)
     :param dO_threshold: threshold of change in O
@@ -239,3 +242,39 @@ def suppress_byO(nms, O, sigma, dO_threshold=np.pi/6):
     supp = nms*(dO<dO_threshold)
     return supp
 
+
+#=========================
+# statistics of segments
+#=========================
+
+def stats_by_seg(L, O, sigma, stats=np.sum):
+    """ apply tv, order by stats (e.g. sum)
+    :param L, O: 2d label, orientation
+    :param sigma: sigma for sticktv, e.g. 2*cleft
+    :param stats: function to calculate stats
+    :return: df["label", "count", "S_stats"]
+        df: sorted by S_stats, descending
+    """
+    # tv on binary image
+    nms = (L > 0).astype(np.int_)
+    Stv, _ = stick2d(nms, O, sigma)
+
+    # stat for each label
+    columns = ["label", "count", "S_stats"]
+    data = []
+    for l in np.unique(L[L > 0]):
+        pos_l = np.nonzero(L == l)
+        Stv_l = Stv[pos_l]
+        data_l = [
+            l, len(pos_l[0]), stats(Stv_l)
+        ]
+        data.append(data_l)
+
+    # make dataframe, sort
+    df = pd.DataFrame(data=data, columns=columns)
+    df = (df.sort_values("S_stats", ascending=False)
+          .reset_index(drop=True)
+          )
+    df = df.astype({f: int for f in ["label", "count"]})
+
+    return df

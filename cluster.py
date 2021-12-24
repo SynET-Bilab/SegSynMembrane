@@ -8,12 +8,14 @@ import pandas as pd
 import skimage
 import sklearn.cluster
 import numba
+from synseg.dtvoting import stats_by_seg
+import warnings
 
 __all__ = [
     # neighbors search
     "neighbor_shift", "neighbor_distance",
     # clustering
-    "cluster2d", "cluster3d"
+    "propose_epsO", "cluster2d", "cluster3d"
 ]
 
 #=========================
@@ -127,6 +129,28 @@ def neighbor_distance(S, O, r):
     )
     return mat_dO, pos
 
+def propose_epsO(S, O, sigma, eps_r=1.5, q=0.9):
+    """ a proposal of eps_O value
+    find seg with larges sum(stv), set eps_O as its q-quantile
+    :param S: image, [ny, nx], points are identified as S>0
+    :param O: orientation, [ny, nx]
+    :param sigma: sigma for stick tv
+    :param eps_r: max radius of neighbors
+    :param q: quantile for eps_O
+    :return: eps_O
+    """
+    # label connected components
+    L = skimage.measure.label(S, connectivity=2)
+    # strong stick tv
+    df_stv = stats_by_seg(L, O, sigma)
+    # get largest segment
+    idx_seg = df_stv["label"][0]
+    mask = (L==idx_seg)
+    # calculate O-distance
+    mat_O, _ = neighbor_distance(S*mask, O*mask, eps_r)
+    # return q-quantile
+    eps_O = np.quantile(mat_O.data, q)
+    return eps_O
 
 #=========================
 # DBSCAN clustering
@@ -268,6 +292,7 @@ def cluster3d(
     :return: labels3d[nz,ny,nx]
         labels3d: 1-based for each slice, no duplicates between slices
     """
+    warnings.filterwarnings("ignore")
     labels3d = cluster3d_loop(
         S, O,
         eps_r=eps_r, eps_O=eps_O, min_samples=min_samples,
