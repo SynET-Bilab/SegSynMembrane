@@ -144,7 +144,7 @@ def propose_epsO(S, O, sigma, eps_r=1.5, q=0.9):
     # strong stick tv
     df_stv = stats_by_seg(L, O, sigma)
     # get largest segment
-    idx_seg = df_stv["label"][0]
+    idx_seg = df_stv["label"].values[0]
     mask = (L==idx_seg)
     # calculate O-distance
     mat_O, _ = neighbor_distance(S*mask, O*mask, eps_r)
