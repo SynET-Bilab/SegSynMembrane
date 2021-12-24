@@ -161,24 +161,25 @@ def trace_within_seg(nms, O):
     success = success_plus and success_minus
     return yx_trace, d_trace, success
 
-def trace_within_labels(L, O, n_avg):
+def trace_within_labels(L, O, min_size):
     """ trace segments from labels
     :param L: 2d label-image
     :param O: 2d orientation-image
-    :param n_avg: last n pixels for averaging
+    :param min_size: min segment size after tracing
+        this is also the number of last pixels for averaging
     :return: df_segs, traces
         df_segs:
             index=(label,end), looks redundant but is convenient
             columns=["label", "end", "y", "x", "d"]
             end: 1/-1, start/end of yx_trace
-            y, x: average coord of the last n_avg points
+            y, x: average coord of the last min_size points
                 reducing the probability that ends "nearly overlap"
-            d: average outward direction of the last n_avg points,
+            d: average outward direction of the last min_size points,
                 d(-1)-(d(1)+pi) gives continuous change of directions
         traces: { yx: {label: yx_trace}, d: {label: d_trace} }
     """
     labels = np.unique(L[L > 0])
-    df_columns = ["label", "end", "y", "x", "d"]
+    df_columns = ["label", "end", "size", "y", "x", "d"]
     df_data = []
     traces = {"yx": {}, "d": {}}
     # loop over segments
@@ -194,22 +195,26 @@ def trace_within_labels(L, O, n_avg):
 
             # end 1
             data_i1 = [
-                l, 1,  # label, end
-                *np.mean(yx_trace[:n_avg], axis=0),  # y, x
-                np.mean(d_trace[:n_avg])-np.pi,  # d1, -pi to point outwards
+                l, 1, len(yx_trace),  # label, end, size
+                *np.mean(yx_trace[:min_size], axis=0),  # y, x
+                np.mean(d_trace[:min_size])-np.pi,  # d1, -pi to point outwards
             ]
             df_data.append(data_i1)
             # end -1
             data_i2 = [
-                l, -1,  # label, end
-                *np.mean(yx_trace[-n_avg:], axis=0),  # y, x
-                np.mean(d_trace[-n_avg:])  # d
+                l, -1, len(yx_trace),  # label, end
+                *np.mean(yx_trace[-min_size:], axis=0),  # y, x
+                np.mean(d_trace[-min_size:])  # d
             ]
             df_data.append(data_i2)
     
-    # make dataframe, correct dtype, set index
+    # make dataframe, filter by size
     df_segs = pd.DataFrame(data=df_data, columns=df_columns)
-    df_segs = df_segs.astype({f: int for f in ["label", "end", "y", "x"]})
+    df_segs = df_segs[df_segs["size"] >= min_size]
+    # correct dtype, set index
+    df_segs = df_segs.astype(
+        {f: int for f in ["label", "end", "size", "y", "x"]}
+    )
     df_segs = df_segs.set_index(zip(df_segs["label"], df_segs["end"]))
     return df_segs, traces
 
@@ -364,7 +369,7 @@ def curve_fit_pathLE(path, traces_yx, n_last=5):
         yx: original data points
     """
     # convert path to yx
-    yx = pathLE_to_yx(path, traces_yx, 
+    yx = pathLE_to_yx(path, traces_yx,
         n_last=n_last, endsegs=(False, False))
     # ctrlpts: 1 for every 5 samples, 2 for each gap
     ctrlpts_size = int(np.round(len(yx)/n_last))+2*(len(path)-1)
@@ -402,17 +407,17 @@ class MemGraph():
         label, end: segment's label and end
         G: networkx.DiGraph()
     build_prepost: parameters
-        L, O, sigma, n_avg
+        L, O, sigma, min_size
     """
     def __init__(self,
-            subseg_size=5,
+            min_size=5,
             search_dist_thresh=50,
             path_dist_thresh=2,
             dd_thresh=np.pi/2
         ):
         """ init, save parameters """
         # params
-        self.subseg_size = subseg_size
+        self.min_size = min_size
         self.search_dist_thresh = search_dist_thresh
         self.path_dist_thresh = path_dist_thresh
         self.dd_thresh = dd_thresh
@@ -435,7 +440,7 @@ class MemGraph():
     @functools.lru_cache
     def curve_fit_pathLE_cached(self, pathLE):
         fit, _ = curve_fit_pathLE(
-            pathLE, self.traces_yx, n_last=self.subseg_size
+            pathLE, self.traces_yx, n_last=self.min_size
         )
         return fit
 
@@ -542,16 +547,16 @@ class MemGraph():
         """ find prepost membranes starting with 2d labels
         :param L, O: 2d label, orientation
         :param sigma: sigma for sticktv, e.g. 2*cleft
-        :param n_avg: param for trace_within_labels()
+        :param min_size: param for trace_within_labels()
         :return: Gs, traces_yx
             Gs: array with 4 graphs for two membranes
         """
         # setup trace
-        df_segs, traces = trace_within_labels(L, O, n_avg=self.subseg_size)
+        df_segs, traces = trace_within_labels(L, O, min_size=self.min_size)
         self.set_traced_segs(df_segs, traces["yx"])
         
-        # setup search dist: cleft+n_avg
-        self.search_dist_thresh = sigma/2 + self.subseg_size*2
+        # # setup search dist: cleft+min_size
+        # self.search_dist_thresh = sigma/2 + self.min_size*2
 
         # sort labels by tv
         labels_sorted = stats_by_seg(L, O, sigma, stats=np.sum)["label"].values

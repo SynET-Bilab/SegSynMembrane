@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import napari
 import plotly
+import plotly.subplots
 
 from synseg.utils import minmax_image
 
