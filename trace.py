@@ -469,6 +469,12 @@ class MemGraph():
             or (np.abs(node_next.d_out) >= self.dd_thresh)):
             return False
 
+        # ad-hoc close distance case
+        # add node if spatially close and directional change is small
+        if ((node_next.dist < 2*self.min_size)
+            and (np.abs(node_next.dd_segs) < np.pi/4)):
+            return True
+
         # smoothness test: via NURBS control points
         pathLE_new = ((label, -end_out), (node_next.label, node_next.end))
         fit_new = self.curve_fit_pathLE_cached(pathLE_new)
