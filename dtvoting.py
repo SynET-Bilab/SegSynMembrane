@@ -229,18 +229,19 @@ def suppress_by_orient(nms, O, sigma, dO_threshold=np.pi/4):
     """ apply strong tv field, suppress pixels where change in O is large
     :param nms, O: shape=(nz,ny,nx)
     :param dO_threshold: threshold of change in O
-    :return: supp
+    :return: supp, Stv
         supp: binary mask of image after suppression
+        Stv: Stv after applying strong field
     """
     # apply strong tv field
-    _, Otv = stick3d(nms, O, sigma)
+    Stv, Otv = stick3d(nms, O, sigma)
     # calculate change in O
     dO = np.abs(Otv-O)*nms
     mask_dO = dO>np.pi/2
     dO[mask_dO] = np.pi - dO[mask_dO]
     # mask of pixels with small dO
     supp = nms*(dO<dO_threshold)
-    return supp
+    return supp, Stv
 
 
 #=========================
