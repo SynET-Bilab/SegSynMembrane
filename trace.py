@@ -8,7 +8,8 @@ import scipy as sp
 import pandas as pd
 import networkx as nx
 import geomdl.fitting
-from synseg.dtvoting import stats_by_seg
+from synseg.dtvoting import stick2d
+from synseg.filter import stats_per_label
 
 __all__ = [
     # trace within segment
@@ -580,7 +581,11 @@ class MemGraph():
         # self.search_dist_thresh = sigma/2 + self.min_size*2
 
         # sort labels by tv
-        labels_sorted = stats_by_seg(L, O, sigma, stats=np.sum)["label"].values
+        Stv, _ = stick2d((L > 0).astype(np.int_), O, sigma)
+        df_stats = stats_per_label(L, [Stv],
+            name_arr=["stats"], stats="sum", qfilter=0)
+        labels_sorted = df_stats.sort_values(
+            "stats", ascending=False)["label"].values
         
         # trace both ends of membrane 1, with largest stv
         Gs = []

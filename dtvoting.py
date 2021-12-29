@@ -25,9 +25,7 @@ __all__ = [
     # ball tv
     "prep_wmfft_ball", "ball2d_wmfft", "ball2d", "ball3d",
     # suppression
-    "suppress_by_orient",
-    # stats
-    "stats_by_seg"
+    "suppress_by_orient"
 ]
 
 
@@ -245,37 +243,37 @@ def suppress_by_orient(nms, O, sigma, dO_threshold=np.pi/4):
 
 
 #=========================
-# statistics of segments
+# deprecated
 #=========================
 
-def stats_by_seg(L, O, sigma, stats=np.sum):
-    """ apply tv, order by stats (e.g. sum)
-    :param L, O: 2d label, orientation
-    :param sigma: sigma for sticktv, e.g. 2*cleft
-    :param stats: function to calculate stats
-    :return: df["label", "count", "S_stats"]
-        df: sorted by S_stats, descending
-    """
-    # tv on binary image
-    nms = (L > 0).astype(np.int_)
-    Stv, _ = stick2d(nms, O, sigma)
+# def stats_by_seg(L, O, sigma, stats=np.sum):
+#     """ apply tv, order by stats (e.g. sum)
+#     :param L, O: 2d label, orientation
+#     :param sigma: sigma for sticktv, e.g. 2*cleft
+#     :param stats: function to calculate stats
+#     :return: df["label", "count", "S_stats"]
+#         df: sorted by S_stats, descending
+#     """
+#     # tv on binary image
+#     nms = (L > 0).astype(np.int_)
+#     Stv, _ = stick2d(nms, O, sigma)
 
-    # stat for each label
-    columns = ["label", "count", "S_stats"]
-    data = []
-    for l in np.unique(L[L > 0]):
-        pos_l = np.nonzero(L == l)
-        Stv_l = Stv[pos_l]
-        data_l = [
-            l, len(pos_l[0]), stats(Stv_l)
-        ]
-        data.append(data_l)
+#     # stat for each label
+#     columns = ["label", "count", "S_stats"]
+#     data = []
+#     for l in np.unique(L[L > 0]):
+#         pos_l = np.nonzero(L == l)
+#         Stv_l = Stv[pos_l]
+#         data_l = [
+#             l, len(pos_l[0]), stats(Stv_l)
+#         ]
+#         data.append(data_l)
 
-    # make dataframe, sort
-    df = pd.DataFrame(data=data, columns=columns)
-    df = (df.sort_values("S_stats", ascending=False)
-          .reset_index(drop=True)
-          )
-    df = df.astype({f: int for f in ["label", "count"]})
+#     # make dataframe, sort
+#     df = pd.DataFrame(data=data, columns=columns)
+#     df = (df.sort_values("S_stats", ascending=False)
+#           .reset_index(drop=True)
+#           )
+#     df = df.astype({f: int for f in ["label", "count"]})
 
-    return df
+#     return df
