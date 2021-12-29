@@ -78,6 +78,7 @@ class MemDetect:
             I=self.I.astype(np.int8),
             voxel_size=self.voxel_size,
             clip_range=self.clip_range,
+            mask=self.mask,
             Nfilt=self.Nfilt.astype(np.float32),
             Ofilt=self.Ofilt.astype(np.float32)
         )
@@ -92,6 +93,7 @@ class MemDetect:
         self.voxel_size = results["voxel_size"].item()
         self.voxel_size_nm = self.voxel_size / 10
         self.clip_range = results["clip_range"].item()
+        self.mask = results["mask"]
         self.Nfilt = results["Nfilt"]
         self.Ofilt = results["Ofilt"]
     
