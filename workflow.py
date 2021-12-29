@@ -29,10 +29,9 @@ class MemDetect:
         self.Stv = None
         self.Ntv = None
         self.Nref = None
-        self.Nfilt = None
-        self.Ssup = None
         self.Nsup = None
-        self.Osup = None
+        self.Nfilt = None
+        self.Ofilt = None
 
     def clean_intermediate(self):
         """ clean intermediate results
@@ -41,8 +40,7 @@ class MemDetect:
         self.Stv = None
         self.Ntv = None
         self.Nref = None
-        self.Nfilt = None
-        self.Ssup = None
+        self.Nsup = None
 
     def load_tomo(self, tomo_mrc, bound_mod, voxel_size=None, obj=1):
         """ load from raw tomo and model files
@@ -72,27 +70,27 @@ class MemDetect:
     
     def save_result(self, npzname):
         """ save results
-        fields: I, voxel_size, clip_range, Nsup, Osup
+        fields: I, voxel_size, clip_range, Nfilt, Ofilt
         """
         results = dict(
             I=self.I.astype(np.int8),
             voxel_size=self.voxel_size,
             clip_range=self.clip_range,
-            Nsup=self.Nsup.astype(np.float32),
-            Osup=self.Osup.astype(np.float32)
+            Nfilt=self.Nfilt.astype(np.float32),
+            Ofilt=self.Ofilt.astype(np.float32)
         )
         np.savez(npzname, results)
     
     def load_result(self, npzname):
         """ load results
-        fields: I, voxel_size, clip_range, Nsup, Osup
+        fields: I, voxel_size, clip_range, Nfilt, Ofilt
         """
         results = np.load(npzname, allow_pickle=True)
         self.I = results["I"]
         self.voxel_size = results["voxel_size"].item()
         self.clip_range = results["clip_range"].item()
-        self.Nsup = results["Nsup"]
-        self.Osup = results["Osup"]
+        self.Nfilt = results["Nfilt"]
+        self.Ofilt = results["Ofilt"]
     
     def detect(self, sigma_gauss, sigma_tv, sigma_supp,
         qfilter=0.25, min_size=5):
@@ -104,8 +102,8 @@ class MemDetect:
         :param qfilter: quantile to filter out by Stv and delta_Oref
         :param min_size: min size of segments
         :return: None
-            actions(main): set Nsup, Osup
-            actions(intermediate): set S,Stv,Ntv,Nref,Nfilt,Ssup
+            actions(main): set Nfilt,Ofilt
+            actions(intermediate): set S,Stv,Ntv,Nref,Nsup
         """
         # negate, hessian
         Ineg = utils.negate_image(self.I)
@@ -122,30 +120,29 @@ class MemDetect:
         # refine: orientation, nms
         _, Oref = hessian.features3d(Ntv, sigma=1)
         Nref = nonmaxsup.nms3d_gw(Stv*Ntv, Oref)
-
-        # filter: S value, orientation change, len of segment
         # orientation change after refinement
         dOref = np.abs(Oref-Otv)  # in (0, pi)
         mask = dOref > np.pi/2
         dOref[mask] = np.pi - dOref[mask]  # in (0, pi/2)
-        # filter out small Stv or large dOref
-        Nfilt = filter.filter_connected(
-            Nref, [Stv, -dOref], qfilter=qfilter
-        )
 
         # normal suppression
         sigma_supp = sigma_supp / self.voxel_size
         Nsup, Ssup = dtvoting.suppress_by_orient(
-            Nfilt, Oref*Nfilt, sigma=sigma_supp, dO_threshold=np.pi/4
+            Nref, Oref*Nref, sigma=sigma_supp, dO_threshold=np.pi/4
         )
-        Osup = Oref*Nsup
+
+        # filter out: small Stv, large dOref, small Ssup
+        Nfilt = filter.filter_connected(
+            Nsup, [Stv, -dOref, Ssup],
+            qfilter=qfilter, min_size=min_size
+        )
+        Ofilt = Oref*Nfilt
 
         # assign to self
         self.S = S
         self.Stv = Stv
         self.Ntv = Ntv
         self.Nref = Nref
-        self.Nfilt = Nfilt
-        self.Ssup = Ssup
         self.Nsup = Nsup
-        self.Osup = Osup
+        self.Nfilt = Nfilt
+        self.Ofilt = Ofilt
