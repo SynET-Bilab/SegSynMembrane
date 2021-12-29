@@ -21,6 +21,7 @@ class MemDetect:
         # info of image
         self.I = None
         self.voxel_size = None
+        self.voxel_size_nm = None
         self.clip_range = None
         self.mask = None
 
@@ -45,13 +46,13 @@ class MemDetect:
     def load_tomo(self, tomo_mrc, bound_mod, voxel_size=None, obj=1):
         """ load from raw tomo and model files
         :param tomo_mrc, bound_mod: filename of tomo, boundary
-        :param voxel_size: manually set (in nm), or read from mrc
+        :param voxel_size: manually set (in A), or read from mrc
         :param obj: specify object id for boundary in model file
         :return: None
             actions(main): set I, voxel_size, clip_range, mask
         """
         # load tomo and clip
-        I, model, voxel_size_A, clip_range = io.read_clip_tomo(
+        I, model, voxel_size, clip_range = io.read_clip_tomo(
             tomo_mrc, bound_mod
         )
         # mask
@@ -60,11 +61,12 @@ class MemDetect:
         
         # voxel_size in nm
         if voxel_size is None:
-            voxel_size = voxel_size_A.tolist()[0] / 10
+            voxel_size = voxel_size.tolist()[0]
 
         # assign to self
         self.I = I
         self.voxel_size = voxel_size
+        self.voxel_size_nm = voxel_size / 10
         self.clip_range = clip_range
         self.mask = mask
     
@@ -79,7 +81,7 @@ class MemDetect:
             Nfilt=self.Nfilt.astype(np.float32),
             Ofilt=self.Ofilt.astype(np.float32)
         )
-        np.savez(npzname, results)
+        np.savez(npzname, **results)
     
     def load_result(self, npzname):
         """ load results
@@ -88,6 +90,7 @@ class MemDetect:
         results = np.load(npzname, allow_pickle=True)
         self.I = results["I"]
         self.voxel_size = results["voxel_size"].item()
+        self.voxel_size_nm = self.voxel_size / 10
         self.clip_range = results["clip_range"].item()
         self.Nfilt = results["Nfilt"]
         self.Ofilt = results["Ofilt"]
@@ -107,11 +110,11 @@ class MemDetect:
         """
         # negate, hessian
         Ineg = utils.negate_image(self.I)
-        sigma_gauss = sigma_gauss / self.voxel_size
+        sigma_gauss = sigma_gauss / self.voxel_size_nm
         S, O = hessian.features3d(Ineg, sigma_gauss)
         
         # tv, nms
-        sigma_tv = sigma_tv / self.voxel_size
+        sigma_tv = sigma_tv / self.voxel_size_nm
         Stv, Otv = dtvoting.stick3d(
             S*self.mask, O*self.mask, sigma_tv
         )
@@ -126,7 +129,7 @@ class MemDetect:
         dOref[mask] = np.pi - dOref[mask]  # in (0, pi/2)
 
         # normal suppression
-        sigma_supp = sigma_supp / self.voxel_size
+        sigma_supp = sigma_supp / self.voxel_size_nm
         Nsup, Ssup = dtvoting.suppress_by_orient(
             Nref, Oref*Nref, sigma=sigma_supp, dO_threshold=np.pi/4
         )
