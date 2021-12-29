@@ -18,6 +18,7 @@ import numpy as np
 from numpy import fft
 import numba
 import pandas as pd
+from synseg import utils
 
 __all__ = [
     # stick tv
@@ -234,9 +235,7 @@ def suppress_by_orient(nms, O, sigma, dO_threshold=np.pi/4):
     # apply strong tv field
     Stv, Otv = stick3d(nms, O, sigma)
     # calculate change in O
-    dO = np.abs(Otv-O)*nms
-    mask_dO = dO>np.pi/2
-    dO[mask_dO] = np.pi - dO[mask_dO]
+    dO = utils.absdiff_orient(Otv, O)
     # mask of pixels with small dO
     supp = nms*(dO<dO_threshold)
     return supp, Stv

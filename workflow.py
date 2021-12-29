@@ -3,7 +3,7 @@
 """
 
 import numpy as np
-from synseg import io, utils, filter
+from synseg import io, utils
 from synseg import hessian, dtvoting, nonmaxsup
 
 __all__ = [
@@ -52,7 +52,7 @@ class MemDetect:
             actions(main): set I, voxel_size, clip_range, mask
         """
         # load tomo and clip
-        I, model, voxel_size, clip_range = io.read_clip_tomo(
+        I, model, voxel_size_A, clip_range = io.read_clip_tomo(
             tomo_mrc, bound_mod
         )
         # mask
@@ -61,7 +61,7 @@ class MemDetect:
         
         # voxel_size in nm
         if voxel_size is None:
-            voxel_size = voxel_size.tolist()[0]
+            voxel_size = voxel_size_A.tolist()[0]
 
         # assign to self
         self.I = I
@@ -120,13 +120,10 @@ class MemDetect:
         )
         Ntv = self.mask*nonmaxsup.nms3d_gw(Stv, Otv)
         
-        # refine: orientation, nms
-        _, Oref = hessian.features3d(Ntv, sigma=1)
+        # refine: orientation, nms, orientation changes
+        _, Oref = hessian.features3d(Ntv, sigma=sigma_gauss)
         Nref = nonmaxsup.nms3d_gw(Stv*Ntv, Oref)
-        # orientation change after refinement
-        dOref = np.abs(Oref-Otv)  # in (0, pi)
-        mask = dOref > np.pi/2
-        dOref[mask] = np.pi - dOref[mask]  # in (0, pi/2)
+        dOref = utils.absdiff_orient(Oref, Otv)
 
         # normal suppression
         sigma_supp = sigma_supp / self.voxel_size_nm
@@ -135,7 +132,7 @@ class MemDetect:
         )
 
         # filter out: small Stv, large dOref, small Ssup
-        Nfilt = filter.filter_connected(
+        Nfilt = utils.filter_connected(
             Nsup, [Stv, -dOref, Ssup],
             qfilter=qfilter, min_size=min_size
         )

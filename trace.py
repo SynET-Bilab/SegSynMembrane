@@ -8,8 +8,7 @@ import scipy as sp
 import pandas as pd
 import networkx as nx
 import geomdl.fitting
-from synseg.dtvoting import stick2d
-from synseg.filter import stats_per_label
+from synseg import dtvoting, utils
 
 __all__ = [
     # trace within segment
@@ -581,8 +580,8 @@ class MemGraph():
         # self.search_dist_thresh = sigma/2 + self.min_size*2
 
         # sort labels by tv
-        Stv, _ = stick2d((L > 0).astype(np.int_), O, sigma)
-        df_stats = stats_per_label(L, [Stv],
+        Stv, _ = dtvoting.stick2d((L > 0).astype(np.int_), O, sigma)
+        df_stats = utils.stats_per_label(L, [Stv],
             name_arr=["stats"], stats="sum", qfilter=0)
         labels_sorted = df_stats.sort_values(
             "stats", ascending=False)["label"].values
