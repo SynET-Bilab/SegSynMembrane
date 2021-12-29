@@ -147,16 +147,16 @@ def segs_to_model(seg_arr, model_name, voxel_size):
 # processing tomo, model
 #=========================
 
-def read_clip_tomo(mrc_file, model_file):
+def read_clip_tomo(tomo_mrc, bound_mod):
     """ clip mrc according to the range of model
-    :param mrc_file, model_file: filename of mrc, model
+    :param tomo_mrc, bound_mod: filename of tomo, boundary
     :return: data, model, voxel_size, clip_range
         data, model are clipped
         voxel_size: read with mrcfile
         clip_range: {x: (min,max), y:..., z:...}
     """
     # read model
-    model = read_model(model_file)
+    model = read_model(bound_mod)
 
     # set the range of clipping
     # use np.floor/ceil -> int to ensure integers
@@ -173,7 +173,7 @@ def read_clip_tomo(mrc_file, model_file):
         slice(clip_range[i][0], clip_range[i][1]+1)
         for i in ["z", "y", "x"]
     )
-    with mrcfile.mmap(mrc_file, permissive=True) as mrc:
+    with mrcfile.mmap(tomo_mrc, permissive=True) as mrc:
         data = mrc.data[sub]
         voxel_size = mrc.voxel_size
 
