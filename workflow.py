@@ -29,7 +29,6 @@ class MemDetect:
         self.S = None
         self.Stv = None
         self.Ntv = None
-        self.Nref = None
         self.Nsup = None
         self.Nfilt = None
         self.Ofilt = None
@@ -40,7 +39,6 @@ class MemDetect:
         self.S = None
         self.Stv = None
         self.Ntv = None
-        self.Nref = None
         self.Nsup = None
 
     def load_tomo(self, tomo_mrc, bound_mod, voxel_size=None, obj=1):
@@ -98,7 +96,7 @@ class MemDetect:
         self.Ofilt = results["Ofilt"]
     
     def detect(self, sigma_gauss, sigma_tv, sigma_supp,
-        qfilter=0.25, min_size=5):
+        qfilter=0.25, dzfilter=5, min_size=5):
         """ detect membrane features
         :param sigma_gauss, sigma_tv, sigma_supp: sigma's in nm
             sigma_gauss: gaussian smoothing before hessian
@@ -133,18 +131,21 @@ class MemDetect:
             Nref, Oref*Nref, sigma=sigma_supp, dO_threshold=np.pi/4
         )
 
-        # filter out: small Stv, large dOref, small Ssup
-        Nfilt = utils.filter_connected(
+        # filter in xy: small Stv, large dOref, small Ssup
+        Nfilt_xy = utils.filter_connected_xy(
             Nsup, [Stv, -dOref, Ssup],
+            connectivity=2, stats="median",
             qfilter=qfilter, min_size=min_size
         )
-        Ofilt = Oref*Nfilt
+
+        # filter in 3d: delta z
+        Nfilt_dz = utils.filter_connected_dz(
+            Nfilt_xy, dzfilter=dzfilter, connectivity=2)
 
         # assign to self
         self.S = S
         self.Stv = Stv
         self.Ntv = Ntv
-        self.Nref = Nref
         self.Nsup = Nsup
-        self.Nfilt = Nfilt
-        self.Ofilt = Ofilt
+        self.Nfilt = Nfilt_dz
+        self.Ofilt = Oref*Nfilt_dz

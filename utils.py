@@ -13,7 +13,7 @@ __all__ = [
     # coordinates
     "mask_to_coord", "coord_to_mask", "reverse_coord",
     # segments
-    "stats_per_label", "filter_connected"
+    "stats_per_label", "filter_connected_xy", "filter_connected_dz"
 ]
 
 #=========================
@@ -150,21 +150,21 @@ def stats_per_label(L, V_arr, name_arr=None, stats="mean",
     df_stats = pd.merge(df_count, df_stats, on="label", how="inner")
     return df_stats
 
-def filter_connected(nms, V_arr, 
+def filter_connected_xy(nms, V_arr,
     connectivity=2, stats="mean",
     qfilter=0.25, min_size=1):
-    """ label by connectivity, filter out small values
+    """ label by connectivity for each xy-slice, filter out small values
     :param nms: nms image
-    :param S: Stv image
+    :param V_arr: array of valued-images
     :param connectivity: used for determining connected segments, 1 or 2
     :param stats: statistics to apply on values
     :param qfilter: filter out labels if any of their stats < qfilter quantile
     :param min_size: min size of segments
-    :return: F
-        F: filtered nms image
+    :return: nms_filt
+        nms_filt: filtered nms image
     """
-    F = np.zeros_like(nms)
-    for i in range(F.shape[0]):
+    nms_filt = np.zeros_like(nms)
+    for i in range(nms_filt.shape[0]):
         # label by connectivity
         Li = skimage.measure.label(nms[i], connectivity=connectivity)
 
@@ -175,10 +175,31 @@ def filter_connected(nms, V_arr,
         )
 
         # filter out labels from image
-        F[i] = nms[i]*np.isin(Li, df_stats["label"])
-    return F
+        nms_filt[i] = nms[i]*np.isin(Li, df_stats["label"])
+    return nms_filt
 
-
+def filter_connected_dz(nms, dzfilter=1, connectivity=2):
+    """ label by connectivity in 3d, filter out dz<dzfilter segments
+    :param nms: nms image
+    :param connectivity: used for determining connected segments, 1 or 2
+    :param dzfilter: threshold of z-range
+    :return: nms_filt
+        nms_filt: filtered nms image
+    """
+    # label
+    L = skimage.measure.label(nms, connectivity=connectivity)
+    # z-value of each pixel
+    nz = L.shape[0]
+    Z = np.ones(L.shape)*np.arange(nz).reshape((-1,1,1))
+    # z-range for each label
+    df = stats_per_label(L, [Z], name_arr=["z"],
+        stats=(lambda x: np.max(x)-np.min(x)),
+        qfilter=0, min_size=dzfilter
+    )
+    # filter
+    mask = np.isin(L, df["label"][df["z"] >= dzfilter])
+    nms_filt = nms * mask
+    return nms_filt
 
 
 #=========================
