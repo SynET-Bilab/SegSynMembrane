@@ -8,8 +8,6 @@ import napari
 import plotly
 import plotly.subplots
 
-from synseg.utils import minmax_image
-
 __all__ = [
     # matplotlib: 2d plot
     "imshow", "scatter",
@@ -56,17 +54,17 @@ def setup_subplots(n, shape, figsize1):
     return fig, axes
 
 def imshow(
-        I_arr, shape=None, style="custom",
+        I_arr, shape=None, style="binary",
         vrange=None, qrange=(0, 1),
         cmap="gray", colorbar=True, colorbar_shrink=0.6,
         title_arr=None, suptitle=None,
-        supxlabel="x/pixel", supylabel="y/pixel",
-        figsize1=(3.5, 3.5), save=None
+        supxlabel=None, supylabel=None,
+        figsize1=(3, 3), save=None
     ):
     """ show multiple images
     :param I_arr: a 1d list of images
     :param shape: (nrows, ncols), will auto set if either is None
-    :param style: custom, gray, orient
+    :param style: custom, gray, binary, orient
     :param vrange, qrange: range of value(v) or quantile(q)
     :param cmap, colorbar, colorbar_shrink: set colors
     :param title_arr, suptitle, supxlabel, supylabel: set labels
@@ -85,6 +83,10 @@ def imshow(
         cmap = "hsv"
         vrange = (0, 180)
         I_arr = [np.mod(I, np.pi)/np.pi*180 for I in I_arr]
+    elif style == "binary":
+        cmap = "gray"
+        vrange = (0, 0.1)
+        colorbar = False
     elif style == "custom":
         pass
     else:
