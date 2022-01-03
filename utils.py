@@ -151,7 +151,7 @@ def stats_per_label(L, V_arr, name_arr=None, stats="mean",
     return df_stats
 
 def filter_connected_xy(nms, V_arr,
-    connectivity=2, stats="mean",
+    connectivity=2, stats="median",
     qfilter=0.25, min_size=1):
     """ label by connectivity for each xy-slice, filter out small values
     :param nms: nms image

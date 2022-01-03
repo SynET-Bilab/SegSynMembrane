@@ -334,9 +334,6 @@ def pathLE_to_yx(path, traces_yx, endsegs=(False, False), n_last=1):
     :param n_last: start/end if not included in full, use n_last points
     :return: yx=[(y1,x1),...]
     """
-    if len(path) < 2:
-        raise ValueError("len(path) should >= 2")
-
     yx = []
     # starting segment
     # end: can be used as step
@@ -352,10 +349,11 @@ def pathLE_to_yx(path, traces_yx, endsegs=(False, False), n_last=1):
         yx.extend(yx_i)
 
     # ending segment
-    label_e, end_e = path[-1]
-    yx_e = traces_yx[label_e][::end_e]
-    yx_e = yx_e if endsegs[1] else yx_e[:n_last]
-    yx.extend(yx_e)
+    if len(path) >= 2:
+        label_e, end_e = path[-1]
+        yx_e = traces_yx[label_e][::end_e]
+        yx_e = yx_e if endsegs[1] else yx_e[:n_last]
+        yx.extend(yx_e)
 
     yx = np.asarray(yx)
     return yx
@@ -419,6 +417,8 @@ class MemGraph():
     build_graph_one: parameters
         label, end: segment's label and end
         G: networkx.DiGraph()
+            node attrs: {end_in, d_in, end_out, d_out}
+            d_in, d_out: wrt root's direction of end_out
     build_prepost: parameters
         L, O, sigma, min_size
     """
@@ -519,9 +519,8 @@ class MemGraph():
     def build_graph_one(self, label, end_out):
         """ build graph starting from (label,end_out)
         :param label, end: identity of segment end
-        :param G: networkx.DiGraph()
-            node attrs: {end_in, d_in, end_out, d_out}
-                d_in, d_out: wrt root's direction of end_out
+        :return: None
+            action: update self.G
         """
         # if label not in G, create node
         if label not in self.G:
