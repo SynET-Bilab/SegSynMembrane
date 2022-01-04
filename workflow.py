@@ -80,7 +80,7 @@ class MemDetect:
             Nfilt=self.Nfilt.astype(np.float32),
             Ofilt=self.Ofilt.astype(np.float32)
         )
-        np.savez(npzname, **results)
+        np.savez_compressed(npzname, **results)
     
     def load_result(self, npzname):
         """ load results
