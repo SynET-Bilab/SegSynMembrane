@@ -92,6 +92,7 @@ def coord_to_mask(coord, shape):
     """ convert coordinates (y,x) to mask[y,x] with 1's on points
     :return: mask
     """
+    coord = np.asarray(coord)
     mask = np.zeros(shape, dtype=np.int_)
     index = tuple(
         coord[:, i].astype(np.int_)
@@ -104,6 +105,7 @@ def reverse_coord(coord):
     """ convert (y,x) to (x,y)
     :return: reversed coord
     """
+    coord = np.asarray(coord)
     index_rev = np.arange(coord.shape[1])[::-1]
     return coord[:, index_rev]
 
