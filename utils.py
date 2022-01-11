@@ -94,9 +94,12 @@ def coord_to_mask(coord, shape):
     """
     coord = np.asarray(coord)
     mask = np.zeros(shape, dtype=np.int_)
+    ndim = coord.shape[1]
     index = tuple(
-        coord[:, i].astype(np.int_)
-        for i in range(coord.shape[1])
+        np.clip(
+            coord[:, i].astype(np.int_),
+            0, shape[i]-1
+        ) for i in range(ndim)
     )
     mask[index] = 1
     return mask
