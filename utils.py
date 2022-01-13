@@ -97,7 +97,7 @@ def coord_to_mask(coord, shape):
     ndim = coord.shape[1]
     index = tuple(
         np.clip(
-            coord[:, i].astype(np.int_),
+            np.round(coord[:, i]).astype(np.int_),
             0, shape[i]-1
         ) for i in range(ndim)
     )
