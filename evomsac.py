@@ -4,7 +4,6 @@
 
 import sys, pickle, functools
 import multiprocessing
-from typing import Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -219,8 +218,8 @@ class EAIndiv(list):
     Instance:
         sampling points on the image, [[pt_u0v0, pt_u0v1,...],[pt_u1v0,...],...]
     """
-    def __init__(self):
-        super().__init__()
+    def __init__(self, iterable=()):
+        super().__init__(iterable)
         self.fitness = EAFitness()
 
 
@@ -296,7 +295,7 @@ class IndivMeta:
         )
         return config
 
-    def generate(self):
+    def random(self):
         """ generate individual, by random sampling in each grid
         :return: individual
         """
@@ -308,6 +307,26 @@ class IndivMeta:
                 indiv_u.append(indiv_uv)
             indiv.append(indiv_u)
         return indiv
+    
+    def from_points(self, points, fitness=None):
+        """ generate individual from points, fitness
+        :param points: sampling points on the grid
+        :param fitness: scalar fitness
+        :return: indiv
+        """
+        indiv = EAIndiv(points)
+        if fitness is not None:
+            indiv.fitness.values = (fitness,)
+        return indiv
+    
+    def to_points(self, indiv):
+        """ convert individual to points, fitness
+        :param indiv: individual
+        :return: points, fitness
+        """
+        points = list(indiv)
+        fitness = indiv.fitness.values[0]
+        return points, fitness
 
     def mutate(self, indiv):
         """ mutate individual in-place, by randomly resample one of the grids
@@ -435,7 +454,7 @@ class EAPop:
         B_arr = get_surfaces([indiv1, indiv2])
         imshow3d(imeta.B, B_arr)
     """
-    def __init__(self, imeta=None, state_pkl=None, n_pop=10):
+    def __init__(self, imeta=None, state_pkl=None, n_pop=2):
         """ init
         :param imeta: IndivMeta(); if given, init; if None, init later
         """
@@ -459,9 +478,9 @@ class EAPop:
             imeta = IndivMeta(config=state["imeta_config"])
             self.init_from_imeta(imeta)
             self.n_pop = state["n_pop"]
-            self.pop = state["pop"]
+            self.pop = [self.imeta.from_points(p) for p in state["pop_points"]]
             self.log_stats = state["log_stats"]
-            self.log_best = state["log_best"]
+            self.log_best = [self.imeta.from_points(p) for p in state["log_best_points"]]
         else:
             raise ValueError("Should provide either imeta or state")
 
@@ -478,7 +497,7 @@ class EAPop:
 
         # population
         self.toolbox.register('population', deap.tools.initRepeat,
-            list, self.imeta.generate)
+            list, self.imeta.random)
         
         # operations
         self.toolbox.register("evaluate", self.imeta.evaluate)
@@ -501,12 +520,12 @@ class EAPop:
         state = dict(
             imeta_config=self.imeta.get_config(),
             n_pop=self.n_pop,
-            pop=self.pop,
+            pop_points=[self.imeta.to_points(i) for i in self.pop],
             log_stats=self.log_stats,
-            log_best=self.log_best
+            log_best_points=[self.imeta.to_points(i) for i in self.log_best]
         )
-        with open(state_pkl, "wb") as f:
-            pickle.dump(state, f)
+        with open(state_pkl, "wb") as pkl:
+            pickle.dump(state, pkl)
 
     def register_map(self, func_map):
         """ for applying multiprocessing.Pool().map from __main__
@@ -544,10 +563,9 @@ class EAPop:
         n_evals = len(pop_invalid)
         return n_evals
 
-    def evolve_one(self, p_cx, p_mut):
-        """ evolve one generation
-        :param p_cx: probability of crossover
-        :param p_mut: probability of mutation
+    def evolve_one(self, action):
+        """ evolve one generation, perform crossover or mutation
+        :param action: select an action, 0=crossover, 1=mutation
         :return: None
         :action: update self.pop, self.log_stats
         """
@@ -557,20 +575,18 @@ class EAPop:
         np.random.shuffle(offspring)
         
         # crossover
-        cx_pairs = list(zip(offspring[::2], offspring[1::2]))
-        cx_idxes = np.nonzero(np.random.rand(len(cx_pairs)) < p_cx)[0]
-        for i in cx_idxes:
-            child1, child2 = cx_pairs[i]
-            self.toolbox.mate(child1, child2)
-            del child1.fitness.values
-            del child2.fitness.values
-        
+        if action == 0:
+            for child1, child2 in zip(offspring[::2], offspring[1::2]):
+                self.toolbox.mate(child1, child2)
+                del child1.fitness.values
+                del child2.fitness.values        
         # mutation
-        mut_idxes = np.nonzero(np.random.rand(len(offspring)) < p_mut)[0]
-        for i in mut_idxes:
-            mutant = offspring[i]
-            self.toolbox.mutate(mutant)
-            del mutant.fitness.values
+        elif action == 1:
+            for mutant in offspring:
+                self.toolbox.mutate(mutant)
+                del mutant.fitness.values
+        else:
+            raise ValueError("action should be 0(crossover) or 1(mutation)")
         
         # update fitness
         n_evals = self.evaluate_pop(offspring)
@@ -580,12 +596,9 @@ class EAPop:
         self.log_stats.record(n_evals=n_evals, **self.stats.compile(self.pop))
         self.log_best.append(self.toolbox.clone(self.pop[0]))
 
-    def evolve(self, n_gen, p_cx=0.5, p_mut=0.5,
-            dump_step=None, state_pkl=None
-        ):
+    def evolve(self, n_gen, dump_step=None, state_pkl=None):
         """ evolve n generations
         :param n_gen: number of generations
-        :param p_cx, p_mut: probability of crossover, mutation
         :param dump_step, state_pkl: dump into pkl file (state_pkl) at intervals (dump_step)
         :return: None
         :action: update self.pop, self.log_stats
@@ -593,9 +606,9 @@ class EAPop:
         for i in range(1, n_gen+1):
             print(i)
             # evolve
-            self.evolve_one(p_cx=p_cx, p_mut=p_mut)
+            self.evolve_one(action=i%2)
             # dump
-            if dump_step is not None:
+            if (dump_step is not None) and (state_pkl is not None):
                 # at intervals or at the last step
                 if (n_gen%dump_step == 0) or (i == n_gen-1):
                     self.dump_state(state_pkl)
@@ -645,16 +658,14 @@ if __name__ == "__main__":
     # read args
     args = sys.argv[1:]
     state_pkl = args[0]
-    n_pop = int(args[1])
-    n_gen = int(args[2])
+    n_gen = int(args[1])
     
     # setup
-    eap = EAPop()
-    eap.load_state(state_pkl)
+    eap = EAPop(state_pkl=state_pkl)
 
     # run parallel
     pool = multiprocessing.Pool()
     eap.register_map(pool.map)
-    eap.init_pop(n_pop=n_pop)
-    eap.evolve(n_gen, dump_step=5, state_pkl=state_pkl)
+    eap.init_pop()
+    eap.evolve(n_gen, dump_step=1, state_pkl=state_pkl)
     pool.close()
