@@ -236,8 +236,11 @@ class IndivMeta:
         # utils
         fit = imeta.fit_surface_interp(zyx)
         fit = imeta.fit_surface_approx(zyx, nctrl_uv=(4,3))
+        # save/load
+        config = imeta.get_config()
+        imeta_new = IndivMeta(config=config)
     """
-    def __init__(self, B, n_vxy=4, n_uz=3, nz_eachu=3, degree=2, r_thresh=3):
+    def __init__(self, B=None, config=None, n_vxy=4, n_uz=3, nz_eachu=3, r_thresh=3):
         """ init, setups
         :param B: binary image
         :param n_vxy, n_uz: number of sampling grids in v(xy) and u(z) directions
@@ -245,28 +248,53 @@ class IndivMeta:
         :param degree: degree for NURBS fitting
         :param r_thresh: distance threshold for fitness evaluation
         """
-        # basic info
-        self.B = B
-        self.shape = B.shape
-        self.nz = B.shape[0]
+        # read config
+        # if provided as args
+        if B is not None:
+            self.B = B
+            self.n_vxy = n_vxy
+            self.n_uz = n_uz
+            self.nz_eachu = nz_eachu
+            self.r_thresh = int(r_thresh)
+        # if provided as a dict
+        elif config is not None:
+            self.B = coord_to_mask(config["zyx"], config["shape"])
+            self.n_vxy = config["n_vxy"]
+            self.n_uz = config["n_uz"]
+            self.nz_eachu = config["nz_eachu"]
+            self.r_thresh = int(config["r_thresh"])
+        else:
+            raise ValueError("Should provide either B or config")
 
-        # sampling and grid
-        self.n_vxy = n_vxy
-        self.n_uz = n_uz
-        self.nz_eachu = nz_eachu
-        self.grid = Grid(B, n_vxy=n_vxy, n_uz=n_uz, nz_eachu=nz_eachu)
+        # image shape, grid
+        self.shape = self.B.shape
+        self.nz = self.B.shape[0]
+        self.grid = Grid(self.B, n_vxy=self.n_vxy, 
+            n_uz=self.n_uz, nz_eachu=self.nz_eachu)
 
         # fitness
-        self.degree = degree
-        npts_xy = [np.sum(Biz > 0) for Biz in B]
+        npts_xy = [np.sum(Biz > 0) for Biz in self.B]
         self.npts = np.sum(npts_xy)
-        self.vu_evallist = np.transpose(np.meshgrid(
+        self.uv_evallist = np.transpose(np.meshgrid(
             np.linspace(0, 1, self.nz),
             np.linspace(0, 1, np.max(npts_xy))
         )).reshape((-1, 2))
-        self.r_thresh = int(r_thresh)
         self.ball = {r: skimage.morphology.ball(r)
             for r in range(1, self.r_thresh+1)}
+    
+    def get_config(self):
+        """ save config to dict, convenient for dump and load
+        :return: config={zyx,shape,n_vxy,n_uz,nz_eachu}
+        """
+        config = dict(
+            zyx=mask_to_coord(self.B),
+            shape=self.shape,
+            n_vxy=self.n_vxy,
+            n_uz=self.n_uz,
+            nz_eachu=self.nz_eachu,
+            r_thresh=self.r_thresh
+        )
+        return config
 
     def generate(self):
         """ generate individual, by random sampling in each grid
@@ -306,7 +334,7 @@ class IndivMeta:
                 zyx.append(zyx_i)
         return zyx
 
-    def fit_surface_interp(self, zyx):
+    def fit_surface_interp(self, zyx, degree=2):
         """ fitting surface using NURBS interpolation
         :param zyx: sampling points, shape=(n_vxy*n_uz, 3), order: [u0v0,u0v1,...]
         :return: fit
@@ -314,13 +342,13 @@ class IndivMeta:
         """
         fit = geomdl.fitting.interpolate_surface(
             zyx,
-            degree_u=self.degree, degree_v=self.degree,
+            degree_u=degree, degree_v=degree,
             size_u=self.n_uz, size_v=self.n_vxy,
             centripetal=True
         )
         return fit
   
-    def fit_surface_approx(self, zyx, nctrl_uv=(None, None)):
+    def fit_surface_approx(self, zyx, nctrl_uv=(None, None), degree=2):
         """ fitting surface using NURBS approximation
         :param zyx: sampling points, shape=(n_vxy*n_uz, 3), order: [u0v0,u0v1,...]
         :param nctrl_uv: (ctrlpts_size_u,ctrlpts_size_v)
@@ -333,7 +361,7 @@ class IndivMeta:
         # fitting
         fit = geomdl.fitting.approximate_surface(
             zyx,
-            degree_u=self.degree, degree_v=self.degree,
+            degree_u=degree, degree_v=degree,
             size_u=self.n_uz, size_v=self.n_vxy,
             centripetal=True,
             ctrlpts_size_u=nctrl_u, ctrlpts_size_v=nctrl_v
@@ -353,7 +381,7 @@ class IndivMeta:
 
         # convert fitted surface to binary image
         # evaluate at dense points
-        zyx_surf = fit.evaluate_list(self.vu_evallist)
+        zyx_surf = fit.evaluate_list(self.uv_evallist)
         Bfit = coord_to_mask(zyx_surf, self.shape)
         return zyx, Bfit
 
@@ -395,12 +423,11 @@ class EAPop:
         imeta = IndivMeta(B, n_vxy, n_uz, nz_eachu, degree, r_thresh)
         eap = EAPop(imeta)
         eap.init_pop(n_pop)
-        eap.evolve(n_gen, p_cx, p_mut, dump_step, dump_name)
+        eap.evolve(n_gen, p_cx, p_mut, dump_step, state_pkl)
         # dump
-        eap.dump_state(dump_name)
+        eap.dump_state(state_pkl)
         # load
-        eap = EAPop()
-        eap.load_state(dump_name)
+        eap = EAPop(state_pkl=state_pkl)
         # stats and plot
         df_stats = eap.get_log_stats()
         eap.plot_log_stats(xlim, save)
@@ -408,34 +435,45 @@ class EAPop:
         B_arr = get_surfaces([indiv1, indiv2])
         imshow3d(imeta.B, B_arr)
     """
-    def __init__(self, indiv_meta=None):
+    def __init__(self, imeta=None, state_pkl=None, n_pop=10):
         """ init
-        :param indiv_meta: IndivMeta(); if given, init; if None, init later
+        :param imeta: IndivMeta(); if given, init; if None, init later
         """
-        # variables
-        # tools
+        # variables to be assigned in init_from_imeta
         self.imeta = None
         self.toolbox = None
         self.stats = None
-        # population
-        self.n_pop = None
-        self.pop = None
-        # log
-        self.log_stats = None
-        self.log_best = None
 
-        # init deap if given indiv_meta
-        if indiv_meta is not None:
-            self._init_toolbox(indiv_meta)
+        # read config
+        # if provided imeta
+        if imeta is not None:
+            self.init_from_imeta(imeta)
+            self.n_pop = n_pop
+            self.pop = None
+            self.log_stats = None
+            self.log_best = None
+        # if provided state pickle file
+        elif state_pkl is not None:
+            with open(state_pkl, "rb") as pkl:
+                state = pickle.load(pkl)
+            imeta = IndivMeta(config=state["imeta_config"])
+            self.init_from_imeta(imeta)
+            self.n_pop = state["n_pop"]
+            self.pop = state["pop"]
+            self.log_stats = state["log_stats"]
+            self.log_best = state["log_best"]
+        else:
+            raise ValueError("Should provide either imeta or state")
 
-    def _init_toolbox(self, indiv_meta):
+
+    def init_from_imeta(self, imeta):
         """ initialize tools for evolution algorithm
-        :param indiv_meta: IndivMeta()
+        :param imeta: IndivMeta()
         :return: None
         :action: assign variables imeta, toolbox, stats
         """
         # setup meta
-        self.imeta = indiv_meta
+        self.imeta = imeta
         self.toolbox = deap.base.Toolbox()
 
         # population
@@ -455,18 +493,32 @@ class EAPop:
         self.stats.register('best', np.min)
         self.stats.register('std', np.std)
     
+    def dump_state(self, state_pkl):
+        """ dump population state ={imeta,pop,log_stats}
+        :param state_pkl: name of pickle file to dump
+        :return: None
+        """
+        state = dict(
+            imeta_config=self.imeta.get_config(),
+            n_pop=self.n_pop,
+            pop=self.pop,
+            log_stats=self.log_stats,
+            log_best=self.log_best
+        )
+        with open(state_pkl, "wb") as f:
+            pickle.dump(state, f)
+
     def register_map(self, func_map):
         """ for applying multiprocessing.Pool().map from __main__
         """
         self.toolbox.register("map", func_map)
 
-    def init_pop(self, n_pop):
+    def init_pop(self):
         """ initialize population, logbook, evaluate
         :param n_pop: size of population
         """
         # generation population
-        self.n_pop = n_pop
-        self.pop = self.toolbox.population(n_pop)
+        self.pop = self.toolbox.population(self.n_pop)
         # evaluate, sort, log stats
         self.log_stats = deap.tools.Logbook()
         n_evals = self.evaluate_pop(self.pop)
@@ -529,51 +581,24 @@ class EAPop:
         self.log_best.append(self.toolbox.clone(self.pop[0]))
 
     def evolve(self, n_gen, p_cx=0.5, p_mut=0.5,
-            dump_step=None, dump_name=None
+            dump_step=None, state_pkl=None
         ):
         """ evolve n generations
         :param n_gen: number of generations
         :param p_cx, p_mut: probability of crossover, mutation
-        :param dump_step, dump_name: dump into pkl file (dump_name) at intervals (dump_step)
+        :param dump_step, state_pkl: dump into pkl file (state_pkl) at intervals (dump_step)
         :return: None
         :action: update self.pop, self.log_stats
         """
         for i in range(1, n_gen+1):
+            print(i)
             # evolve
             self.evolve_one(p_cx=p_cx, p_mut=p_mut)
             # dump
             if dump_step is not None:
                 # at intervals or at the last step
                 if (n_gen%dump_step == 0) or (i == n_gen-1):
-                    self.dump_state(dump_name)
-        
-    def dump_state(self, dump_name):
-        """ dump population state ={imeta,pop,log_stats}
-        :param dump_name: name of pickle file to dump
-        :return: None
-        """
-        state = dict(
-            indiv_meta=self.imeta,
-            pop=self.pop,
-            log_stats=self.log_stats,
-            log_best=self.log_best
-        )
-        with open(dump_name, "wb") as f:
-            pickle.dump(state, f)
-
-    def load_state(self, dump_name):
-        """ load population state ={imeta,pop,log_stats}
-        :param dump_name: name of dumped pickle file
-        :return: None
-        :action: init with imeta, assign self.pop, self.log_stats
-        """
-        with open(dump_name, "rb") as pkl:
-            state = pickle.load(pkl)
-
-        self._init_toolbox(state["indiv_meta"])
-        self.pop = state["pop"]
-        self.log_stats = state["log_stats"]
-        self.log_best = state["log_best"]
+                    self.dump_state(state_pkl)
 
     def get_log_stats(self):
         """ get log_stats in DataFrame
@@ -619,16 +644,17 @@ if __name__ == "__main__":
     # setup
     # read args
     args = sys.argv[1:]
-    dump_name = args[0]
-    n_gen = int(args[1])
+    state_pkl = args[0]
+    n_pop = int(args[1])
+    n_gen = int(args[2])
     
     # setup
     eap = EAPop()
-    eap.load_state(dump_name)
+    eap.load_state(state_pkl)
 
     # run parallel
     pool = multiprocessing.Pool()
     eap.register_map(pool.map)
-    eap.init_pop(n_pop=len(eap.pop))
-    eap.evolve(n_gen, dump_interval=5, dump_name=dump_name)
+    eap.init_pop(n_pop=n_pop)
+    eap.evolve(n_gen, dump_step=5, state_pkl=state_pkl)
     pool.close()
