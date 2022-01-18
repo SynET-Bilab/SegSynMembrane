@@ -2,8 +2,7 @@
 """ EvoMSAC
 """
 
-import sys, pickle, functools
-import multiprocessing
+import pickle, functools
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -28,7 +27,7 @@ class Grid:
         uv_size: uv_size[iu][iv] is the number of elements in the grid
         uv_zyx: uv_zyx[iu][iv] is the list of [z,y,x] of points in the grid
     """
-    def __init__(self, B, n_vxy=4, n_uz=3, nz_eachu=1):
+    def __init__(self, B, n_vxy, n_uz, nz_eachu):
         """ init and generate grids
         :param B: binary image, shape=(nz,ny,nx)
         :param n_vxy, n_uz: number of sampling grids in v(xy) and u(z) directions
@@ -458,19 +457,19 @@ class EAPop:
         """ init
         :param imeta: IndivMeta(); if given, init; if None, init later
         """
-        # variables to be assigned in init_from_imeta
+        # attributes
         self.imeta = None
         self.toolbox = None
         self.stats = None
+        self.pop = None
+        self.log_stats = None
+        self.log_best = None
 
         # read config
         # if provided imeta
         if imeta is not None:
             self.init_from_imeta(imeta)
             self.n_pop = n_pop
-            self.pop = None
-            self.log_stats = None
-            self.log_best = None
         # if provided state pickle file
         elif state_pkl is not None:
             with open(state_pkl, "rb") as pkl:
@@ -478,9 +477,12 @@ class EAPop:
             imeta = IndivMeta(config=state["imeta_config"])
             self.init_from_imeta(imeta)
             self.n_pop = state["n_pop"]
-            self.pop = [self.imeta.from_points(p) for p in state["pop_points"]]
-            self.log_stats = state["log_stats"]
-            self.log_best = [self.imeta.from_points(p) for p in state["log_best_points"]]
+            if state["pop_points"] is not None:
+                self.pop = [self.imeta.from_points(p) for p in state["pop_points"]]
+            if state["log_stats"] is not None:
+                self.log_stats = state["log_stats"]
+            if state["log_best_points"] is not None:
+                self.log_best = [self.imeta.from_points(p) for p in state["log_best_points"]]
         else:
             raise ValueError("Should provide either imeta or state")
 
@@ -517,12 +519,16 @@ class EAPop:
         :param state_pkl: name of pickle file to dump
         :return: None
         """
+        # convert EAIndiv to points
+        pop_points = [self.imeta.to_points(i) for i in self.pop] if (self.pop is not None) else None
+        log_best_points = [self.imeta.to_points(i) for i in self.log_best] if (self.log_best is not None) else None
+        # collect state
         state = dict(
             imeta_config=self.imeta.get_config(),
             n_pop=self.n_pop,
-            pop_points=[self.imeta.to_points(i) for i in self.pop],
+            pop_points=pop_points,
             log_stats=self.log_stats,
-            log_best_points=[self.imeta.to_points(i) for i in self.log_best]
+            log_best_points=log_best_points
         )
         with open(state_pkl, "wb") as pkl:
             pickle.dump(state, pkl)
@@ -651,21 +657,3 @@ class EAPop:
             B_sample = coord_to_mask(zyx, self.imeta.shape)
             B_arr.extend([B_sample, B_surf])
         return B_arr
-
-
-if __name__ == "__main__":
-    # setup
-    # read args
-    args = sys.argv[1:]
-    state_pkl = args[0]
-    n_gen = int(args[1])
-    
-    # setup
-    eap = EAPop(state_pkl=state_pkl)
-
-    # run parallel
-    pool = multiprocessing.Pool()
-    eap.register_map(pool.map)
-    eap.init_pop()
-    eap.evolve(n_gen, dump_step=1, state_pkl=state_pkl)
-    pool.close()
