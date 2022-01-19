@@ -482,7 +482,7 @@ class EAPop:
             if state["log_stats"] is not None:
                 self.log_stats = state["log_stats"]
             if state["log_best_points"] is not None:
-                self.log_best = [self.imeta.from_points(p) for p in state["log_best_points"]]
+                self.log_best = [self.imeta.from_points(*p) for p in state["log_best_points"]]
         else:
             raise ValueError("Should provide either imeta or state")
 
