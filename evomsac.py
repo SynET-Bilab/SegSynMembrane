@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import sklearn.decomposition
 import skimage
+import splipy.surface_factory
 import deap, deap.base, deap.tools
-import geomdl
 
 from synseg.plot import imshow3d
 from synseg.utils import mask_to_coord, coord_to_mask
@@ -135,6 +135,77 @@ class Grid:
         uv_size = {k: len(v) for k, v in uv_zyx.items()}
         return uv_size, uv_zyx
 
+
+class BSpline:
+    @staticmethod
+    def centripetal_oneaxis(pts_net, degree):
+        """ compute centripetal parameters (ts) and knots
+        results are 1d arrays along axis=0, averaged over axis=1
+        :param pts_net: shape=(nu,nv,dim)
+        :param degree: degree of bspline
+        :return: ts, knots
+        """
+        pts_net = np.asarray(pts_net)
+
+        # parameter selection
+        # sqrt(distance) for each segment
+        l_seg = np.linalg.norm(np.diff(pts_net, axis=0), axis=-1)**0.5
+        # centripedal parameters
+        l_accum = np.cumsum(l_seg, axis=0)
+        ts = np.mean(l_accum/l_accum[-1, :], axis=1)
+        # prepend initial t=0
+        ts = np.insert(ts, 0, 0)
+
+        # knot generation
+        n_data = len(pts_net)
+        # starting part: degree+1 knots
+        knots = np.zeros(n_data+degree+1)
+        # middle part: n_data-degree-1 knots
+        t_rollsum = np.convolve(ts[1:], np.ones(
+            degree), mode='valid')[:n_data-degree-1]
+        knots[degree+1:n_data] = t_rollsum/degree
+        # ending part: degree+1 knots
+        knots[n_data:] = 1
+        return ts, knots
+
+    @staticmethod
+    def centripetal_surface(pts_net, degree):
+        """ compute centripetal parameters and knots
+        :param pts_net: shape=(nu,nv,dim)
+        :param degree: degree of bspline in u,v directions
+        :return: ts_uv, knots_uv
+            ts_uv: (ts_u, ts_v)
+            knots_uv: (knots_u, knots_v)
+        """
+        # u-direction
+        ts_u, knots_u = BSpline.centripetal_oneaxis(pts_net, degree)
+        # v-direction
+        pts_swap = np.transpose(pts_net, axes=(1, 0, 2))
+        ts_v, knots_v = BSpline.centripetal_oneaxis(pts_swap, degree)
+        # return
+        ts_uv = (ts_u, ts_v)
+        knots_uv = (knots_u, knots_v)
+        return ts_uv, knots_uv
+
+    @staticmethod
+    def interpolate_surface(pts_net, degree):
+        """ interpolate surface, used centripetal method
+        :param pts_net: shape=(nu,nv,dim)
+        :param degree: degree of bspline in u,v directions
+        :return: fit
+            fit: splipy surface
+        """
+        # centripetal method
+        ts_uv, knots_uv = BSpline.centripetal_surface(pts_net, degree)
+        bases = [
+            splipy.BSplineBasis(order=degree+1, knots=knots)
+            for knots in knots_uv
+        ]
+        # fit
+        fit = splipy.surface_factory.interpolate(
+            pts_net, bases=bases, u=ts_uv
+        )
+        return fit
 
 class Voxelize:
     """ Pixel-precision voxelization of a parameteric surface (from NURBS fitting)
@@ -276,16 +347,17 @@ class IndivMeta:
             n_uz=self.n_uz, nz_eachu=self.nz_eachu)
 
         # fitness
+        # no. points in the image
         npts_iz = [np.sum(Biz > 0) for Biz in self.B]
-        self.npts = np.sum(npts_iz)
-        # evalpoints in xy: set to npts_iz or diagonal length
+        self.npts_B = np.sum(npts_iz)
+        # evalpts in xy: set to npts_iz or diagonal length
         neval_xy = int(min(np.max(npts_iz),
             np.sqrt(self.shape[1]**2+self.shape[2]**2)
         ))
-        self.uv_evallist = np.transpose(np.meshgrid(
-            np.linspace(0, 1, self.nz),
-            np.linspace(0, 1, neval_xy)
-        )).reshape((-1, 2))
+        # default evalpts
+        self.u_eval_default = np.linspace(0, 1, self.nz)
+        self.v_eval_default = np.linspace(0, 1, neval_xy)
+        # ball for dilation
         self.ball = {r: skimage.morphology.ball(r)
             for r in range(1, self.r_thresh+1)}
     
@@ -316,25 +388,25 @@ class IndivMeta:
             indiv.append(indiv_u)
         return indiv
     
-    def from_points(self, points, fitness=None):
-        """ generate individual from points, fitness
-        :param points: sampling points on the grid
+    def from_list_fitness(self, sample_list, fitness=None):
+        """ generate individual from sample list, fitness
+        :param sample_list: list of sampling points on the grid
         :param fitness: scalar fitness
         :return: indiv
         """
-        indiv = EAIndiv(points)
+        indiv = EAIndiv(sample_list)
         if fitness is not None:
             indiv.fitness.values = (fitness,)
         return indiv
     
-    def to_points(self, indiv):
-        """ convert individual to points, fitness
+    def to_list_fitness(self, indiv):
+        """ convert individual to sample list, fitness
         :param indiv: individual
-        :return: points, fitness
+        :return: sample_list, fitness
         """
-        points = list(indiv)
+        sample_list = list(indiv)
         fitness = indiv.fitness.values[0]
-        return points, fitness
+        return sample_list, fitness
 
     def mutate(self, indiv):
         """ mutate individual in-place, by randomly resample one of the grids
@@ -347,69 +419,47 @@ class IndivMeta:
         indiv_uv_new = np.random.randint(self.grid.uv_size[(iu, iv)])
         indiv[iu][iv] = indiv_uv_new
 
-    def get_coord(self, indiv):
-        """ get coordinates from individual
+    def get_coord_net(self, indiv):
+        """ get coordinates (net-shaped) from individual
         :param indiv: individual
-        :return: zyx
-            zyx: shape=(n_vxy*n_uz, 3), [[z,y,x]_u0v0,[z,y,x]_u0v1,...]
+        :return: zyx_net
+            zyx_net: shape=(n_uz, n_vxy, 3)
         """
-        zyx = []
+        zyx_net = np.zeros((self.n_uz, self.n_vxy, 3))
         for iu in range(self.n_uz):
             for iv in range(self.n_vxy):
                 lb_i = indiv[iu][iv]
-                zyx_i = self.grid.uv_zyx[(iu, iv)][lb_i]
-                zyx.append(zyx_i)
-        return zyx
-
-    def fit_surface_interp(self, zyx, degree=2):
-        """ fitting surface using NURBS interpolation
-        :param zyx: sampling points, shape=(n_vxy*n_uz, 3), order: [u0v0,u0v1,...]
-        :return: fit
-            fit: geomdl surface object
+                zyx_net[iu][iv] = self.grid.uv_zyx[(iu, iv)][lb_i]
+        return zyx_net
+    
+    def net_to_flat(self, net):
+        """ reshape data from net to flat
+        :param net: shape=(n_uz, n_vxy, 3)
+        :return: flat
+            flat: shape=(n_uz*n_vxy, 3)
         """
-        fit = geomdl.fitting.interpolate_surface(
-            zyx,
-            degree_u=degree, degree_v=degree,
-            size_u=self.n_uz, size_v=self.n_vxy,
-            centripetal=True
-        )
-        return fit
+        return net.reshape((-1, 3))
   
-    def fit_surface_approx(self, zyx, nctrl_uv=(None, None), degree=2):
-        """ fitting surface using NURBS approximation
-        :param zyx: sampling points, shape=(n_vxy*n_uz, 3), order: [u0v0,u0v1,...]
-        :param nctrl_uv: (ctrlpts_size_u,ctrlpts_size_v)
-        :return: fit
-            fit: geomdl surface object
-        """
-        # assign ctrlpts_size if not given
-        nctrl_u = nctrl_uv[0] if (nctrl_uv[0] is not None) else (self.n_uz-1)
-        nctrl_v = nctrl_uv[1] if (nctrl_uv[1] is not None) else (self.n_vxy-1)
-        # fitting
-        fit = geomdl.fitting.approximate_surface(
-            zyx,
-            degree_u=degree, degree_v=degree,
-            size_u=self.n_uz, size_v=self.n_vxy,
-            centripetal=True,
-            ctrlpts_size_u=nctrl_u, ctrlpts_size_v=nctrl_v
-        )
-        return fit
-
-    def get_surface(self, indiv):
-        """ fit surface from individual, a wrapper of several functions
+    def fit_surface_eval(self, indiv, u_eval=None, v_eval=None):
+        """ fit surface from individual, evaluate at net
         :param indiv: individual
+        :param u_eval, v_eval: 1d arrays, u(z) and v(xy) to evaluate at
         :return: zyx, Bfit
-            zyx: coord of individual
+            zyx: coord of fitted surface, shape=(n_u_eval*n_v_eval, 3)
             Bfit: rough voxelization of fitted surface
         """
+        # reading args
+        u_eval = u_eval if (u_eval is not None) else self.u_eval_default
+        v_eval = v_eval if (v_eval is not None) else self.v_eval_default
+
         # nurbs fit
-        zyx = self.get_coord(indiv)
-        fit = self.fit_surface_interp(zyx)
+        zyx_net = self.get_coord_net(indiv)
+        fit = BSpline.interpolate_surface(zyx_net, degree=2)
 
         # convert fitted surface to binary image
         # evaluate at dense points
-        zyx_surf = fit.evaluate_list(self.uv_evallist)
-        Bfit = coord_to_mask(zyx_surf, self.shape)
+        zyx = self.net_to_flat(fit(u_eval, v_eval))
+        Bfit = coord_to_mask(zyx, self.shape)
         return zyx, Bfit
 
     def calc_fitness(self, Bfit):
@@ -425,7 +475,7 @@ class IndivMeta:
             fitness += n_r * r**2
             n_accum += n_r
         # counting points >= r_thresh
-        n_rest = self.npts - n_accum
+        n_rest = self.npts_B - n_accum
         fitness += n_rest * self.r_thresh**2
         return fitness
 
@@ -434,7 +484,7 @@ class IndivMeta:
         :param indiv: individual
         :return: (fitness,)
         """
-        _, Bfit = self.get_surface(indiv)
+        _, Bfit = self.fit_surface_eval(indiv)
         fitness = self.calc_fitness(Bfit)
         return (fitness,)
 
@@ -486,12 +536,12 @@ class EAPop:
             imeta = IndivMeta(config=state["imeta_config"])
             self.init_from_imeta(imeta)
             self.n_pop = state["n_pop"]
-            if state["pop_points"] is not None:
-                self.pop = [self.imeta.from_points(p) for p in state["pop_points"]]
+            if state["pop_list"] is not None:
+                self.pop = [self.imeta.from_list_fitness(p) for p in state["pop_list"]]
             if state["log_stats"] is not None:
                 self.log_stats = state["log_stats"]
-            if state["log_best_points"] is not None:
-                self.log_best = [self.imeta.from_points(*p) for p in state["log_best_points"]]
+            if state["log_best_list"] is not None:
+                self.log_best = [self.imeta.from_list_fitness(*p) for p in state["log_best_list"]]
         else:
             raise ValueError("Should provide either imeta or state")
 
@@ -528,16 +578,16 @@ class EAPop:
         :param state_pkl: name of pickle file to dump
         :return: None
         """
-        # convert EAIndiv to points
-        pop_points = [self.imeta.to_points(i) for i in self.pop] if (self.pop is not None) else None
-        log_best_points = [self.imeta.to_points(i) for i in self.log_best] if (self.log_best is not None) else None
+        # convert EAIndiv to list
+        pop_list = [self.imeta.to_list_fitness(i) for i in self.pop] if (self.pop is not None) else None
+        log_best_list = [self.imeta.to_list_fitness(i) for i in self.log_best] if (self.log_best is not None) else None
         # collect state
         state = dict(
             imeta_config=self.imeta.get_config(),
             n_pop=self.n_pop,
-            pop_points=pop_points,
+            pop_list=pop_list,
             log_stats=self.log_stats,
-            log_best_points=log_best_points
+            log_best_list=log_best_list
         )
         with open(state_pkl, "wb") as pkl:
             pickle.dump(state, pkl)
@@ -654,15 +704,17 @@ class EAPop:
             fig.savefig(save)
         return fig, ax
     
-    def get_surfaces(self, indiv_arr):
-        """ get surfaces from array of individuals
+    def fit_surfaces_eval(self, indiv_arr, u_eval=None, v_eval=None):
+        """ fit surfaces from individuals, evaluate at net
         :param indiv_arr: array of individuals
         :return: B_arr
             B_arr: [B_sample_0, B_surf_0, B_sample_1, B_surf_1, ...]
         """
         B_arr = []
         for indiv in indiv_arr:
-            zyx, B_surf = self.imeta.get_surface(indiv)
+            zyx, B_surf = self.imeta.fit_surface_eval(
+                indiv, u_eval=u_eval, v_eval=v_eval
+            )
             B_sample = coord_to_mask(zyx, self.imeta.shape)
             B_arr.extend([B_sample, B_surf])
         return B_arr
