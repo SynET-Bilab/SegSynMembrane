@@ -8,15 +8,15 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import sklearn.decomposition
 import skimage
+import sparse
 import splipy.surface_factory
 import deap, deap.base, deap.tools
 
-from synseg.plot import imshow3d
 from synseg.utils import mask_to_coord, coord_to_mask
 
 __all__ = [
-    "Grid", "EAFitness", "EAIndiv", "IndivMeta", "EAPop",
-    "Voxelize"
+    "Grid", "BSplineSurf", "Voxelize",
+    "EAFitness", "EAIndiv", "IndivMeta", "EAPop",
 ]
 
 #=========================
@@ -360,12 +360,13 @@ class IndivMeta:
         # default evalpts
         self.u_eval_default = np.linspace(0, 1, self.nz)
         self.v_eval_default = np.linspace(0, 1, neval_xy)
-        # image dilated at r's
-        self.dilate_Br = {
-            r: skimage.morphology.binary_dilation(
+        # image dilated at r's: in sparse format
+        self.dilate_Br = {0: sparse.COO(self.B)}
+        for r in range(1, self.r_thresh+1):
+            dilate_Br_r = skimage.morphology.binary_dilation(
                 self.B, skimage.morphology.ball(r)
-            ).astype(int) for r in range(1, self.r_thresh+1)
-        }
+            ).astype(int)
+            self.dilate_Br[r] = sparse.COO(dilate_Br_r)
     
     def get_config(self):
         """ save config to dict, convenient for dump and load
@@ -475,9 +476,10 @@ class IndivMeta:
         """
         # iterate over layers of r's
         fitness = 0
-        n_accum_prev = np.sum(self.B * Bfit)  # no. overlaps accumulated
+        Bfit_sparse = sparse.COO(Bfit)
+        n_accum_prev = np.sum(self.dilate_Br[0] * Bfit_sparse)  # no. overlaps accumulated
         for r in range(1, self.r_thresh+1):
-            n_accum_curr = np.sum(self.dilate_Br[r] * Bfit)
+            n_accum_curr = np.sum(self.dilate_Br[r] * Bfit_sparse)
             n_r = n_accum_curr - n_accum_prev  # no. overlaps at r
             fitness += n_r * r**2
             n_accum_prev = n_accum_curr
@@ -676,7 +678,6 @@ class EAPop:
         :action: update self.pop, self.log_stats
         """
         for i in range(1, n_gen+1):
-            print(i)
             # evolve
             self.evolve_one(action=i%2)
             # dump
