@@ -14,6 +14,11 @@ import geomdl
 from synseg.plot import imshow3d
 from synseg.utils import mask_to_coord, coord_to_mask
 
+__all__ = [
+    "Grid", "EAFitness", "EAIndiv", "IndivMeta", "EAPop",
+    "Voxelize"
+]
+
 #=========================
 # auxiliary functions
 #=========================
@@ -267,15 +272,19 @@ class IndivMeta:
         # image shape, grid
         self.shape = self.B.shape
         self.nz = self.B.shape[0]
-        self.grid = Grid(self.B, n_vxy=self.n_vxy, 
+        self.grid = Grid(self.B, n_vxy=self.n_vxy,
             n_uz=self.n_uz, nz_eachu=self.nz_eachu)
 
         # fitness
-        npts_xy = [np.sum(Biz > 0) for Biz in self.B]
-        self.npts = np.sum(npts_xy)
+        npts_iz = [np.sum(Biz > 0) for Biz in self.B]
+        self.npts = np.sum(npts_iz)
+        # evalpoints in xy: set to npts_iz or diagonal length
+        neval_xy = int(min(np.max(npts_iz),
+            np.sqrt(self.shape[1]**2+self.shape[2]**2)
+        ))
         self.uv_evallist = np.transpose(np.meshgrid(
             np.linspace(0, 1, self.nz),
-            np.linspace(0, 1, np.max(npts_xy))
+            np.linspace(0, 1, neval_xy)
         )).reshape((-1, 2))
         self.ball = {r: skimage.morphology.ball(r)
             for r in range(1, self.r_thresh+1)}
