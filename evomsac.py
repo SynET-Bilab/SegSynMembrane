@@ -136,20 +136,21 @@ class Grid:
         return uv_size, uv_zyx
 
 
-class BSpline:
+class BSplineSurf:
     @staticmethod
-    def centripetal_oneaxis(pts_net, degree):
-        """ compute centripetal parameters (ts) and knots
+    def parametrize_oneaxis(pts_net, degree, exponent):
+        """ generate parameters (ts) and knots
         results are 1d arrays along axis=0, averaged over axis=1
         :param pts_net: shape=(nu,nv,dim)
         :param degree: degree of bspline
+        :param exponent: chord length method - 1; centripetal - 0.5
         :return: ts, knots
         """
         pts_net = np.asarray(pts_net)
 
         # parameter selection
         # sqrt(distance) for each segment
-        l_seg = np.linalg.norm(np.diff(pts_net, axis=0), axis=-1)**0.5
+        l_seg = np.linalg.norm(np.diff(pts_net, axis=0), axis=-1)**exponent
         # centripedal parameters
         l_accum = np.cumsum(l_seg, axis=0)
         ts = np.mean(l_accum/l_accum[-1, :], axis=1)
@@ -169,34 +170,36 @@ class BSpline:
         return ts, knots
 
     @staticmethod
-    def centripetal_surface(pts_net, degree):
-        """ compute centripetal parameters and knots
+    def parametrize(pts_net, degree, exponent):
+        """ generate parameters and knots
         :param pts_net: shape=(nu,nv,dim)
         :param degree: degree of bspline in u,v directions
+        :param exponent: chord length method - 1; centripetal - 0.5
         :return: ts_uv, knots_uv
             ts_uv: (ts_u, ts_v)
             knots_uv: (knots_u, knots_v)
         """
         # u-direction
-        ts_u, knots_u = BSpline.centripetal_oneaxis(pts_net, degree)
+        ts_u, knots_u = BSplineSurf.parametrize_oneaxis(pts_net, degree, exponent)
         # v-direction
         pts_swap = np.transpose(pts_net, axes=(1, 0, 2))
-        ts_v, knots_v = BSpline.centripetal_oneaxis(pts_swap, degree)
+        ts_v, knots_v = BSplineSurf.parametrize_oneaxis(pts_swap, degree, exponent)
         # return
         ts_uv = (ts_u, ts_v)
         knots_uv = (knots_u, knots_v)
         return ts_uv, knots_uv
 
     @staticmethod
-    def interpolate_surface(pts_net, degree):
-        """ interpolate surface, used centripetal method
+    def interpolate(pts_net, degree, exponent=0.5):
+        """ interpolate surface
         :param pts_net: shape=(nu,nv,dim)
         :param degree: degree of bspline in u,v directions
+        :param exponent: chord length method - 1; centripetal - 0.5
         :return: fit
             fit: splipy surface
         """
         # centripetal method
-        ts_uv, knots_uv = BSpline.centripetal_surface(pts_net, degree)
+        ts_uv, knots_uv = BSplineSurf.parametrize(pts_net, degree, exponent)
         bases = [
             splipy.BSplineBasis(order=degree+1, knots=knots)
             for knots in knots_uv
@@ -314,13 +317,13 @@ class IndivMeta:
         config = imeta.get_config()
         imeta_new = IndivMeta(config=config)
     """
-    def __init__(self, B=None, config=None, n_vxy=4, n_uz=3, nz_eachu=3, r_thresh=3):
+    def __init__(self, B=None, config=None, n_vxy=4, n_uz=3, nz_eachu=3, r_thresh=2):
         """ init, setups
         :param B: binary image
         :param n_vxy, n_uz: number of sampling grids in v(xy) and u(z) directions
         :param nz_eachu: number of z-direction slices contained in each grid
         :param degree: degree for NURBS fitting
-        :param r_thresh: distance threshold for fitness evaluation
+        :param r_thresh: distance threshold for fitness evaluation, r_outliers >= r_thresh+1
         """
         # read config
         # if provided as args
@@ -357,9 +360,12 @@ class IndivMeta:
         # default evalpts
         self.u_eval_default = np.linspace(0, 1, self.nz)
         self.v_eval_default = np.linspace(0, 1, neval_xy)
-        # ball for dilation
-        self.ball = {r: skimage.morphology.ball(r)
-            for r in range(1, self.r_thresh+1)}
+        # image dilated at r's
+        self.dilate_Br = {
+            r: skimage.morphology.binary_dilation(
+                self.B, skimage.morphology.ball(r)
+            ).astype(int) for r in range(1, self.r_thresh+1)
+        }
     
     def get_config(self):
         """ save config to dict, convenient for dump and load
@@ -432,7 +438,7 @@ class IndivMeta:
                 zyx_net[iu][iv] = self.grid.uv_zyx[(iu, iv)][lb_i]
         return zyx_net
     
-    def net_to_flat(self, net):
+    def flatten_net(self, net):
         """ reshape data from net to flat
         :param net: shape=(n_uz, n_vxy, 3)
         :return: flat
@@ -444,23 +450,24 @@ class IndivMeta:
         """ fit surface from individual, evaluate at net
         :param indiv: individual
         :param u_eval, v_eval: 1d arrays, u(z) and v(xy) to evaluate at
-        :return: zyx, Bfit
-            zyx: coord of fitted surface, shape=(n_u_eval*n_v_eval, 3)
+        :return: Bfit, pts_fit, sample_net
             Bfit: rough voxelization of fitted surface
+            pts_fit: coord of evaluated points on surface, shape=(n_u_eval*n_v_eval, 3)
+            sample_net: coord of sample points, shape=(n_u, n_v, 3)
         """
         # reading args
         u_eval = u_eval if (u_eval is not None) else self.u_eval_default
         v_eval = v_eval if (v_eval is not None) else self.v_eval_default
 
         # nurbs fit
-        zyx_net = self.get_coord_net(indiv)
-        fit = BSpline.interpolate_surface(zyx_net, degree=2)
+        sample_net = self.get_coord_net(indiv)
+        fit = BSplineSurf.interpolate(sample_net, degree=2, exponent=0.5)
 
         # convert fitted surface to binary image
         # evaluate at dense points
-        zyx = self.net_to_flat(fit(u_eval, v_eval))
-        Bfit = coord_to_mask(zyx, self.shape)
-        return zyx, Bfit
+        pts_fit = self.flatten_net(fit(u_eval, v_eval))
+        Bfit = coord_to_mask(pts_fit, self.shape)
+        return Bfit, pts_fit, sample_net
 
     def calc_fitness(self, Bfit):
         """ calculate fitness
@@ -468,15 +475,15 @@ class IndivMeta:
         """
         # iterate over layers of r's
         fitness = 0
-        n_accum = np.sum(self.B * Bfit)  # no. overlaps accumulated
-        for r in range(1, self.r_thresh):
-            Bfit_r = skimage.morphology.binary_dilation(Bfit, self.ball[r])
-            n_r = np.sum(self.B * Bfit_r) - n_accum  # no. overlaps at r
+        n_accum_prev = np.sum(self.B * Bfit)  # no. overlaps accumulated
+        for r in range(1, self.r_thresh+1):
+            n_accum_curr = np.sum(self.dilate_Br[r] * Bfit)
+            n_r = n_accum_curr - n_accum_prev  # no. overlaps at r
             fitness += n_r * r**2
-            n_accum += n_r
+            n_accum_prev = n_accum_curr
         # counting points >= r_thresh
-        n_rest = self.npts_B - n_accum
-        fitness += n_rest * self.r_thresh**2
+        n_rest = self.npts_B - n_accum_prev
+        fitness += n_rest * (self.r_thresh+1)**2
         return fitness
 
     def evaluate(self, indiv):
@@ -484,7 +491,7 @@ class IndivMeta:
         :param indiv: individual
         :return: (fitness,)
         """
-        _, Bfit = self.fit_surface_eval(indiv)
+        Bfit, _, _ = self.fit_surface_eval(indiv)
         fitness = self.calc_fitness(Bfit)
         return (fitness,)
 
@@ -712,9 +719,11 @@ class EAPop:
         """
         B_arr = []
         for indiv in indiv_arr:
-            zyx, B_surf = self.imeta.fit_surface_eval(
+            B_surf, _, sample_net = self.imeta.fit_surface_eval(
                 indiv, u_eval=u_eval, v_eval=v_eval
             )
-            B_sample = coord_to_mask(zyx, self.imeta.shape)
+            B_sample = coord_to_mask(
+                self.imeta.flatten_net(sample_net),
+                self.imeta.shape)
             B_arr.extend([B_sample, B_surf])
         return B_arr
