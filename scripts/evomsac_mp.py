@@ -13,7 +13,7 @@ if __name__ == "__main__":
     dump_step = int(args[2])
 
     # setup
-    eap = EAPop(state_pkl=state_pkl)
+    eap = EAPop(state=state_pkl)
 
     # run parallel
     pool = multiprocessing.Pool()

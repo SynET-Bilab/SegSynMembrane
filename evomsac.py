@@ -521,9 +521,11 @@ class EAPop:
         B_arr = get_surfaces([indiv1, indiv2])
         imshow3d(imeta.B, B_arr)
     """
-    def __init__(self, imeta=None, state_pkl=None, n_pop=2):
+    def __init__(self, imeta=None, state=None, n_pop=2):
         """ init
         :param imeta: IndivMeta(); if given, init; if None, init later
+        :param state: state (from dump_state); or a pickle file
+        :param n_pop: population size, multiples of 2
         """
         # attributes
         self.imeta = None
@@ -534,14 +536,18 @@ class EAPop:
         self.log_best = None
 
         # read config
-        # if provided imeta
+        # from imeta
         if imeta is not None:
             self.init_from_imeta(imeta)
-            self.n_pop = n_pop
-        # if provided state pickle file
-        elif state_pkl is not None:
-            with open(state_pkl, "rb") as pkl:
-                state = pickle.load(pkl)
+            self.n_pop = n_pop + n_pop%2
+        
+        # from state or state pickle file
+        elif state is not None:
+            # if a pickle file, load
+            if isinstance(state, str):
+                with open(state, "rb") as pkl:
+                    state = pickle.load(pkl)
+            # load state
             imeta = IndivMeta(config=state["imeta_config"])
             self.init_from_imeta(imeta)
             self.n_pop = state["n_pop"]
@@ -582,10 +588,10 @@ class EAPop:
         self.stats.register('best', np.min)
         self.stats.register('std', np.std)
     
-    def dump_state(self, state_pkl):
+    def dump_state(self, state_pkl=None):
         """ dump population state ={imeta,pop,log_stats}
-        :param state_pkl: name of pickle file to dump
-        :return: None
+        :param state_pkl: name of pickle file to dump; or None
+        :return: state
         """
         # convert EAIndiv to list
         pop_list = [self.imeta.to_list_fitness(i) for i in self.pop] if (self.pop is not None) else None
@@ -598,8 +604,10 @@ class EAPop:
             log_stats=self.log_stats,
             log_best_list=log_best_list
         )
-        with open(state_pkl, "wb") as pkl:
-            pickle.dump(state, pkl)
+        if state_pkl is not None:
+            with open(state_pkl, "wb") as pkl:
+                pickle.dump(state, pkl)
+        return state
 
     def register_map(self, func_map):
         """ for applying multiprocessing.Pool().map from __main__
@@ -653,7 +661,7 @@ class EAPop:
             for child1, child2 in zip(offspring[::2], offspring[1::2]):
                 self.toolbox.mate(child1, child2)
                 del child1.fitness.values
-                del child2.fitness.values        
+                del child2.fitness.values
         # mutation
         elif action == 1:
             for mutant in offspring:
@@ -665,8 +673,13 @@ class EAPop:
         # update fitness
         n_evals = self.evaluate_pop(offspring)
         
-        # select next generation, log
-        self.pop = deap.tools.selBest(self.pop+offspring, self.n_pop, fit_attr='fitness')
+        # select next generation: best of offspring + best of parent
+        n_half = int(self.n_pop/2)
+        parent_best = deap.tools.selBest(self.pop, n_half, fit_attr='fitness')
+        offspring_best = deap.tools.selBest(offspring, n_half, fit_attr='fitness')
+        self.pop = parent_best + offspring_best
+
+        # log
         self.log_stats.record(n_evals=n_evals, **self.stats.compile(self.pop))
         self.log_best.append(self.toolbox.clone(self.pop[0]))
 
