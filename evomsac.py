@@ -3,6 +3,7 @@
 """
 
 import pickle, functools
+import multiprocessing.dummy
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -609,8 +610,8 @@ class EAPop:
                 pickle.dump(state, pkl)
         return state
 
-    def register_map(self, func_map):
-        """ for applying multiprocessing.Pool().map from __main__
+    def register_map(self, func_map=map):
+        """ for applying multiprocessing.dummy.Pool().map from __main__
         """
         self.toolbox.register("map", func_map)
 
@@ -698,6 +699,31 @@ class EAPop:
                 # at intervals or at the last step
                 if (n_gen%dump_step == 0) or (i == n_gen-1):
                     self.dump_state(state_pkl)
+
+    def evolve_parallel(self, n_gen, dump_step=None, state_pkl=None, n_proc=None):
+        """ evolve n generations, using multithreading
+        :param n_gen: number of generations
+        :param dump_step, state_pkl: dump into pkl file (state_pkl) at intervals (dump_step)
+        :return: None
+        :action: update self.pop, self.log_stats
+        """
+        # setup: pool, map
+        pool = multiprocessing.dummy.Pool(n_proc)
+        self.register_map(pool.map)
+
+        # run
+        for i in range(1, n_gen+1):
+            # evolve
+            self.evolve_one(action=i % 2)
+            # dump
+            if (dump_step is not None) and (state_pkl is not None):
+                # at intervals or at the last step
+                if (n_gen % dump_step == 0) or (i == n_gen-1):
+                    self.dump_state(state_pkl)
+        
+        # clean-up: map, pool
+        self.register_map()
+        pool.close()
 
     def get_log_stats(self):
         """ get log_stats in DataFrame
