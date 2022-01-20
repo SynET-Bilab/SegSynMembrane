@@ -3,7 +3,7 @@
 """
 
 import numpy as np
-import numba
+import multiprocessing.dummy
 from itertools import combinations_with_replacement
 from synseg.utils import gaussian, reverse_coord
 
@@ -74,32 +74,25 @@ def features2d_H2(I, sigma):
     O2 = mask_tr*0.5*np.angle(-H2xx+H2yy-2j*H2xy)
     return S2, O2
 
-@numba.njit(parallel=True)
 def features3d(I, sigma):
     """ stickness and orientation based on 2d Hessian2 for each slice
     :param I: shape=(nz,ny,nx)
     :return: S - saliency, O - tangent of max-amp-eigvec
     """
-    # notes on the removal of method selection:
-    #   numba.njit does not support skimage.filters.gaussian
-    #   numba.objmode does not support if-else
-    
     # gaussian on 3d image
-    with numba.objmode(Ig="float64[:,:,:]"):
-        Ig = gaussian(I.astype(np.float64), sigma)
+    Ig = gaussian(I.astype(np.float_), sigma)
 
     # create arrays
-    S = np.zeros(Ig.shape, dtype=np.float64)
-    O = np.zeros(Ig.shape, dtype=np.float64)
+    S = np.zeros(Ig.shape, dtype=np.float_)
+    O = np.zeros(Ig.shape, dtype=np.float_)
     nz = S.shape[0]
 
-    for i in numba.prange(nz):
-        with numba.objmode(S_i="float64[:,:]", O_i="float64[:,:]"):
-            # note sigma=0 because 3d gaussian is already applied
-            S_i, O_i = features2d_H2(Ig[i], 0)
-        S[i] = S_i
-        O[i] = O_i
-
+    # parallel computing
+    def calc_one(i):
+        S[i], O[i] = features2d_H2(Ig[i], 0)
+    pool = multiprocessing.dummy.Pool()
+    pool.map(calc_one, range(nz))
+    pool.close()
     return S, O
 
 #=========================
@@ -161,7 +154,6 @@ def surface_norm_one(H_mat, del_ref):
     evec_out = evec if np.dot(evec, del_ref) >= 0 else -evec
     return evec_out
 
-@numba.njit(parallel=True)
 def surface_norm(I, xy_ref, sigma=1):
     """ calculate surface normal at nonzeros of I
     :param I: image, shape=(nz,ny,nx)
@@ -175,18 +167,20 @@ def surface_norm(I, xy_ref, sigma=1):
     pos = np.nonzero(I)
     n_pts = len(pos[0])
     # coordinates and hessian
-    with numba.objmode(xyz="int64[:,:]", H_mats="float64[:,:,:]"):
-        xyz = reverse_coord(np.transpose(pos))
-        H_mats = symmetric_image(hessian3d(I, sigma))[pos]
+    xyz = reverse_coord(np.transpose(pos))
+    H_mats = symmetric_image(hessian3d(I, sigma))[pos]
+
     # normal
     norm = np.zeros((n_pts, 3))
-    for i in numba.prange(n_pts):
-        with numba.objmode(norm_i="float64[:]"):
-            norm_i = surface_norm_one(
-                H_mats[i],
-                del_ref=xyz[i]-np.array(
-                    [xy_ref[0], xy_ref[1], xyz[i][-1]]
-                )
-            )
-        norm[i] = norm_i
+    def calc_one(i):
+        xyz_ref = np.array([xy_ref[0], xy_ref[1], xyz[i][-1]])
+        norm[i] = surface_norm_one(
+            H_mats[i],
+            del_ref=xyz[i]-xyz_ref
+        )
+
+    pool = multiprocessing.dummy.Pool()
+    pool.map(calc_one, range(n_pts))
+    pool.close()
+    
     return xyz, norm

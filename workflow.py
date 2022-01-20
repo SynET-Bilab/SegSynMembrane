@@ -118,11 +118,11 @@ class MemDetect:
         Stv, Otv = dtvoting.stick3d(
             S*self.mask, O*self.mask, sigma_tv
         )
-        Ntv = self.mask*nonmaxsup.nms3d_gw(Stv, Otv)
+        Ntv = self.mask*nonmaxsup.nms3d(Stv, Otv)
         
         # refine: orientation, nms, orientation changes
         _, Oref = hessian.features3d(Ntv, sigma=sigma_gauss)
-        Nref = nonmaxsup.nms3d_gw(Stv*Ntv, Oref)
+        Nref = nonmaxsup.nms3d(Stv*Ntv, Oref)
         dOref = utils.absdiff_orient(Oref, Otv)
 
         # normal suppression

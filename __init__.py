@@ -2,7 +2,7 @@ __author__ = "Zhenghan Liao"
 __version__ = "0.1"
 
 # dependencies = [
-#     "numpy", "numba", "scikit-learn", "scikit-image", "mrcfile"
+#     "numpy", "scikit-learn", "scikit-image", "mrcfile"
 # ]
 
 from synseg import utils, io, plot  # auxiliary

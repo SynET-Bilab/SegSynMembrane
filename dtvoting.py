@@ -16,8 +16,7 @@ SteerTV:
 
 import numpy as np
 from numpy import fft
-import numba
-import pandas as pd
+import multiprocessing.dummy
 from synseg import utils
 
 __all__ = [
@@ -130,24 +129,24 @@ def stick2d(S, O, sigma):
     S_tv, O_tv = stick2d_wmfft(S, O, wmfft)
     return S_tv, O_tv
 
-@numba.njit(parallel=True)
 def stick3d(S, O, sigma):
     """ tv for 2d stack, using numba parallel
     :return: S_tv, O_tv
     """
+    # prep
     nz, ny, nx = S.shape
-    with numba.objmode(wmfft='complex128[:,:,:]'):
-        wmfft = prep_wmfft_stick(ny=ny, nx=nx, sigma=sigma)
-
+    wmfft = prep_wmfft_stick(ny=ny, nx=nx, sigma=sigma)
 
     # calc S, O for each slice
-    S_tv = np.zeros(S.shape, dtype=np.float64)
-    O_tv = np.zeros(O.shape, dtype=np.float64)
-    for i in numba.prange(nz):
-        with numba.objmode(S_tv_i='float64[:,:]', O_tv_i='float64[:,:]'):
-            S_tv_i, O_tv_i = stick2d_wmfft(S[i], O[i], wmfft)
-        S_tv[i] = S_tv_i
-        O_tv[i] = O_tv_i
+    S_tv = np.zeros(S.shape, dtype=np.float_)
+    O_tv = np.zeros(O.shape, dtype=np.float_)
+
+    def calc_one(i):
+        S_tv[i], O_tv[i] = stick2d_wmfft(S[i], O[i], wmfft)
+
+    pool = multiprocessing.dummy.Pool()
+    pool.map(calc_one, range(nz))
+    pool.close()
     return S_tv, O_tv
 
 
@@ -203,20 +202,23 @@ def ball2d(S, O, sigma):
     S_tv = ball2d_wmfft(S, O, wmfft)
     return S_tv
 
-@numba.njit(parallel=True)
 def ball3d(S, O, sigma):
     """ ball field tv for a stack of 2d's
     :return: S_tv
     """
+    # prep
     nz, ny, nx = S.shape
-    with numba.objmode(wmfft='complex128[:,:,:]'):
-        wmfft = prep_wmfft_ball(ny=ny, nx=nx, sigma=sigma)
+    wmfft = prep_wmfft_ball(ny=ny, nx=nx, sigma=sigma)
+    
     # calc S, O for each slice
-    S_tv = np.zeros(S.shape, dtype=np.float64)
-    for i in numba.prange(nz):
-        with numba.objmode(S_tv_i='float64[:,:]'):
-            S_tv_i = ball2d_wmfft(S[i], O[i], wmfft)
-        S_tv[i] = S_tv_i
+    S_tv = np.zeros(S.shape, dtype=np.float_)
+
+    def calc_one(i):
+        S_tv[i] = ball2d_wmfft(S[i], O[i], wmfft)
+
+    pool = multiprocessing.dummy.Pool()
+    pool.map(calc_one, range(nz))
+    pool.close()
     return S_tv
 
 
@@ -239,40 +241,3 @@ def suppress_by_orient(nms, O, sigma, dO_threshold=np.pi/4):
     # mask of pixels with small dO
     supp = nms*(dO<dO_threshold)
     return supp, Stv
-
-
-#=========================
-# deprecated
-#=========================
-
-# def stats_by_seg(L, O, sigma, stats=np.sum):
-#     """ apply tv, order by stats (e.g. sum)
-#     :param L, O: 2d label, orientation
-#     :param sigma: sigma for sticktv, e.g. 2*cleft
-#     :param stats: function to calculate stats
-#     :return: df["label", "count", "S_stats"]
-#         df: sorted by S_stats, descending
-#     """
-#     # tv on binary image
-#     nms = (L > 0).astype(np.int_)
-#     Stv, _ = stick2d(nms, O, sigma)
-
-#     # stat for each label
-#     columns = ["label", "count", "S_stats"]
-#     data = []
-#     for l in np.unique(L[L > 0]):
-#         pos_l = np.nonzero(L == l)
-#         Stv_l = Stv[pos_l]
-#         data_l = [
-#             l, len(pos_l[0]), stats(Stv_l)
-#         ]
-#         data.append(data_l)
-
-#     # make dataframe, sort
-#     df = pd.DataFrame(data=data, columns=columns)
-#     df = (df.sort_values("S_stats", ascending=False)
-#           .reset_index(drop=True)
-#           )
-#     df = df.astype({f: int for f in ["label", "count"]})
-
-#     return df

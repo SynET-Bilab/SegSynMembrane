@@ -205,20 +205,3 @@ def filter_connected_dz(nms, dzfilter=1, connectivity=2):
     mask = np.isin(L, df["label"][df["z"] >= dzfilter])
     nms_filt = nms * mask
     return nms_filt
-
-
-#=========================
-# deprecated
-#=========================
-
-# def draw_line(yx0, yx1):
-#     """ wraps skimage.draw.line
-#     :param yx0, yx1: [y0,x0], [y1,x1]
-#     :return: line_yx=[[y0,x0],...,[yi,xi],...,[y1,x1]]
-#     """
-#     line_rc = skimage.draw.line(
-#         yx0[0], yx0[1],
-#         yx1[0], yx1[1],
-#     )
-#     line_yx = np.transpose(line_rc)
-#     return line_yx
