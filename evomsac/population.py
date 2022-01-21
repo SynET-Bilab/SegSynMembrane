@@ -62,7 +62,7 @@ class EAPop:
             self.init_from_imeta(imeta)
             self.n_pop = state["n_pop"]
             if state["pop_list"] is not None:
-                self.pop = [self.imeta.from_list_fitness(p) for p in state["pop_list"]]
+                self.pop = [self.imeta.from_list_fitness(*p) for p in state["pop_list"]]
             if state["log_stats"] is not None:
                 self.log_stats = state["log_stats"]
             if state["log_best_list"] is not None:
@@ -193,23 +193,7 @@ class EAPop:
         self.log_stats.record(n_evals=n_evals, **self.stats.compile(self.pop))
         self.log_best.append(self.toolbox.clone(self.pop[0]))
 
-    def evolve(self, n_gen, dump_step=None, state_pkl=None):
-        """ evolve n generations
-        :param n_gen: number of generations
-        :param dump_step, state_pkl: dump into pkl file (state_pkl) at intervals (dump_step)
-        :return: None
-        :action: update self.pop, self.log_stats
-        """
-        for i in range(1, n_gen+1):
-            # evolve
-            self.evolve_one(action=i%2)
-            # dump
-            if (dump_step is not None) and (state_pkl is not None):
-                # at intervals or at the last step
-                if (n_gen%dump_step == 0) or (i == n_gen-1):
-                    self.dump_state(state_pkl)
-
-    def evolve_parallel(self, n_gen, dump_step=None, state_pkl=None, n_proc=None):
+    def evolve(self, n_gen, dump_step=None, state_pkl=None, n_proc=None):
         """ evolve n generations, using multithreading
         :param n_gen: number of generations
         :param dump_step, state_pkl: dump into pkl file (state_pkl) at intervals (dump_step)

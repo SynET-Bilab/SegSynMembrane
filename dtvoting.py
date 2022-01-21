@@ -57,6 +57,7 @@ def prep_wmfft(ny, nx, sigma, m, excluded_r2, origin, n_terms):
     term_exp[r2<excluded_r2] = 0
 
     # fraction term
+    r2[0, 0] = 1  # avoid division by zero
     term_frac2 = (x+1j*y)**2/r2
     # set origin to avoid nan
     term_frac2[0, 0] = origin
