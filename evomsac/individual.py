@@ -9,7 +9,7 @@ import sparse
 import deap, deap.base, deap.tools
 
 from synseg.utils import mask_to_coord, coord_to_mask
-from synseg.evomsac import bspline
+from synseg import bspline
 
 #=========================
 # Grid
@@ -198,6 +198,10 @@ class IndivMeta:
             n_uz=self.n_uz, nz_eachu=self.nz_eachu)
 
         # fitness
+        # bspline
+        self.surf_meta = bspline.Surface(
+            uv_size=(self.n_uz, self.n_vxy), degree=2
+        )
         # no. points in the image
         npts_iz = [np.sum(Biz > 0) for Biz in self.B]
         self.npts_B = np.sum(npts_iz)
@@ -309,7 +313,7 @@ class IndivMeta:
 
         # nurbs fit
         sample_net = self.get_coord_net(indiv)
-        fit = bspline.interpolate_surface(sample_net, degree=2, exponent=0.5)
+        fit = self.surf_meta.interpolate(sample_net)
 
         # convert fitted surface to binary image
         # evaluate at dense points
