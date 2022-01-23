@@ -165,7 +165,7 @@ class IndivMeta:
         config = imeta.get_config()
         imeta_new = IndivMeta(config=config)
     """
-    def __init__(self, B=None, config=None, n_vxy=4, n_uz=3, nz_eachu=3, r_thresh=2):
+    def __init__(self, B=None, config=None, n_uz=3, n_vxy=4, nz_eachu=1, r_thresh=1):
         """ init, setups
         :param B: binary image
         :param n_vxy, n_uz: number of sampling grids in v(xy) and u(z) directions
