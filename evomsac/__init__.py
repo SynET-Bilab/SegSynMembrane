@@ -1,5 +1,8 @@
 
 from .voxelize import Voxelize
-from .individual import Grid, EAFitness, EAIndiv, IndivMeta
-from .population import EAPop
-from .demes import EADemes
+from .grid import Grid
+
+# single objective optimization
+from .soo_indiv import SOOFitness, SOOIndiv, SOOTools
+from .soo_pop import SOOPop
+# from .soo_demes import SOODemes

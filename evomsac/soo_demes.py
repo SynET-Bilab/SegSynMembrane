@@ -10,37 +10,37 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import deap, deap.base, deap.tools
 
-from synseg.utils import mask_to_coord, coord_to_mask
-from synseg.evomsac import IndivMeta
+from synseg.utils import coord_to_mask
+from synseg.evomsac import SOOTools
 
-class EADemes:
+class SOODemes:
     """ evolving populations
     Usage:
         # evolve
-        imeta = IndivMeta(B, n_vxy, n_uz, nz_eachu, r_thresh)
-        eap = EADemes(imeta, n_pop, n_demes)
-        eap.init_demes()
-        eap.evolve(n_gen, dump_step, state_pkl)
+        sootools = SOOTools(B, n_vxy, n_uz, nz_eachu, r_thresh)
+        soodemes = SOODemes(sootools, n_pop, n_demes)
+        soodemes.init_demes()
+        soodemes.evolve(n_gen, dump_step, state_pkl)
         # dump
-        eap.dump_state(state_pkl)
+        soodemes.dump_state(state_pkl)
         # load
-        eap = EADemes(state_pkl=state_pkl)
+        soodemes = SOODemes(state_pkl=state_pkl)
         # stats and plot
-        df_stats = eap.get_log_stats()
-        eap.plot_log_stats(xlim, save)
+        df_stats = soodemes.get_log_stats()
+        soodemes.plot_log_stats(xlim, save)
         # surface and plot
         B_arr = get_surfaces([indiv1, indiv2])
-        imshow3d(imeta.B, B_arr)
+        imshow3d(sootools.B, B_arr)
     """
-    def __init__(self, imeta=None, state=None, n_pop=2, n_demes=2):
+    def __init__(self, sootools=None, state=None, n_pop=2, n_demes=2):
         """ init
-        :param imeta: IndivMeta(); if given, init; if None, init later
+        :param sootools: SOOTools(); if given, init; if None, init later
         :param state: state (from dump_state); or a pickle file
         :param n_pop: population size, multiples of 2
         :param n_demes: demes size
         """
         # attributes
-        self.imeta = None
+        self.sootools = None
         self.toolbox = None
         self.stats = None
         self.demes = None
@@ -48,9 +48,9 @@ class EADemes:
         self.log_best = None
 
         # read config
-        # from imeta
-        if imeta is not None:
-            self.init_from_imeta(imeta)
+        # from sootools
+        if sootools is not None:
+            self.init_from_sootools(sootools)
             self.n_pop = n_pop + n_pop%2
             self.n_demes = n_demes
         
@@ -61,41 +61,41 @@ class EADemes:
                 with open(state, "rb") as pkl:
                     state = pickle.load(pkl)
             # load state
-            imeta = IndivMeta(config=state["imeta_config"])
-            self.init_from_imeta(imeta)
+            sootools = SOOTools(config=state["sootools_config"])
+            self.init_from_sootools(sootools)
             self.n_pop = state["n_pop"]
             self.n_demes = state["n_demes"]
             if state["demes_list"] is not None:
                 self.demes = [
-                    [self.imeta.from_list_fitness(*p) for p in pop_list]
+                    [self.sootools.from_list_fitness(*p) for p in pop_list]
                     for pop_list in state["demes_list"]
                 ]
             if state["log_stats"] is not None:
                 self.log_stats = state["log_stats"]
             if state["log_best_list"] is not None:
                 self.log_best = [
-                    [self.imeta.from_list_fitness(*p) for p in pop_list]
+                    [self.sootools.from_list_fitness(*p) for p in pop_list]
                     for pop_list in state["log_best_list"]
                 ]
         else:
-            raise ValueError("Should provide either imeta or state")
+            raise ValueError("Should provide either sootools or state")
 
 
-    def init_from_imeta(self, imeta):
+    def init_from_sootools(self, sootools):
         """ initialize tools for evolution algorithm
-        :param imeta: IndivMeta()
+        :param sootools: SOOTools()
         :return: None
-        :action: assign variables imeta, toolbox, stats
+        :action: assign variables sootools, toolbox, stats
         """
         # setup meta
-        self.imeta = imeta
+        self.sootools = sootools
         self.toolbox = deap.base.Toolbox()
         
         # operations
-        self.toolbox.register("evaluate", self.imeta.evaluate)
+        self.toolbox.register("evaluate", self.sootools.evaluate)
         self.toolbox.register("select", deap.tools.selTournament, tournsize=2)
         self.toolbox.register("mate", deap.tools.cxTwoPoint)
-        self.toolbox.register("mutate", self.imeta.mutate)
+        self.toolbox.register("mutate", self.sootools.mutate)
         self.toolbox.register("migrate", deap.tools.migRing, k=1,
             selection=deap.tools.selRandom,
             replacement=deap.tools.selRandom
@@ -109,7 +109,7 @@ class EADemes:
         self.stats.register('std', np.std)
     
     def dump_state(self, state_pkl=None):
-        """ dump population state ={imeta,pop,log_stats}
+        """ dump population state ={sootools,pop,log_stats}
         :param state_pkl: name of pickle file to dump; or None
         :return: state
         """
@@ -119,7 +119,7 @@ class EADemes:
             demes_list = None
         else:
             demes_list = [
-                [self.imeta.to_list_fitness(i) for i in pop]
+                [self.sootools.to_list_fitness(i) for i in pop]
                 for pop in self.demes
             ]
         # log_best
@@ -127,13 +127,13 @@ class EADemes:
             log_best_list = None
         else:
             log_best_list = [
-                [self.imeta.to_list_fitness(i) for i in log_best_pop]
+                [self.sootools.to_list_fitness(i) for i in log_best_pop]
                 for log_best_pop in self.log_best
             ]
         
         # collect state
         state = dict(
-            imeta_config=self.imeta.get_config(),
+            sootools_config=self.sootools.get_config(),
             n_pop=self.n_pop,
             n_demes=self.n_demes,
             demes_list=demes_list,
@@ -157,7 +157,7 @@ class EADemes:
         """
         # generation demes
         self.demes = [
-            [self.imeta.random() for _ in range(self.n_pop)]
+            [self.sootools.random() for _ in range(self.n_pop)]
             for _ in range(self.n_demes)
         ]
 
@@ -311,11 +311,11 @@ class EADemes:
         """
         B_arr = []
         for indiv in indiv_arr:
-            B_surf, _ = self.imeta.fit_surface_eval(
+            B_surf, _ = self.sootools.fit_surface_eval(
                 indiv, u_eval=u_eval, v_eval=v_eval
             )
             B_sample = coord_to_mask(
-                self.imeta.flatten_net(self.imeta.get_coord_net(indiv)),
-                self.imeta.shape)
+                self.sootools.flatten_net(self.sootools.get_coord_net(indiv)),
+                self.sootools.shape)
             B_arr.extend([B_sample, B_surf])
         return B_arr
