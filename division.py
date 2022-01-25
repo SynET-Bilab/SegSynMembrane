@@ -5,23 +5,14 @@
 import multiprocessing.dummy
 import numpy as np
 import scipy as sp
-import pandas as pd
 import sklearn.decomposition
 import skimage
 from synseg import utils
 
-# __all__ = [
-#     # trace within segment
-#     "trace_within_seg", "trace_within_labels",
-#     # trace across segments
-#     "across_next_seg",
-#     # graph tools
-#     "pathL_to_LE", "pathLE_to_yx",
-#     "curve_fit_pathLE", "curve_fit_smooth",
-#     "graph_to_image",
-#     # build graph
-#     "MemGraph"
-# ]
+__all__ = [
+    "Segmentalize",
+    "divide_connected"
+]
 
 
 class Segmentalize:
@@ -241,25 +232,31 @@ class Segmentalize:
             mask = skimage.morphology.binary_dilation(L[iz]==label, self.disk)
             overlap = L[iz:iz+self.r_thresh, mask]
             label_nbs = np.unique(overlap[overlap>0])
+            # only count labels_nbs>label
+            label_nbs = label_nbs[label_nbs>label]
             
             # calc weight
             idx_nbs = label_nbs - 1
             o_nbs = o_segs[idx_nbs]
-            weight = np.cos(2*(o_nbs-o)) + 1
+            weight = (np.cos(2*(o_nbs-o)) + 1) / 2
 
             # return
-            data = np.concatenate((weight, weight))
+            data = np.concatenate(([1], weight, weight))
             i_ext = idx*np.ones(len(label_nbs), dtype=np.int_)
-            row = np.concatenate((i_ext, idx_nbs))
-            col = np.concatenate((idx_nbs, i_ext))
+            row = np.concatenate(([idx], i_ext, idx_nbs))
+            col = np.concatenate(([idx], idx_nbs, i_ext))
             return data, row, col
         
-        labels = np.arange(len(iz_segs))+1
+        # info
+        n_segs = len(iz_segs)
+        labels = np.arange(n_segs)+1
 
+        # iterate for each segment
         pool = multiprocessing.dummy.Pool(n_proc)
         result = pool.map(calc_one, labels)
         pool.close()
 
+        # concaternate results
         data = []
         row = []
         col = []
@@ -271,54 +268,43 @@ class Segmentalize:
         row = np.concatenate(row)
         col= np.concatenate(col)
 
+        # make sparse matrix
         mat = sp.sparse.csr_matrix(
-            (data, (row, col)),
-            shape=(labels[-1], labels[-1])
+            (data, (row, col)), shape=(n_segs, n_segs)
         )
         return mat
 
+def divide_connected(B, O, seg_max_size=10, seg_neigh_thresh=5, n_clusters=2):
+    """ divide connected image into n_clusters parts
+    :param B, O: binary image, orientation
+    :param seg_max_size: max size of each segment, < cleft width
+    :param seg_neigh_thresh: distance threshold for finding neighbors
+    :param n_clusters: number of clusters to divide into
+    :return: B_arr
+        B_arr: [B_0, B_1, ...], binary image for each cluster
+    """
+    # segmentalize image
+    segment = Segmentalize(B, O, max_size=seg_max_size, r_thresh=seg_neigh_thresh)
+    L, iz_segs, o_segs = segment.segment3d()
 
+    # build affinity matrix
+    mat = segment.pairwise_weight(L, iz_segs, o_segs)
 
-        
-
-
-
-
+    # spectral clustering
+    clust = sklearn.cluster.SpectralClustering(
+        n_clusters=n_clusters,
+        affinity="precomputed",
+        assign_labels="discretize"
+    )
+    clust.fit(mat)
     
-
-    # def trace_within_seg(nms, O):
-    #     """ trace a 8-connected segment
-    #     :param nms: shape=(ny,nx), nonmaxsup'ed image
-    #     :param O: orientation
-    #     :return: yx_trace, d_trace, success
-    #         yx_trace: sequence of yx's, [(y1,x1),...]
-    #         d_trace: directions from front to end, [d1,d2,...]
-    #         success: True if no loop, otherwise False
-    #     """
-    #     # get position of pixels
-    #     pos = np.nonzero(nms)
-
-    #     # set starting point: as a midpoint
-    #     idx_start = int(len(pos[0])/2)
-    #     yx_start = tuple(pos[i][idx_start] for i in [0, 1])
-
-    #     # trace direction of orientation
-    #     map_yxd_plus = dict(zip(zip(*pos), O[pos]))
-    #     yx_plus = []
-    #     success_plus = trace_within_one(yx_start, yx_plus, map_yxd_plus)
-    #     d_plus = [map_yxd_plus[yx] for yx in yx_plus]
-
-    #     # trace direction of orientation+pi
-    #     map_yxd_minus = dict(zip(zip(*pos), O[pos]))
-    #     map_yxd_minus[yx_start] = O[yx_start]+np.pi
-    #     yx_minus = []
-    #     success_minus = trace_within_one(yx_start, yx_minus, map_yxd_minus)
-    #     # reverse sequence, align direction with d_plus
-    #     yx_minus_reverse = yx_minus[-1:0:-1]
-    #     d_minus_reverse = [map_yxd_minus[yx]-np.pi for yx in yx_minus_reverse]
-
-    #     # concatenate plus and minus directions
-    #     yx_trace = yx_minus_reverse + yx_plus
-    #     d_trace = d_minus_reverse + d_plus
-    #     success = success_plus and success_minus
-    #     return yx_trace, d_trace, success
+    # label image
+    n_segs = len(iz_segs)
+    label_segs = np.arange(n_segs) + 1
+    B_arr = []
+    for i in range(2):
+        B_i = np.zeros_like(L)
+        mask_i = np.isin(L, label_segs[clust.labels_ == i])
+        B_i[mask_i] = 1
+        B_arr.append(B_i)
+    return B_arr
