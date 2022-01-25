@@ -120,52 +120,45 @@ class Segmentalize:
         d_next = d_curr + diff
         return d_next
 
-    def trace_connected(self, yx_curr, yx_trace, d_trace, map_yxd):
+    def trace_connected(self, yx_start, map_yxd):
         """ trace segment from current (y,x) in one direction
-        :param yx_curr: current (y,x)
+        :param yx_start: current (y,x)
         :param yx_trace: list of (y,x)'s in the trace
         :param map_yxd: {(y,x): direction}
         """
-        # add curr to trace
-        d_curr = map_yxd[yx_curr]
-        yx_trace.append(yx_curr)
-        d_trace.append(d_curr)
+        yx_trace = []
+        d_trace = []
+        # BFS
+        yx_tovisit = [yx_start]
+        while len(yx_tovisit) > 0:
+            yx_curr = yx_tovisit[0]
 
-        # visited, flag with None
-        map_yxd[yx_curr] = None
+            # continue: yx_curr is not in image, or visited
+            if (yx_curr not in map_yxd) or (map_yxd[yx_curr] is None):
+                yx_tovisit.remove(yx_curr)
+                continue
 
-        # get next candidates, try to visit
-        idx = 0
-        dydx_candidates = self.find_next_yx(d_curr)
-        dydx_tovisit = [dydx_candidates[idx]]
-        for dydx in dydx_tovisit:
-            yx_next = (yx_curr[0]+dydx[0], yx_curr[1]+dydx[1])
+            # visit yx_curr, flag with None
+            d_curr = map_yxd[yx_curr]
+            yx_trace.append(yx_curr)
+            d_trace.append(d_curr)
+            map_yxd[yx_curr] = None
+            yx_tovisit.remove(yx_curr)
+            
+            # break: if max_size is reached
+            if len(yx_trace) >= self.max_size:
+                break
 
-            # case: next yx is not in image
-            if yx_next not in map_yxd:
-                idx += 1
-                # there are more candidates (<=3), visit
-                if idx < 3:
-                    dydx_tovisit.append(dydx_candidates[idx])
-                # no more candidates, return
-                else:
-                    return
-
-            # case: next yx is in image, but visited
-            elif map_yxd[yx_next] is None:
-                return
-
-            # case: next yx is in image, and not visited
-            else:
-                # if trace size < max, trace next
-                if len(yx_trace) < self.max_size:
-                    # convert next orientation to direction, update dict
+            # update yx_tovisit
+            for dydx in self.find_next_yx(d_curr):
+                yx_next = (yx_curr[0]+dydx[0], yx_curr[1]+dydx[1])
+                # align next orientation, update dict
+                if (yx_next in map_yxd) and (map_yxd[yx_next] is not None):
                     d_next = self.find_next_direction(d_curr, map_yxd[yx_next])
                     map_yxd[yx_next] = d_next
-                    return self.trace_connected(yx_next, yx_trace, d_trace, map_yxd)
-                # if trace size >= max, return
-                else:
-                    return
+                    yx_tovisit.append(yx_next)
+
+        return yx_trace, d_trace
             
     def segment2d_connected(self, Bc, Oc):
         """ segmentalize a connected component
@@ -188,9 +181,7 @@ class Segmentalize:
         d_traces = []
         while len(yx_sort) > 0:
             # trace
-            yx_trace_i = []
-            d_trace_i = []
-            self.trace_connected(yx_sort[0], yx_trace_i, d_trace_i, map_yxd)
+            yx_trace_i, d_trace_i = self.trace_connected(yx_sort[0], map_yxd)
             # record
             yx_traces.append(yx_trace_i)
             d_traces.append(d_trace_i)
