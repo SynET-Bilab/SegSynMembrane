@@ -13,7 +13,7 @@ __all__ = [
     # coordinates
     "mask_to_coord", "coord_to_mask", "reverse_coord",
     # segments
-    "stats_per_label", "filter_connected_xy", "filter_connected_dz"
+    "extract_connected", "stats_per_label", "filter_connected_xy", "filter_connected_dz"
 ]
 
 #=========================
@@ -117,6 +117,26 @@ def reverse_coord(coord):
 # segment tools
 #=========================
 
+def extract_connected(B, n_keep=None, connectivity=2):
+    """ extract n_keep largest connected components
+    :param B: binary image
+    :param n_keep: number of components to keep
+    :param connectivity: sense of neighboring, 1(-|) or 2(-|\/)
+    :return: yield (count, B_i)
+    """
+    # label
+    L = skimage.measure.label(B, connectivity=connectivity)
+    # count
+    df = (pd.Series(L[L > 0])
+          .value_counts(sort=True, ascending=False)
+          .to_frame("count").reset_index()
+          )
+    # yield
+    for item in df.iloc[:n_keep].itertuples():
+        B_i = B * (L == item.index)
+        yield (item.count, B_i)
+
+
 def stats_per_label(L, V_arr, name_arr=None, stats="mean",
     qfilter=0.25, min_size=1):
     """ calc statistics for each label in the image
@@ -155,23 +175,21 @@ def stats_per_label(L, V_arr, name_arr=None, stats="mean",
     df_stats = pd.merge(df_count, df_stats, on="label", how="inner")
     return df_stats
 
-def filter_connected_xy(nms, V_arr,
-    connectivity=2, stats="median",
-    qfilter=0.25, min_size=1):
+def filter_connected_xy(B, V_arr, connectivity=2, stats="median",qfilter=0.25, min_size=1):
     """ label by connectivity for each xy-slice, filter out small values
-    :param nms: nms image
+    :param B: binary image
     :param V_arr: array of valued-images
     :param connectivity: used for determining connected segments, 1 or 2
     :param stats: statistics to apply on values
     :param qfilter: filter out labels if any of their stats < qfilter quantile
     :param min_size: min size of segments
-    :return: nms_filt
-        nms_filt: filtered nms image
+    :return: B_filt
+        B_filt: filtered binary image
     """
-    nms_filt = np.zeros_like(nms)
-    for i in range(nms_filt.shape[0]):
+    B_filt = np.zeros_like(B)
+    for i in range(B_filt.shape[0]):
         # label by connectivity
-        Li = skimage.measure.label(nms[i], connectivity=connectivity)
+        Li = skimage.measure.label(B[i], connectivity=connectivity)
 
         # stats
         df_stats = stats_per_label(
@@ -180,19 +198,19 @@ def filter_connected_xy(nms, V_arr,
         )
 
         # filter out labels from image
-        nms_filt[i] = nms[i]*np.isin(Li, df_stats["label"])
-    return nms_filt
+        B_filt[i] = B[i]*np.isin(Li, df_stats["label"])
+    return B_filt
 
-def filter_connected_dz(nms, dzfilter=1, connectivity=2):
+def filter_connected_dz(B, dzfilter=1, connectivity=2):
     """ label by connectivity in 3d, filter out dz<dzfilter segments
-    :param nms: nms image
+    :param B: binary image
     :param connectivity: used for determining connected segments, 1 or 2
     :param dzfilter: threshold of z-range
-    :return: nms_filt
-        nms_filt: filtered nms image
+    :return: B_filt
+        B_filt: filtered binary image
     """
     # label
-    L = skimage.measure.label(nms, connectivity=connectivity)
+    L = skimage.measure.label(B, connectivity=connectivity)
     # z-value of each pixel
     nz = L.shape[0]
     Z = np.ones(L.shape)*np.arange(nz).reshape((-1,1,1))
@@ -203,5 +221,5 @@ def filter_connected_dz(nms, dzfilter=1, connectivity=2):
     )
     # filter
     mask = np.isin(L, df["label"][df["z"] >= dzfilter])
-    nms_filt = nms * mask
-    return nms_filt
+    B_filt = B * mask
+    return B_filt
