@@ -220,6 +220,8 @@ class Segmentalize:
         """ calculate pairwise weight between segments
         :param L, iz_segs, o_segs: results from segment3d
         :param n_proc: number of processors for multithreading
+        :return: mat
+            mat: symmetric csr_matrix of weight, diagonal=1
         """
         # weight between one segment and its neighbors
         def calc_one(label):
@@ -238,7 +240,7 @@ class Segmentalize:
             # calc weight
             idx_nbs = label_nbs - 1
             o_nbs = o_segs[idx_nbs]
-            weight = (np.cos(2*(o_nbs-o)) + 1) / 2
+            weight = 1 - utils.absdiff_orient(o_nbs, o)*2/np.pi
 
             # return
             data = np.concatenate(([1], weight, weight))
