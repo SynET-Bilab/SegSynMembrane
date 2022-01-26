@@ -18,7 +18,7 @@ class MOOPop:
     Usage:
         # evolve
         mootools = MOOTools(B, n_vxy, n_uz, nz_eachu, r_thresh)
-        moopop = MOOPop(mootools, n_pop)
+        moopop = MOOPop(mootools, pop_size)
         moopop.init_pop()
         moopop.evolve(maxiter, (tol, n_back), dump_step, state_pkl, n_proc)
         # dump, load
@@ -30,11 +30,11 @@ class MOOPop:
         B_arr = moopop.fit_surfaces_eval([indiv1, indiv2])
         imshow3d(mootools.B, B_arr)
     """
-    def __init__(self, mootools=None, state=None, n_pop=2):
+    def __init__(self, mootools=None, state=None, pop_size=2):
         """ init
         :param mootools: MOOTools(); if given, init; if None, init later
         :param state: state (from dump_state); or a pickle file
-        :param n_pop: population size, multiples of 4 (required by selTournamentDCD)
+        :param pop_size: population size, multiples of 4 (required by selTournamentDCD)
         """
         # attributes
         self.mootools = None
@@ -47,7 +47,7 @@ class MOOPop:
         # from mootools
         if mootools is not None:
             self.init_from_mootools(mootools)
-            self.n_pop = n_pop + n_pop%4
+            self.pop_size = pop_size + pop_size%4
         
         # from state or state pickle file
         elif state is not None:
@@ -58,10 +58,10 @@ class MOOPop:
             # load state
             mootools = MOOTools(config=state["mootools_config"])
             self.init_from_mootools(mootools)
-            self.n_pop = state["n_pop"]
+            self.pop_size = state["pop_size"]
             if state["pop_list"] is not None:
                 self.pop = [self.mootools.from_list_fitness(*p) for p in state["pop_list"]]
-                self.pop = self.toolbox.select_best(self.pop, self.n_pop)
+                self.pop = self.toolbox.select_best(self.pop, self.pop_size)
             if state["log_front_list"] is not None:
                 self.log_front = [
                     [self.mootools.from_list_fitness(*p) for p in front_list]
@@ -104,7 +104,7 @@ class MOOPop:
         """ dump population state
         :param file_pkl: name of pickle file to dump; or None
         :return: state
-            state: {mootools,n_pop,pop_list,log_front_list,log_indicator}
+            state: {mootools,pop_size,pop_list,log_front_list,log_indicator}
         """
         # convert MOOIndiv to list
         if self.pop is not None:
@@ -124,7 +124,7 @@ class MOOPop:
         # collect state
         state = dict(
             mootools_config=self.mootools.get_config(),
-            n_pop=self.n_pop,
+            pop_size=self.pop_size,
             pop_list=pop_list,
             log_front_list=log_front_list,
             log_indicator=self.log_indicator
@@ -138,7 +138,7 @@ class MOOPop:
         """ initialize population, logbook, evaluate
         """
         # generation population
-        self.pop = [self.mootools.random() for _ in range(self.n_pop)]
+        self.pop = [self.mootools.random() for _ in range(self.pop_size)]
 
         # evaluate
         pool = multiprocessing.dummy.Pool(n_proc)
@@ -148,7 +148,7 @@ class MOOPop:
         pool.close()
 
         # sort
-        self.pop = self.toolbox.select_best(self.pop, self.n_pop)
+        self.pop = self.toolbox.select_best(self.pop, self.pop_size)
 
         # log
         self.log_front = []
@@ -187,7 +187,7 @@ class MOOPop:
         :action: update self.log_front, self.log_indicator
         """
         # pareto front
-        front = self.toolbox.sort_fronts(self.pop, self.n_pop, first_front_only=True)[0]
+        front = self.toolbox.sort_fronts(self.pop, self.pop_size, first_front_only=True)[0]
         front = sorted(front, key=lambda indiv: indiv.fitness.values[0])  # sort by overlap
         
         # log front
@@ -198,10 +198,8 @@ class MOOPop:
         if (n_back is None) or (len(self.log_indicator) < n_back):
             change_ratio = np.nan
         else:
-            max_hypervolume = np.max(
-                [ind["hypervolume"] for ind in self.log_indicator[-n_back:]]
-            )
-            change_ratio = 1 - hypervolume / max_hypervolume
+            hv_nback = [ind["hypervolume"] for ind in self.log_indicator[-n_back:]]
+            change_ratio = 1 - np.mean(hv_nback) / np.max(hv_nback)
         self.log_indicator.append({"hypervolume": hypervolume, "change_ratio": change_ratio})
 
     def evaluate_pop(self, pop):
@@ -224,7 +222,7 @@ class MOOPop:
         :action: update self.pop, self.log_stats, self.log_front
         """
         # select for variation, copy, shuffle
-        offspring = self.toolbox.select_var(self.pop, self.n_pop)
+        offspring = self.toolbox.select_var(self.pop, self.pop_size)
         offspring = [self.toolbox.clone(i) for i in offspring]
 
         # crossover
@@ -247,14 +245,14 @@ class MOOPop:
         self.evaluate_pop(offspring)
         
         # select next generation
-        self.pop = self.toolbox.select_best(self.pop+offspring, self.n_pop)
+        self.pop = self.toolbox.select_best(self.pop+offspring, self.pop_size)
 
-    def evolve(self, maxiter=500, tol=(0.001, 10),
+    def evolve(self, tol=(0.01, 10), max_iter=200,
             step_dump=None, file_pkl=None, n_proc=None
         ):
         """ evolve using multithreading
-        :param maxiter: max number of generations
         :param tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
+        :param max_iter: max number of generations
         :param step_dump, file_pkl: dump into file_pkl at step_dump intervals
         :param n_proc: number of processors for multithreading
         :return: None
@@ -265,7 +263,7 @@ class MOOPop:
         self.register_map(pool.map)
 
         # run
-        for i in range(maxiter):
+        for i in range(max_iter):
             # evolve
             self.evolve_one_gen(action=(i % 2))
             self.logging_pop(n_back=tol[1])
@@ -277,7 +275,7 @@ class MOOPop:
             # dump
             if (step_dump is not None) and (file_pkl is not None):
                 # at intervals or at the last step
-                if maxiter % step_dump == 0:
+                if i % step_dump == 0:
                     self.dump_state(file_pkl)
         
         # final dump

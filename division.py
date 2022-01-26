@@ -6,6 +6,7 @@ import multiprocessing.dummy
 import numpy as np
 import scipy as sp
 import sklearn.decomposition
+import sklearn.cluster
 import skimage
 from synseg import utils
 
