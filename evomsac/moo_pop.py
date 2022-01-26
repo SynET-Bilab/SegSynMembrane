@@ -20,16 +20,14 @@ class MOOPop:
         mootools = MOOTools(B, n_vxy, n_uz, nz_eachu, r_thresh)
         moopop = MOOPop(mootools, n_pop)
         moopop.init_pop()
-        moopop.evolve(n_gen, dump_step, state_pkl, n_proc)
-        # dump
-        moopop.dump_state(state_pkl)
-        # load
-        moopop = MOOPop(state_pkl=state_pkl)
+        moopop.evolve(maxiter, (tol, n_back), dump_step, state_pkl, n_proc)
+        # dump, load
+        state = moopop.dump_state(file_pkl)
+        moopop = MOOPop(state=file_pkl)
         # stats and plot
-        moopop.plot_log_stats(save)
-        moopop.plot_log_best(save)
-        # surface and plot
-        B_arr = get_surfaces([indiv1, indiv2])
+        moopop.plot_logs(save)
+        # fit surface and plot
+        B_arr = moopop.fit_surfaces_eval([indiv1, indiv2])
         imshow3d(mootools.B, B_arr)
     """
     def __init__(self, mootools=None, state=None, n_pop=2):
@@ -41,10 +39,9 @@ class MOOPop:
         # attributes
         self.mootools = None
         self.toolbox = None
-        self.stats = None
         self.pop = None
-        self.log_stats = None
-        self.log_best = None
+        self.log_front = None
+        self.log_indicator = None
 
         # read config
         # from mootools
@@ -65,13 +62,13 @@ class MOOPop:
             if state["pop_list"] is not None:
                 self.pop = [self.mootools.from_list_fitness(*p) for p in state["pop_list"]]
                 self.pop = self.toolbox.select_best(self.pop, self.n_pop)
-            if state["log_stats"] is not None:
-                self.log_stats = state["log_stats"]
-            if state["log_best_list"] is not None:
-                self.log_best = [
+            if state["log_front_list"] is not None:
+                self.log_front = [
                     [self.mootools.from_list_fitness(*p) for p in front_list]
-                    for front_list in state["log_best_list"]
+                    for front_list in state["log_front_list"]
                 ]
+            if state["log_indicator"] is not None:
+                self.log_indicator = state["log_indicator"]
         else:
             raise ValueError("Should provide either mootools or state")
 
@@ -79,7 +76,7 @@ class MOOPop:
         """ initialize tools for evolution algorithm
         :param mootools: MOOTools()
         :return: None
-        :action: assign variables mootools, toolbox, stats
+        :action: assign variables mootools, toolbox
         """
         # setup meta
         self.mootools = mootools
@@ -97,18 +94,17 @@ class MOOPop:
         self.toolbox.register("select_best", deap.tools.selNSGA2, nd='standard')
         # sort
         self.toolbox.register("sort_fronts", deap.tools.sortNondominated)
-
-        # stats
-        self.stats = deap.tools.Statistics(
-            key=lambda indiv: indiv.fitness.values)
-        self.stats.register('mean', np.mean, axis=0)
-        self.stats.register('best', np.min, axis=0)
-        self.stats.register('std', np.std, axis=0)
     
-    def dump_state(self, state_pkl=None):
-        """ dump population state ={mootools,pop,log_stats}
-        :param state_pkl: name of pickle file to dump; or None
+    def register_map(self, func_map=map):
+        """ for applying multiprocessing.dummy.Pool().map
+        """
+        self.toolbox.register("map", func_map)
+    
+    def dump_state(self, file_pkl=None):
+        """ dump population state
+        :param file_pkl: name of pickle file to dump; or None
         :return: state
+            state: {mootools,n_pop,pop_list,log_front_list,log_indicator}
         """
         # convert MOOIndiv to list
         if self.pop is not None:
@@ -116,32 +112,27 @@ class MOOPop:
         else:
             pop_list = None
 
-        # log_best
-        if self.log_best is not None:
-            log_best_list = [
-                [self.mootools.to_list_fitness(i) for i in log_best_pop]
-                for log_best_pop in self.log_best
+        # log_front
+        if self.log_front is not None:
+            log_front_list = [
+                [self.mootools.to_list_fitness(i) for i in log_front_pop]
+                for log_front_pop in self.log_front
             ]
         else:
-            log_best_list = None
+            log_front_list = None
         
         # collect state
         state = dict(
             mootools_config=self.mootools.get_config(),
             n_pop=self.n_pop,
             pop_list=pop_list,
-            log_stats=self.log_stats,
-            log_best_list=log_best_list
+            log_front_list=log_front_list,
+            log_indicator=self.log_indicator
         )
-        if state_pkl is not None:
-            with open(state_pkl, "wb") as pkl:
+        if file_pkl is not None:
+            with open(file_pkl, "wb") as pkl:
                 pickle.dump(state, pkl)
         return state
-
-    def register_map(self, func_map=map):
-        """ for applying multiprocessing.dummy.Pool().map from __main__
-        """
-        self.toolbox.register("map", func_map)
 
     def init_pop(self, n_proc=None):
         """ initialize population, logbook, evaluate
@@ -160,25 +151,58 @@ class MOOPop:
         self.pop = self.toolbox.select_best(self.pop, self.n_pop)
 
         # log
-        self.log_stats = deap.tools.Logbook()
-        self.log_best = []
-        self.logging_pop(gen=0)
-    
-    def logging_pop(self, gen):
-        """ log pop stats and best
-        :param gen: index of generation
-        """
-        # stats
-        stats_dict = self.stats.compile(self.pop)
-        for i in range(2):
-            self.log_stats.record(gen=gen, fitness=i,
-                **{k: v[i] for k, v in stats_dict.items()}
-            )
+        self.log_front = []
+        self.log_indicator = []
 
+    def calc_hypervolume(self, front):
+        """ calculate hypervolume of the front
+        :param front: list of indiv, composing the same front
+        :return: hypervolume
+        """
+        # weighted objectives, to maximize
+        wobj = np.array([ind.fitness.wvalues for ind in front])
+        # hypervolume w.r.t ref=(0, 0)
+        hypervolume = deap.tools._hypervolume.hv.hypervolume(wobj, (0, 0))
+        return hypervolume
+    
+    def select_by_hypervolume(self, front):
+        """select individual with least contribution to hypervolume
+        :param front: list of indiv, composing the same front
+        :return: indiv
+            indiv: selected indiv
+        """
+        # calculate hypervolume for front w/o each individual
+        hv_arr = []
+        for i in range(len(front)):
+            hv_i = self.calc_hypervolume(front[:i]+front[i+1:])
+            hv_arr.append(hv_i)
+        # select one with min value, corresponding to min contribution
+        i_min = np.argmin(hv_arr)
+        indiv = front[i_min]
+        return indiv
+
+    def logging_pop(self, n_back=None):
+        """ log front and hypervolume
+        :param n_back: number of previous steps for calculation hypervolume changes
+        :action: update self.log_front, self.log_indicator
+        """
         # pareto front
         front = self.toolbox.sort_fronts(self.pop, self.n_pop, first_front_only=True)[0]
         front = sorted(front, key=lambda indiv: indiv.fitness.values[0])  # sort by overlap
-        self.log_best.append([self.toolbox.clone(indiv) for indiv in front])
+        
+        # log front
+        self.log_front.append([self.toolbox.clone(indiv) for indiv in front])
+        
+        # log indicator
+        hypervolume = self.calc_hypervolume(front)
+        if (n_back is None) or (len(self.log_indicator) < n_back):
+            change_ratio = np.nan
+        else:
+            max_hypervolume = np.max(
+                [ind["hypervolume"] for ind in self.log_indicator[-n_back:]]
+            )
+            change_ratio = 1 - hypervolume / max_hypervolume
+        self.log_indicator.append({"hypervolume": hypervolume, "change_ratio": change_ratio})
 
     def evaluate_pop(self, pop):
         """ evaluate population
@@ -193,11 +217,11 @@ class MOOPop:
         for indiv, fit in zip(pop_invalid, fit_invalid):
             indiv.fitness.values = fit
 
-    def evolve_one(self, action):
+    def evolve_one_gen(self, action):
         """ evolve one generation, perform crossover or mutation
         :param action: select an action, 0=crossover, 1=mutation
         :return: None
-        :action: update self.pop, self.log_stats, self.log_best
+        :action: update self.pop, self.log_stats, self.log_front
         """
         # select for variation, copy, shuffle
         offspring = self.toolbox.select_var(self.pop, self.n_pop)
@@ -225,92 +249,86 @@ class MOOPop:
         # select next generation
         self.pop = self.toolbox.select_best(self.pop+offspring, self.n_pop)
 
-        # log
-        self.logging_pop(gen=self.log_stats[-1]["gen"]+1)
-
-    def evolve(self, n_gen, dump_step=None, state_pkl=None, n_proc=None):
-        """ evolve n generations, using multithreading
-        :param n_gen: number of generations
-        :param dump_step, state_pkl: dump into pkl file (state_pkl) at intervals (dump_step)
+    def evolve(self, maxiter=500, tol=(0.001, 10),
+            step_dump=None, file_pkl=None, n_proc=None
+        ):
+        """ evolve using multithreading
+        :param maxiter: max number of generations
+        :param tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
+        :param step_dump, file_pkl: dump into file_pkl at step_dump intervals
         :param n_proc: number of processors for multithreading
         :return: None
-        :action: update self.pop, self.log_stats, self.log_best
+        :action: update self.pop, self.log_front, self.log_indicator
         """
         # setup: pool, map
         pool = multiprocessing.dummy.Pool(n_proc)
         self.register_map(pool.map)
 
         # run
-        for i in range(1, n_gen+1):
+        for i in range(maxiter):
             # evolve
-            self.evolve_one(action=i % 2)
+            self.evolve_one_gen(action=(i % 2))
+            self.logging_pop(n_back=tol[1])
+            
+            # judge termination
+            if self.log_indicator[-1]["change_ratio"] < tol[0]:
+                break
+
             # dump
-            if (dump_step is not None) and (state_pkl is not None):
+            if (step_dump is not None) and (file_pkl is not None):
                 # at intervals or at the last step
-                if (n_gen % dump_step == 0) or (i == n_gen-1):
-                    self.dump_state(state_pkl)
+                if maxiter % step_dump == 0:
+                    self.dump_state(file_pkl)
         
+        # final dump
+        if (step_dump is not None) and (file_pkl is not None):
+            self.dump_state(file_pkl)
+
         # clean-up: map, pool
         self.register_map()
         pool.close()
-
-    def get_log_stats(self):
-        """ get log_stats in DataFrame
-        :return: DataFrame(log_stats)
-        """
-        df = pd.DataFrame(self.log_stats)
-        df = pd.pivot(df,
-            index="gen",
-            columns="fitness",
-            values=["mean", "best", "std"]
-        )
-        return df
-
-    def plot_log_stats(self, moo_labels=("overlap", "fit extra"), save=None):
-        """ plot log_stats
-        :param moo_labels: names of moo fitness
-        :param xlim: xlim for plotting
-        :param save: name of figure file to save
+    
+    def plot_logs(self, log_front=None, log_indicator=None,
+            moo_labels=("overlap", "fit extra"), save=None):
+        """ plot pareto fronts
+        :param log_front: log of fronts, use self.log_front if None
         :return: fig, ax
         """
-        # convert to dataframe
-        df = self.get_log_stats()
-        # plot
-        fig, axes = plt.subplots(ncols=2, constrained_layout=True)
-        for i in range(2):
-            axes[i].plot(df[("best", i)], label="best")
-            axes[i].plot(df[("mean", i)], label="mean")
-            axes[i].set(xlabel="generation", ylabel="fitness")
-            axes[i].set(title=moo_labels[i])
-            axes[i].set_xticks(np.linspace(0, len(df)-1, 6, dtype=int))
+        # set default
+        if log_front is None:
+            log_front = self.log_front
+        if log_indicator is None:
+            log_indicator = self.log_indicator
+
+        fig, axes = plt.subplots(
+            ncols=2, constrained_layout=True
+        )
+
+        # plot fronts
+        # configure colormap
+        cmap_norm = matplotlib.colors.Normalize(vmin=0, vmax=len(log_front)-1)
+        cmapper = matplotlib.cm.ScalarMappable(norm=cmap_norm, cmap=matplotlib.cm.viridis)
+        # plot each front
+        for i, best in enumerate(log_front):
+            front = np.array([indiv.fitness.values for indiv in best])
+            axes[0].plot(*np.array(front).T, marker="o", alpha=0.5, c=cmapper.to_rgba(i))
+        axes[0].set(xlabel=f"fitness: {moo_labels[0]}", ylabel=f"fitness: {moo_labels[1]}")
+
+        # plot indicators
+        # hypervolume
+        axes[1].plot([ind["hypervolume"] for ind in log_indicator], c="C0")
+        axes[1].set(xlabel="generation", ylabel="hypervolume")
+        axes[1].tick_params(axis='y', labelcolor="C0")
+        # change ratio
+        axes1_twin = axes[1].twinx()
+        axes1_twin.plot([ind["change_ratio"] for ind in log_indicator], c="C1")
+        axes1_twin.set(xlabel="generation", ylabel="change_ratio")
+        axes1_twin.tick_params(axis='y', labelcolor="C1")
+
         # save
         if save is not None:
             fig.savefig(save)
         return fig, axes
-    
-    def plot_log_best(self, log_best=None, moo_labels=("overlap", "fit extra"), save=None):
-        """ plot pareto fronts
-        :param log_best: log of fronts, use self.log_best if None
-        :return: fig, ax
-        """
-        # get log_best
-        if log_best is None:
-            log_best = self.log_best
-
-        # configure colormap
-        cmap_norm = matplotlib.colors.Normalize(vmin=0, vmax=len(log_best)-1)
-        cmapper = matplotlib.cm.ScalarMappable(norm=cmap_norm, cmap=matplotlib.cm.viridis)
-
-        # plot fronts
-        fig, ax = plt.subplots()
-        for i, best in enumerate(log_best):
-            front = np.array([indiv.fitness.values for indiv in best])
-            ax.plot(*np.array(front).T, marker="o", alpha=0.5, c=cmapper.to_rgba(i))
-        ax.set(xlabel=f"fitness: {moo_labels[0]}", ylabel=f"fitness: {moo_labels[1]}")
-        # save
-        if save is not None:
-            fig.savefig(save)
-        return fig, ax
     
     def fit_surfaces_eval(self, pop, u_eval=None, v_eval=None):
         """ fit surfaces from individuals, evaluate at net
