@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """ single objective optimization: population
 """
 

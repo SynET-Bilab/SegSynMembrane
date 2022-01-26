@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 
 import functools
 import numpy as np

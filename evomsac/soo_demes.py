@@ -1,7 +1,3 @@
-#!/usr/bin/env python
-""" EvoMSAC
-"""
-
 import pickle
 import itertools
 import multiprocessing.dummy

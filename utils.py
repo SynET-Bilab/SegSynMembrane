@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """ utils: common utilities
 """
 import numpy as np

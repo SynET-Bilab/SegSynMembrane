@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """ nonmaxsup: non-maximum suppression
 """
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """ dtvoting: for steerable tensor voting
 
 SteerTV:
