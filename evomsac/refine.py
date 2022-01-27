@@ -4,15 +4,29 @@ usage:
     B_filt = filter_seg(mootools.B, dO, mask, factor)
 """
 import numpy as np
+import skimage
 from synseg import hessian
 from synseg import dtvoting
 from synseg import utils
 
 __all__ = [
-    "diff_fit_seg",
+    "find_max_wire", "diff_fit_seg",
     "gaussian_pdf", "mixture_gaussian",
     "filter_seg"
 ]
+
+
+def find_max_wire(pts_net, axis):
+    # A, B - axes
+    # [dz,dy,dx] along A for each B
+    diff_zyx = np.diff(pts_net, axis=axis)
+    # len of wire segments along A for each B
+    segments = np.linalg.norm(diff_zyx, axis=-1)
+    # len of wire along A for each B
+    wire = np.sum(segments, axis=axis)
+    # max of wire in all B
+    wire_max = np.max(wire)
+    return wire_max
 
 def diff_fit_seg(mootools, indiv, O_seg, sigma_gauss, sigma_tv):
     """ calculate difference of orientation between fit and segmentation from tv->filter->connected
@@ -27,18 +41,6 @@ def diff_fit_seg(mootools, indiv, O_seg, sigma_gauss, sigma_tv):
     """
     # generate binary image from fit
     # generate eval pts: max of wireframes
-    def find_max_wire(pts_net, axis):
-        # A, B - axes
-        # [dz,dy,dx] along A for each B
-        diff_zyx = np.diff(pts_net, axis=axis)
-        # len of wire segments along A for each B
-        segments = np.linalg.norm(diff_zyx, axis=-1)
-        # len of wire along A for each B
-        wire = np.sum(segments, axis=axis)
-        # max of wire in all B
-        wire_max = np.max(wire)
-        return wire_max
-
     pts_net = mootools.get_coord_net(indiv)
     n_eval_uz = find_max_wire(pts_net, axis=0)
     n_eval_vxy = find_max_wire(pts_net, axis=1)
@@ -55,14 +57,16 @@ def diff_fit_seg(mootools, indiv, O_seg, sigma_gauss, sigma_tv):
     Sfit_tv, Ofit_tv = dtvoting.stick3d(Bfit, Ofit*Bfit, sigma=sigma_tv)
 
     # mask: belongs to B and close to Bfit
-    # e^(-1/2) = e^(-r^2/(2*sigma_tv^2)) at r=sigma_tv
-    mask = mootools.B * (Sfit_tv > np.exp(-1/2))
-    mask = mask.astype(bool)
+    # e^(-1/2) = e^(-r^2/(2*sigma_tv^2)) at r=sigma_tv, close to fill holes
+    # mask = mootools.B * (Sfit_tv > np.exp(-1/2))
+    # mask = mask.astype(bool)
+    mask_fit = Sfit_tv > np.exp(-1/2)
+    mask_fit = skimage.morphology.binary_closing(mask_fit)
 
     # difference in orientation
     dO = utils.absdiff_orient(O_seg, Ofit_tv)
-    dO = mask*dO
-    return dO, mask
+    dO = dO*mask_fit*mootools.B
+    return dO, mask_fit
 
 def gaussian_pdf(x2, sigma):
     """ gaussian pdf function

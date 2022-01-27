@@ -133,11 +133,15 @@ class MOOPop:
                 pickle.dump(state, pkl)
         return state
 
-    def init_pop(self, n_proc=None):
+    def init_pop(self, pop=None, n_proc=None):
         """ initialize population, logbook, evaluate
+        :param pop: provide pop, then init does the rest
         """
         # generation population
-        self.pop = [self.mootools.random() for _ in range(self.pop_size)]
+        if pop is None:
+            self.pop = [self.mootools.random() for _ in range(self.pop_size)]
+        else:
+            self.pop = pop
 
         # evaluate
         pool = multiprocessing.dummy.Pool(n_proc)
@@ -278,7 +282,7 @@ class MOOPop:
                     self.dump_state(file_pkl)
         
         # final dump
-        if (step_dump is not None) and (file_pkl is not None):
+        if file_pkl is not None:
             self.dump_state(file_pkl)
 
         # clean-up: map, pool

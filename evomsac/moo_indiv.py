@@ -46,17 +46,21 @@ class MOOTools:
         sample_list, fitness = mootools.to_list_fitness(indiv)
         indiv = mootools.from_list_fitness(sample_list, fitness)
     """
-    def __init__(self, B=None, config=None, n_uz=3, n_vxy=4, nz_eachu=1, r_thresh=1):
+
+    def __init__(self, B=None, Bref=None, n_uz=3, n_vxy=4, nz_eachu=1, r_thresh=1, config=None):
         """ init, setups
-        :param B: binary image
+        :param B: binary image for sampling
+        :param Bref: reference binary image for calculating fitness
         :param n_vxy, n_uz: number of sampling grids in v(xy) and u(z) directions
         :param nz_eachu: number of z-direction slices contained in each grid
         :param r_thresh: distance threshold for fitness evaluation, r_outliers >= r_thresh+1
+        :param config: results from self.get_config()
         """
         # read config
         # if provided as args
         if B is not None:
             self.B = B
+            self.Bref = Bref if (Bref is not None) else B
             self.n_vxy = n_vxy
             self.n_uz = n_uz
             self.nz_eachu = nz_eachu
@@ -64,6 +68,9 @@ class MOOTools:
         # if provided as a dict
         elif config is not None:
             self.B = coord_to_mask(config["zyx"], config["shape"])
+            if "zyx_ref" not in config:
+                config["zyx_ref"] = config["zyx"]
+            self.Bref = coord_to_mask(config["zyx_ref"], config["shape"])
             self.n_vxy = config["n_vxy"]
             self.n_uz = config["n_uz"]
             self.nz_eachu = config["nz_eachu"]
@@ -74,31 +81,27 @@ class MOOTools:
         # image shape, grid
         self.shape = self.B.shape
         self.nz = self.B.shape[0]
-        self.grid = Grid(self.B, n_vxy=self.n_vxy,
-            n_uz=self.n_uz, nz_eachu=self.nz_eachu)
+        self.grid = Grid(self.B, n_vxy=self.n_vxy, n_uz=self.n_uz,
+            nz_eachu=self.nz_eachu)
 
         # fitness
         # bspline
         self.surf_meta = bspline.Surface(
             uv_size=(self.n_uz, self.n_vxy), degree=2
         )
-        # no. points in the image
-        npts_iz = [np.sum(Biz > 0) for Biz in self.B]
-        self.npts_B = np.sum(npts_iz)
-        # evalpts in xy: set to npts_iz or diagonal length
-        neval_xy = int(min(np.max(npts_iz),
-            np.sqrt(self.shape[1]**2+self.shape[2]**2)
-        ))
+        # no. points in the reference image
+        npts_iz = np.sum(self.Bref, axis=(1, 2))
+        self.npts_Bref = np.sum(npts_iz)
         # default evalpts
         self.u_eval_default = np.linspace(0, 1, self.nz)
-        self.v_eval_default = np.linspace(0, 1, neval_xy)
-        # image dilated at r's: in sparse format
-        self.dilate_Br = {0: sparse.COO(self.B)}
+        self.v_eval_default = np.linspace(0, 1, np.max(npts_iz))
+        # reference image dilated at r's: in sparse format
+        self.dilated_Bref = {0: sparse.COO(self.Bref)}
         for r in range(1, self.r_thresh+1):
-            dilate_Br_r = skimage.morphology.binary_dilation(
+            dilated_Bref_r = skimage.morphology.binary_dilation(
                 self.B, skimage.morphology.ball(r)
             ).astype(int)
-            self.dilate_Br[r] = sparse.COO(dilate_Br_r)
+            self.dilated_Bref[r] = sparse.COO(dilated_Bref_r)
     
     def get_config(self):
         """ save config to dict, convenient for dump and load
@@ -106,6 +109,7 @@ class MOOTools:
         """
         config = dict(
             zyx=mask_to_coord(self.B),
+            zyx_ref=mask_to_coord(self.Bref),
             shape=self.shape,
             n_vxy=self.n_vxy,
             n_uz=self.n_uz,
@@ -123,6 +127,19 @@ class MOOTools:
             indiv_u = []
             for iv in range(self.n_vxy):
                 indiv_uv = np.random.randint(self.grid.uv_size[(iu, iv)])
+                indiv_u.append(indiv_uv)
+            indiv.append(indiv_u)
+        return indiv
+    
+    def uniform(self, index=0):
+        """ generate individual, by uniform index in each grid
+        :return: individual
+        """
+        indiv = MOOIndiv()
+        for iu in range(self.n_uz):
+            indiv_u = []
+            for iv in range(self.n_vxy):
+                indiv_uv = np.clip(index, 0, self.grid.uv_size[(iu, iv)])
                 indiv_u.append(indiv_uv)
             indiv.append(indiv_u)
         return indiv
@@ -208,14 +225,14 @@ class MOOTools:
         # iterate over layers of r's
         fitness_overlap = 0
         Bfit_sparse = sparse.COO(Bfit)
-        n_accum_prev = np.sum(self.dilate_Br[0] * Bfit_sparse)  # no. overlaps accumulated
+        n_accum_prev = np.sum(self.dilated_Bref[0] * Bfit_sparse)  # no. overlaps accumulated
         for r in range(1, self.r_thresh+1):
-            n_accum_curr = np.sum(self.dilate_Br[r] * Bfit_sparse)
+            n_accum_curr = np.sum(self.dilated_Bref[r] * Bfit_sparse)
             n_r = n_accum_curr - n_accum_prev  # no. overlaps at r
             fitness_overlap += n_r * r**2
             n_accum_prev = n_accum_curr
         # counting points >= r_thresh
-        n_rest = self.npts_B - n_accum_prev
+        n_rest = self.npts_Bref - n_accum_prev
         fitness_overlap += n_rest * (self.r_thresh+1)**2
 
         # extra pixels of fit compared with membrane
