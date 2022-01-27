@@ -3,6 +3,7 @@
 
 import pickle
 import multiprocessing.dummy
+import itertools
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
@@ -218,7 +219,7 @@ class MOOPop:
         for indiv, fit in zip(pop_invalid, fit_invalid):
             indiv.fitness.values = fit
 
-    def evolve_one_gen(self, action):
+    def evolve_one_gen(self, variation):
         """ evolve one generation, perform crossover or mutation
         :param action: select an action, 0=crossover, 1=mutation
         :return: None
@@ -229,7 +230,7 @@ class MOOPop:
         offspring = [self.toolbox.clone(i) for i in offspring]
 
         # crossover
-        if action == 0:
+        if variation == 0:
             np.random.shuffle(offspring)
             for child1, child2 in zip(offspring[::2], offspring[1::2]):
                 self.toolbox.mate(child1, child2)
@@ -237,7 +238,7 @@ class MOOPop:
                 del child2.fitness.values
 
         # mutation
-        elif action == 1:
+        elif variation == 1:
             for mutant in offspring:
                 self.toolbox.mutate(mutant)
                 del mutant.fitness.values
@@ -250,10 +251,11 @@ class MOOPop:
         # select next generation
         self.pop = self.toolbox.select_best(self.pop+offspring, self.pop_size)
 
-    def evolve(self, tol=(0.01, 10), max_iter=200,
+    def evolve(self, var_cycle=(0, 1), tol=(0.01, 10), max_iter=200,
             step_dump=None, file_pkl=None, n_proc=None
         ):
         """ evolve using multithreading
+        :param var_cycle: variations to cycle, 0=crossover, 1=mutate
         :param tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
         :param max_iter: max number of generations
         :param step_dump, file_pkl: dump into file_pkl at step_dump intervals
@@ -266,9 +268,9 @@ class MOOPop:
         self.register_map(pool.map)
 
         # run
-        for i in range(max_iter):
+        for i, var in zip(range(max_iter), itertools.cycle(var_cycle)):
             # evolve
-            self.evolve_one_gen(action=(i % 2))
+            self.evolve_one_gen(variation=var)
             self.logging_pop(n_back=tol[1])
             
             # judge termination
