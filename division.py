@@ -40,7 +40,7 @@ class Segmentalize:
         # segmentalize into segments
         yxd = []
         for iz in range(self.nz):
-            yx_iz, d_iz = self.tracing.trace2d_slice(iz)
+            yx_iz, d_iz = self.tracing.bfs2d(iz)
             for yx_i, d_i in zip(yx_iz, d_iz):
                 yxd.append((iz, yx_i, np.mean(d_i)))
 
