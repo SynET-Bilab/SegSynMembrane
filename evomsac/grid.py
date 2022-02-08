@@ -21,10 +21,11 @@ class Grid:
         """
         # record of inputs
         self.B = B
-        self.nz = B.shape[0]
-        self.n_vxy = n_vxy
-        self.n_uz = n_uz
+        self.nz = self.B.shape[0]
         self.nz_eachu = nz_eachu
+        # nv, nu: try to avoid empty grids
+        self.n_vxy = min(n_vxy, np.sum(self.B, axis=(1, 2)).min())
+        self.n_uz = min(n_uz, int(self.nz/self.nz_eachu))
 
         # info of each bin[iu]: indexes of z, coordinates
         self.ubin_iz = self.get_ubin_iz()

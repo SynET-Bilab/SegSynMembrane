@@ -50,7 +50,7 @@ class MOOTools:
     def __init__(self, B=None, Bref=None, n_uz=3, n_vxy=4, nz_eachu=1, r_thresh=1, config=None):
         """ init, setups
         :param B: binary image for sampling
-        :param Bref: reference binary image for calculating fitness
+        :param Bref: reference binary image for calculating fitness, default=B
         :param n_vxy, n_uz: number of sampling grids in v(xy) and u(z) directions
         :param nz_eachu: number of z-direction slices contained in each grid
         :param r_thresh: distance threshold for fitness evaluation, r_outliers >= r_thresh+1
@@ -83,6 +83,9 @@ class MOOTools:
         self.nz = self.B.shape[0]
         self.grid = Grid(self.B, n_vxy=self.n_vxy, n_uz=self.n_uz,
             nz_eachu=self.nz_eachu)
+        # update nv, nu from grid: where there are additional checks
+        self.n_vxy = self.grid.n_vxy
+        self.n_uz = self.grid.n_uz
 
         # fitness
         # bspline
@@ -130,7 +133,7 @@ class MOOTools:
                 indiv_u.append(indiv_uv)
             indiv.append(indiv_u)
         return indiv
-    
+
     def uniform(self, index=0):
         """ generate individual, by uniform index in each grid
         :return: individual

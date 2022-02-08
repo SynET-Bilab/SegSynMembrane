@@ -1,4 +1,4 @@
-""" utils: utilities
+""" input-output
 """
 
 import tempfile
@@ -28,6 +28,7 @@ def read_mrc(mrcname, negate=False):
     :param negate: if True, return negated image
         convenient for loading original black foreground tomo
     :return: data, voxel_size
+        voxel_size: in A
     """
     with mrcfile.open(mrcname, permissive=True) as mrc:
         data = mrc.data
@@ -97,90 +98,12 @@ def read_model(model_file):
         list(map(tuple, point)), # [(ob1,c1,x1,y1,z1), ...]
         dtype=list(zip(columns, dtypes)) # [("object", int), ...]
     )
-    df = pd.DataFrame.from_records(point_struct)
+    model = pd.DataFrame.from_records(point_struct)
     
     # close tempfile
     temp_file.close()
-    return df
+    return model
 
-def segs_to_model(seg_arr, model_name, voxel_size):
-    """ convert segmentations to model
-    :param seg_arr: [seg1,seg2,...], binary images
-    :param model_name: name for output models, without .mod
-    :param voxel_size: (x,y,z), or None for auto
-    :return: None
-        outputs model file model_name.mod
-    """
-    # for each seg, convert to mrc, then to mod
-    mod_name_arr = []
-    for i, seg in enumerate(seg_arr):
-        # write seg to a temp mrc
-        mrc = tempfile.NamedTemporaryFile(suffix=".mrc")
-        mrc_name = mrc.name
-        write_mrc(seg, mrc_name, voxel_size=voxel_size)
-
-        # convert mrc to mod
-        # imodauto options
-        # -h find contours around pixels higher than this value
-        # -n find inside contours in closed, annular regions
-        # -m minimum are for each contour
-        mod_name_i = f"{model_name}_{i}.mod"
-        subprocess.run(
-            f"imodauto -h 1 -n -m 1 {mrc_name} {mod_name_i}",
-            shell=True, check=True
-        )
-        mod_name_arr.append(mod_name_i)
-        mrc.close()
-    
-    # imodjoin options:
-    # -c change colors of objects being copied to first model
-    mod_name_str = " ".join(mod_name_arr)
-    mod_name_joined = f"{model_name}.mod"
-    subprocess.run(
-        f"imodjoin -c {mod_name_str} {mod_name_joined}",
-        shell=True
-    )
-
-
-#=========================
-# processing tomo, model
-#=========================
-
-def read_clip_tomo(tomo_mrc, bound_mod):
-    """ clip mrc according to the range of model
-    :param tomo_mrc, bound_mod: filename of tomo, boundary
-    :return: data, model, voxel_size, clip_range
-        data, model are clipped
-        voxel_size: read with mrcfile
-        clip_range: {x: (min,max), y:..., z:...}
-    """
-    # read model
-    model = read_model(bound_mod)
-
-    # set the range of clipping
-    # use np.floor/ceil -> int to ensure integers
-    clip_range = {
-        i: (
-            int(np.floor(model[i].min())),
-            int(np.ceil(model[i].max()))
-        )
-        for i in ["x", "y", "z"]
-    }
-
-    # read mrc data within clip_range
-    sub = tuple(
-        slice(clip_range[i][0], clip_range[i][1]+1)
-        for i in ["z", "y", "x"]
-    )
-    with mrcfile.mmap(tomo_mrc, permissive=True) as mrc:
-        data = mrc.data[sub]
-        voxel_size = mrc.voxel_size
-
-    # clip model to clip_range
-    for i in ["x", "y", "z"]:
-        model[i] -= clip_range[i][0]
-
-    return data, model, voxel_size, clip_range
 
 def model_to_mask(model, yx_shape):
     """ convert model to mask, interpolate at missing z's
@@ -193,7 +116,7 @@ def model_to_mask(model, yx_shape):
     mask = np.zeros((model["z"].max()+1, *yx_shape))
 
     # setup mask at given slices
-    z_given = model["z"].unique()
+    z_given = sorted(model["z"].unique())
     for z in z_given:
         mask_yx = model[model["z"] == z][["y", "x"]].values
         mask[z] = skimage.draw.polygon2mask(
@@ -211,3 +134,110 @@ def model_to_mask(model, yx_shape):
     # round to int
     mask = np.round(mask).astype(int)
     return mask
+
+#=========================
+# processing tomo, model
+#=========================
+
+def read_clip_tomo(tomo_file, model):
+    """ clip mrc according to the range of model
+    :param tomo_file: filename of tomo
+    :param model: model DataFrame
+    :return: tomo, voxel_size, clip_range
+        data, model are clipped
+        voxel_size: read with mrcfile
+        clip_range: {x: (min,max), y:..., z:...}
+    """
+    # set the range of clipping
+    # use np.floor/ceil -> int to ensure integers
+    clip_range = {
+        i: (
+            int(np.floor(model[i].min())),
+            int(np.ceil(model[i].max()))
+        )
+        for i in ["x", "y", "z"]
+    }
+
+    # read mrc data within clip_range
+    sub = tuple(
+        slice(clip_range[i][0], clip_range[i][1]+1)
+        for i in ["z", "y", "x"]
+    )
+    with mrcfile.mmap(tomo_file, permissive=True) as mrc:
+        tomo = mrc.data[sub]
+        voxel_size = mrc.voxel_size
+
+    return tomo, voxel_size, clip_range
+
+def read_clip_tomo_model(tomo_file, model_file, obj_bound=1, obj_pre=2):
+    """
+    :param obj_bound, obj_pre: obj begins with 1
+    """
+    # read model
+    model = read_model(model_file)
+    
+    # read tomo, clip to bound
+    I, voxel_size_A, clip_range = read_clip_tomo(
+        tomo_file,
+        model=model[model["object"] == obj_bound]
+    )
+
+    # shift model coordinates
+    for i in ["x", "y", "z"]:
+        model[i] -= clip_range[i][0]
+    
+    # generate mask for bound
+    mask = model_to_mask(
+        model=model[model["object"] == obj_bound],
+        yx_shape=I[0].shape
+    )
+
+    # get coordinates of presynaptic label
+    series_pre = model[model["object"] == obj_pre].iloc[0]
+    zyx_pre = np.array(
+        [series_pre[i] for i in ["z", "y", "x"]]
+    )
+
+    return I, voxel_size_A, mask, clip_range, zyx_pre
+
+#=========================
+# deprecated
+#=========================
+
+# def segs_to_model(seg_arr, model_name, voxel_size):
+#     """ convert segmentations to model
+#     :param seg_arr: [seg1,seg2,...], binary images
+#     :param model_name: name for output models, without .mod
+#     :param voxel_size: (x,y,z), or None for auto
+#     :return: None
+#         outputs model file model_name.mod
+#     """
+#     # for each seg, convert to mrc, then to mod
+#     mod_name_arr = []
+#     for i, seg in enumerate(seg_arr):
+#         # write seg to a temp mrc
+#         mrc = tempfile.NamedTemporaryFile(suffix=".mrc")
+#         mrc_name = mrc.name
+#         write_mrc(seg, mrc_name, voxel_size=voxel_size)
+
+#         # convert mrc to mod
+#         # imodauto options
+#         # -h find contours around pixels higher than this value
+#         # -n find inside contours in closed, annular regions
+#         # -m minimum are for each contour
+#         mod_name_i = f"{model_name}_{i}.mod"
+#         subprocess.run(
+#             f"imodauto -h 1 -n -m 1 {mrc_name} {mod_name_i}",
+#             shell=True, check=True
+#         )
+#         mod_name_arr.append(mod_name_i)
+#         mrc.close()
+
+#     # imodjoin options:
+#     # -c change colors of objects being copied to first model
+#     mod_name_str = " ".join(mod_name_arr)
+#     mod_name_joined = f"{model_name}.mod"
+#     subprocess.run(
+#         f"imodjoin -c {mod_name_str} {mod_name_joined}",
+#         shell=True, check=True
+#     )
