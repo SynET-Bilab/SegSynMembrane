@@ -139,66 +139,29 @@ def model_to_mask(model, yx_shape):
 # processing tomo, model
 #=========================
 
-def read_clip_tomo(tomo_file, model):
+def read_clip_tomo(tomo_file, clip_range=None):
     """ clip mrc according to the range of model
     :param tomo_file: filename of tomo
-    :param model: model DataFrame
-    :return: tomo, voxel_size, clip_range
-        data, model are clipped
-        voxel_size: read with mrcfile
-        clip_range: {x: (min,max), y:..., z:...}
+    :param clip_range: {x: (min,max), y:..., z:...}
+    :return: tomo, voxel_size
+        tomo: clipped
+        voxel_size: read with mrcfile, in A
     """
-    # set the range of clipping
-    # use np.floor/ceil -> int to ensure integers
-    clip_range = {
-        i: (
-            int(np.floor(model[i].min())),
-            int(np.ceil(model[i].max()))
+    # set clip_range
+    if clip_range is None:
+        sub = slice(None, None)
+    else:
+        sub = tuple(
+            slice(clip_range[i][0], clip_range[i][1]+1)
+            for i in ["z", "y", "x"]
         )
-        for i in ["x", "y", "z"]
-    }
-
-    # read mrc data within clip_range
-    sub = tuple(
-        slice(clip_range[i][0], clip_range[i][1]+1)
-        for i in ["z", "y", "x"]
-    )
+    
+    # read tomo and clip
     with mrcfile.mmap(tomo_file, permissive=True) as mrc:
         tomo = mrc.data[sub]
         voxel_size = mrc.voxel_size
 
-    return tomo, voxel_size, clip_range
-
-def read_clip_tomo_model(tomo_file, model_file, obj_bound=1, obj_pre=2):
-    """
-    :param obj_bound, obj_pre: obj begins with 1
-    """
-    # read model
-    model = read_model(model_file)
-    
-    # read tomo, clip to bound
-    I, voxel_size_A, clip_range = read_clip_tomo(
-        tomo_file,
-        model=model[model["object"] == obj_bound]
-    )
-
-    # shift model coordinates
-    for i in ["x", "y", "z"]:
-        model[i] -= clip_range[i][0]
-    
-    # generate mask for bound
-    mask = model_to_mask(
-        model=model[model["object"] == obj_bound],
-        yx_shape=I[0].shape
-    )
-
-    # get coordinates of presynaptic label
-    series_pre = model[model["object"] == obj_pre].iloc[0]
-    zyx_pre = np.array(
-        [series_pre[i] for i in ["z", "y", "x"]]
-    )
-
-    return I, voxel_size_A, mask, clip_range, zyx_pre
+    return tomo, voxel_size
 
 #=========================
 # deprecated

@@ -226,18 +226,18 @@ def ball3d(S, O, sigma):
 # suppress by orientation
 #=========================
 
-def suppress_by_orient(nms, O, sigma, dO_threshold=np.pi/4):
+def suppress_by_orient(B, O, sigma, dO_threshold=np.pi/4):
     """ apply strong tv field, suppress pixels where change in O is large
-    :param nms, O: shape=(nz,ny,nx)
+    :param B, O: shape=(nz,ny,nx), B is a binary image
     :param dO_threshold: threshold of change in O
-    :return: supp, Stv
-        supp: binary mask of image after suppression
+    :return: Bsupp, Stv
+        Bsupp: binary mask of image after suppression
         Stv: Stv after applying strong field
     """
     # apply strong tv field
-    Stv, Otv = stick3d(nms, O, sigma)
+    Stv, Otv = stick3d(B, O, sigma)
     # calculate change in O
     dO = utils.absdiff_orient(Otv, O)
     # mask of pixels with small dO
-    supp = nms*(dO<dO_threshold)
-    return supp, Stv
+    Bsupp = B*(dO<dO_threshold)
+    return Bsupp, Stv
