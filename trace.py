@@ -287,3 +287,26 @@ class Trace:
             yx_iz, d_iz = self.dfs2d(iz)
             traces.append((iz, yx_iz, d_iz))
         return traces
+
+    #=========================
+    # sort coordinates
+    #=========================
+    
+    def sort_coord(self):
+        """ sort voxels of image by bfs
+        :return: zyx
+            zyx: 2d np.ndarray, [[z1,y1,x1],...]
+        """
+        zyx_arr = []
+        # sort for each slice
+        for iz in range(self.B.shape[0]):
+            # get yx by bfs, directly concat
+            yx_traces, _ = self.bfs2d(iz)
+            yx_iz = np.concatenate(yx_traces, axis=0)
+            # prepend z
+            z_iz = iz*np.ones((len(yx_iz), 1), dtype=np.int_)
+            zyx_iz = np.concatenate([z_iz, yx_iz], axis=1)
+            zyx_arr.append(zyx_iz)
+        # concat all
+        zyx = np.concatenate(zyx_arr, axis=0)
+        return zyx
