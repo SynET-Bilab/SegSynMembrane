@@ -208,10 +208,10 @@ class MOOTools:
         # set eval points
         # default: max wireframe length
         if u_eval is None:
-            nu_eval = np.max(utils.wireframe_lengths(sample_net, axis=0))
+            nu_eval = int(np.max(utils.wireframe_lengths(sample_net, axis=0)))
             u_eval = np.linspace(0, 1, nu_eval)
         if v_eval is None:
-            nv_eval = np.max(utils.wireframe_lengths(sample_net, axis=1))
+            nv_eval = int(np.max(utils.wireframe_lengths(sample_net, axis=1)))
             v_eval = np.linspace(0, 1, nv_eval)
 
         # convert fitted surface to binary image

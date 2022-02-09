@@ -220,13 +220,15 @@ def imshow3d(
     # main image
     I = np.flip(I, -2)
     viewer.add_image(
-        I, name="image", colormap="gray", opacity=0.8
+        I, name="image", colormap="gray",
+        opacity=0.75, blending="additive"
     )
     # overlay images
     for i in range(len(Is_overlay)):
         Ii = np.flip(Is_overlay[i], -2)
         viewer.add_image(
-            Ii, name=f"overlay {i+1}", colormap=cmaps[i], opacity=1
+            Ii, name=f"overlay {i+1}", colormap=cmaps[i],
+            opacity=1, blending="additive"
         )
 
     # view vectors
