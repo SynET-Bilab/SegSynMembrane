@@ -2,7 +2,7 @@
 """
 
 import numpy as np
-from synseg import io, utils
+from synseg import io, utils, trace
 from synseg import hessian, dtvoting, nonmaxsup
 from synseg import division, evomsac, matching
 
@@ -20,13 +20,15 @@ class MemSeg:
         """
         self.d_mem_nm = d_mem_nm
         self.d_cleft_nm = d_cleft_nm
+        self.d_mem_px = None
+        self.d_cleft_px = None
 
         # info of tomo and model
         self.I = None
         self.voxel_size_nm = None
         self.clip_range = None
         self.mask_bound = None
-        self.zyx_pre = None
+        self.zyx_ref_pre = None
 
         # detection
         self.Bdetc = None
@@ -81,7 +83,7 @@ class MemSeg:
 
         # get coordinates of presynaptic label
         series_pre = model[model["object"] == obj_pre].iloc[0]
-        self.zyx_pre = np.array(
+        self.zyx_ref_pre = np.array(
             [series_pre[i] for i in ["z", "y", "x"]]
         )
 
@@ -195,15 +197,15 @@ class MemSeg:
         else:
             comps_div = division.divide_connected(
                 comp1_raw, O*comp1_raw,
-                seg_max_size=int(self.d_cleft_px),
-                seg_neigh_thresh=int(self.d_mem_px),
+                seg_max_size=max(1, int(self.d_cleft_px)),
+                seg_neigh_thresh=max(1, int(self.d_mem_px)),
                 n_clusters=2
             )
             comp1, comp2 = comps_div[:2]
         
         # identify pre and post membranes
-        iz_pre = int(self.zyx_pre[0])
-        yx_pre = self.zyx_pre[1:]
+        iz_pre = int(self.zyx_ref_pre[0])
+        yx_pre = self.zyx_ref_pre[1:]
         yx1 = utils.mask_to_coord(comp1[iz_pre])
         yx2 = utils.mask_to_coord(comp2[iz_pre])
         dist1 = np.sum((yx1 - yx_pre)**2, axis=1).min()
@@ -213,35 +215,39 @@ class MemSeg:
             return comp1, comp2
         else:
             return comp2, comp1
-
-    def evomsac_match(self, Bdiv, Odiv, grid_z_nm=50, grid_xy_nm=150):
-        # evomsac
-
+    
+    def evomsac(self, B, grid_z_nm=50, grid_xy_nm=150,
+            pop_size=40, max_iter=500, tol=(0.01, 10)
+        ):
         # set grid numbers
-        zyx = utils.mask_to_coord(Bdiv)
-        l_z = np.ptp(zyx[:, 0]) * self.voxel_size_nm
-        n_uz = max(3, int(np.round(l_z/grid_z_nm)+1))
-        l_y = np.ptp(zyx[:, 1]) * self.voxel_size_nm
-        l_x = np.ptp(zyx[:, 2]) * self.voxel_size_nm
-        l_xy = np.linalg.norm([l_x, l_y])
-        n_vxy = max(4, int(np.round(l_xy/grid_xy_nm))+1)
+        def set_ngrid(span_px, grid_nm, n_min):
+            span_nm = span_px * self.voxel_size_nm
+            n_grid = int(np.round(span_nm/grid_nm)+1)
+            return max(n_min, n_grid)
+
+        nz = B.shape[0]
+        n_uz = set_ngrid(nz, grid_z_nm, 3)
+
+        dydx = utils.spans_xy(B)
+        l_xy = np.median(np.linalg.norm(dydx, axis=1))
+        n_vxy = set_ngrid(l_xy, grid_xy_nm, 3)
         
         # evolve
         mtools = evomsac.MOOTools(
-            Bdiv, n_vxy=n_vxy, n_uz=n_uz, nz_eachu=1, r_thresh=1
+            B, n_vxy=n_vxy, n_uz=n_uz, nz_eachu=1, r_thresh=1
         )
-        mpop = evomsac.MOOPop(mtools, pop_size=40)
+        mpop = evomsac.MOOPop(mtools, pop_size=pop_size)
         mpop.init_pop()
-        mpop.evolve(max_iter=400, tol=(0.01, 10))
+        mpop.evolve(max_iter=max_iter, tol=tol)
 
+        return mpop
 
-        # match
-        
+    def matching(self, B, O, mpop):
         # fit surface
         indiv = mpop.select_by_hypervolume(mpop.log_front[-1])
         pts_net = mpop.mootools.get_coord_net(indiv)
-        nu_eval = matching.find_max_wire(pts_net, axis=0)
-        nv_eval = matching.find_max_wire(pts_net, axis=1)
+        nu_eval = np.max(utils.wireframe_lengths(pts_net, axis=0))
+        nv_eval = np.max(utils.wireframe_lengths(pts_net, axis=1))
         Bfit, _ = mpop.mootools.fit_surface_eval(
             indiv,
             u_eval=np.linspace(0, 1, 2*int(nu_eval)),
@@ -249,27 +255,46 @@ class MemSeg:
         )
 
         # tv
-        Stv, Otv = dtvoting.stick3d(Bdiv, Odiv, sigma=self.d_cleft_px)
+        Stv, Otv = dtvoting.stick3d(B, O, sigma=self.d_cleft_px)
         Btv = nonmaxsup.nms3d(Stv, Otv)
         Bmatch = matching.match_spatial_orient(
             Btv, Otv*Btv, Bfit,
             sigma_gauss=self.d_mem_px,
             sigma_tv=self.d_mem_px
         )
-        Bmatch = next(iter(utils.extract_connected(Bmatch)))[1]
 
         # smoothing
         Ssmooth, Osmooth = hessian.features3d(Bmatch, self.d_mem_px)
         Bsmooth = nonmaxsup.nms3d(Ssmooth, Osmooth)
+        Bsmooth = next(iter(utils.extract_connected(Bsmooth)))[1]
+        Osmooth = Osmooth*Bsmooth
 
-        return Bsmooth
+        # ordering
+        zyx_sorted = trace.Trace(Bsmooth, Osmooth).sort_coord()
+        
+        return Bsmooth, zyx_sorted
+
+    def surf_normal(self, B, zyx):
+        xyz, normal = hessian.surface_normal(
+            B,
+            sigma=self.d_mem_px,
+            zyx_ref=self.zyx_ref_pre,
+            pos=tuple(zyx.T)
+        )
+        return xyz, normal
 
     def segmentation(self):
         Bdetect, Odetect = self.detect()
         
         Bdiv_pre, Bdiv_post = self.divide(Bdetect, Odetect)
         
-        Bpre = self.evomsac_match(Bdiv_pre, Odetect*Bdiv_pre)
-        Bpost = self.evomsac_match(Bdiv_post, Odetect*Bdiv_post)
+        mpop_pre = self.evomsac(Bdiv_pre)
+        Bpre, zyx_pre = self.matching(Bdiv_pre, Odetect*Bdiv_pre, mpop_pre)
+        xyz_pre, normal_pre = self.surf_normal(Bpre, zyx_pre)
 
-        return Bpre, Bpost
+        mpop_post = self.evomsac(Bdiv_post)
+        Bpost, zyx_post = self.matching(Bdiv_post, Odetect*Bdiv_post, mpop_post)
+        xyz_post, normal_post = self.surf_normal(Bpost, zyx_post)
+        normal_post = -normal_post
+
+        # return Bpre, Bpost, zyx_pre, zyx_post

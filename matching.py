@@ -8,29 +8,12 @@ import skimage
 from synseg import hessian, dtvoting, utils, trace
 
 __all__ = [
-    "find_max_wire", "GMMFixed", "fill_matched", "match_spatial_orient"
+    "GMMFixed", "fill_matched", "match_spatial_orient"
 ]
 
-
 #=========================
-# auxiliary tools
+# GMM
 #=========================
-
-def find_max_wire(pts_net, axis):
-    """ find max of wireframe along one axis
-    :param pts_net: shape=(nu,nv,3)
-    """
-    # A, B - axes
-    # [dz,dy,dx] along A for each B
-    diff_zyx = np.diff(pts_net, axis=axis)
-    # len of wire segments along A for each B
-    segments = np.linalg.norm(diff_zyx, axis=-1)
-    # len of wire along A for each B
-    wire = np.sum(segments, axis=axis)
-    # max of wire in all B
-    wire_max = np.max(wire)
-    return wire_max
-
 
 class GMMFixed:
     """ Gaussian mixture model with fixed means

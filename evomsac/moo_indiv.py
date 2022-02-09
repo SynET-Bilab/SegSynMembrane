@@ -6,8 +6,7 @@ import skimage
 import sparse
 import deap, deap.base, deap.tools
 
-from synseg.utils import mask_to_coord, coord_to_mask
-from synseg import bspline
+from synseg import utils, bspline
 from synseg.evomsac import Grid
 
 
@@ -47,7 +46,7 @@ class MOOTools:
         indiv = mootools.from_list_fitness(sample_list, fitness)
     """
 
-    def __init__(self, B=None, n_uz=3, n_vxy=4, nz_eachu=1, r_thresh=1, config=None):
+    def __init__(self, B=None, n_uz=3, n_vxy=3, nz_eachu=1, r_thresh=1, config=None):
         """ init, setups
         :param B: binary image for sampling
         :param n_vxy, n_uz: number of sampling grids in v(xy) and u(z) directions
@@ -65,7 +64,7 @@ class MOOTools:
             self.r_thresh = int(r_thresh)
         # if provided as a dict
         elif config is not None:
-            self.B = coord_to_mask(config["zyx"], config["shape"])
+            self.B = utils.coord_to_mask(config["zyx"], config["shape"])
             if "zyx_ref" not in config:
                 config["zyx_ref"] = config["zyx"]
             self.n_vxy = config["n_vxy"]
@@ -78,8 +77,11 @@ class MOOTools:
         # image shape, grid
         self.shape = self.B.shape
         self.nz = self.B.shape[0]
-        self.grid = Grid(self.B, n_vxy=self.n_vxy, n_uz=self.n_uz,
-            nz_eachu=self.nz_eachu)
+        self.grid = Grid(
+            self.B,
+            n_vxy=self.n_vxy, n_uz=self.n_uz,
+            nz_eachu=self.nz_eachu
+        )
         # update nv, nu from grid: where there are additional checks
         self.n_vxy = self.grid.n_vxy
         self.n_uz = self.grid.n_uz
@@ -90,11 +92,7 @@ class MOOTools:
             uv_size=(self.n_uz, self.n_vxy), degree=2
         )
         # no. points in the reference image
-        npts_iz = np.sum(self.B, axis=(1, 2))
-        self.npts_B = np.sum(npts_iz)
-        # default evalpts
-        self.u_eval_default = np.linspace(0, 1, self.nz)
-        self.v_eval_default = np.linspace(0, 1, np.max(npts_iz))
+        self.npts_B = np.sum(self.B)
         # reference image dilated at r's: in sparse format
         self.dilated_B = {0: sparse.COO(self.B)}
         for r in range(1, self.r_thresh+1):
@@ -108,8 +106,8 @@ class MOOTools:
         :return: config={zyx,shape,n_vxy,n_uz,nz_eachu}
         """
         config = dict(
-            zyx=mask_to_coord(self.B),
-            zyx_ref=mask_to_coord(self.B),
+            zyx=utils.mask_to_coord(self.B),
+            zyx_ref=utils.mask_to_coord(self.B),
             shape=self.shape,
             n_vxy=self.n_vxy,
             n_uz=self.n_uz,
@@ -203,18 +201,23 @@ class MOOTools:
             Bfit: rough voxelization of fitted surface
             fit: splipy surface
         """
-        # reading args
-        u_eval = u_eval if (u_eval is not None) else self.u_eval_default
-        v_eval = v_eval if (v_eval is not None) else self.v_eval_default
-
-        # nurbs fit
+        # fit
         sample_net = self.get_coord_net(indiv)
         fit = self.surf_meta.interpolate(sample_net)
+
+        # set eval points
+        # default: max wireframe length
+        if u_eval is None:
+            nu_eval = np.max(utils.wireframe_lengths(sample_net, axis=0))
+            u_eval = np.linspace(0, 1, nu_eval)
+        if v_eval is None:
+            nv_eval = np.max(utils.wireframe_lengths(sample_net, axis=1))
+            v_eval = np.linspace(0, 1, nv_eval)
 
         # convert fitted surface to binary image
         # evaluate at dense points
         pts_fit = self.flatten_net(fit(u_eval, v_eval))
-        Bfit = coord_to_mask(pts_fit, self.shape)
+        Bfit = utils.coord_to_mask(pts_fit, self.shape)
         return Bfit, fit
 
     def calc_fitness(self, Bfit):

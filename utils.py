@@ -12,7 +12,9 @@ __all__ = [
     # coordinates
     "mask_to_coord", "coord_to_mask", "reverse_coord",
     # segments
-    "extract_connected", "stats_per_label", "filter_connected_xy", "filter_connected_dz"
+    "extract_connected", "stats_per_label", "filter_connected_xy", "filter_connected_dz",
+    # grid helpers
+    "spans_xy", "wireframe_lengths",
 ]
 
 #=========================
@@ -222,3 +224,37 @@ def filter_connected_dz(B, dzfilter=1, connectivity=2):
     mask = np.isin(L, df["label"][df["z"] >= dzfilter])
     B_filt = B * mask
     return B_filt
+
+
+#=========================
+# grid helpers
+#=========================
+
+def spans_xy(B):
+    """ calculate span in xy for each z
+    :param B: image, shape=(nz, ny, nx)
+    :return: dydx
+        dydx: 2d np.ndarray, [[dy1, dx1],...]
+    """
+    nz = B.shape[0]
+    dydx = np.zeros((nz, 2))
+    for iz in range(nz):
+        yx = mask_to_coord(B[iz])
+        dydx[iz] = np.ptp(yx, axis=0)
+    return dydx
+
+def wireframe_lengths(pts_net, axis):
+    """ calculate lengths of wireframe along one axis
+    :param pts_net: shape=(nu,nv,3)
+    :param axis: u - 0, v - 1
+    :return: wires
+        wires: 1d np.ndarray, [length1, length2, ...]
+    """
+    # A, B - axes
+    # [dz,dy,dx] along A for each B
+    diff_zyx = np.diff(pts_net, axis=axis)
+    # len of wire segments along A for each B
+    segments = np.linalg.norm(diff_zyx, axis=-1)
+    # len of wire along A for each B
+    wires = np.sum(segments, axis=axis)
+    return wires

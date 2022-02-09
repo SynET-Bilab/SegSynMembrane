@@ -23,9 +23,14 @@ class Grid:
         self.B = B
         self.nz = self.B.shape[0]
         self.nz_eachu = nz_eachu
+
         # nv, nu: try to avoid empty grids
-        self.n_vxy = min(n_vxy, np.sum(self.B, axis=(1, 2)).min())
-        self.n_uz = min(n_uz, int(self.nz/self.nz_eachu))
+        # nv: <= min number of pixels among z's
+        max_nv = np.sum(self.B, axis=(1, 2)).min()
+        self.n_vxy = min(n_vxy, max_nv)
+        # nu: <= nz/nz_eachu
+        max_nu = int(self.nz/self.nz_eachu)
+        self.n_uz = min(n_uz, max_nu)
 
         # info of each bin[iu]: indexes of z, coordinates
         self.ubin_iz = self.get_ubin_iz()
