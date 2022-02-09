@@ -7,15 +7,15 @@ import numpy as np
 import pandas as pd
 import skimage
 import mrcfile
-from synseg.utils import negate_image
+from synseg import utils
 
 __all__ = [
-    # read/write
-    "read_mrc", "write_mrc", "read_model",
+    # mrc
+    "read_mrc", "write_mrc",
+    # model
+    "read_model", "model_to_mask", "write_model",
     # processing
-    "read_clip_tomo", "model_to_mask",
-    # segmentation
-    "segs_to_model"
+    "read_clip_tomo",
 ]
 
 
@@ -34,12 +34,12 @@ def read_mrc(mrcname, negate=False):
         data = mrc.data
         voxel_size = mrc.voxel_size
     if negate:
-        data = negate_image(data)
+        data = utils.negate_image(data)
     return data, voxel_size
 
 def write_mrc(data, mrcname, voxel_size=None, dtype=None):
     """ write 3d data to mrc
-    :param voxel_size: (x,y,z), or None for auto
+    :param voxel_size: in A, (x,y,z), or a number, or None
     :param dtype: datatype, if None use data.dtype
         mrc-compatible: int8/16, uint8/16, float32, complex64
     """
@@ -104,7 +104,6 @@ def read_model(model_file):
     temp_file.close()
     return model
 
-
 def model_to_mask(model, yx_shape):
     """ convert model to mask, interpolate at missing z's
     :param model: DataFrame, result of read_model() or clip_tomo()
@@ -134,6 +133,43 @@ def model_to_mask(model, yx_shape):
     # round to int
     mask = np.round(mask).astype(int)
     return mask
+
+def write_model(zyx_arr, model_file):
+    """ write points to model
+    one object for each zyx in array
+    one open contour for each z
+    :param zyx_arr: array of zyx=[[z1,y1,x1],...]
+    :param model_file: filename of model
+    :return: data
+        data: object, contour, x, y, z
+    """
+    # make data from zyx's
+    # data format: object, contour, x, y, z
+    data_arr = []
+    for i_obj, zyx_obj in enumerate(zyx_arr):
+        obj = i_obj + 1
+        z_obj = zyx_obj[:, 0]
+        for i_ct, z_ct in enumerate(np.unique(z_obj)):
+            ct = i_ct + 1
+            xyz_ct = utils.reverse_coord(zyx_obj[z_obj==z_ct])
+            ones = np.ones((len(xyz_ct), 1), dtype=np.int_)
+            data_ct = np.concatenate(
+                [obj*ones, ct*ones, xyz_ct],
+                axis=1
+            )
+            data_arr.append(data_ct)
+    data = np.concatenate(data_arr)
+
+    # save as point file, convert to model
+    temp_file = tempfile.NamedTemporaryFile(suffix=".point")
+    point_file = temp_file.name
+    # format: int for object, contour; float for x, y, z
+    np.savetxt(point_file, data, fmt=(['%d']*2 + ['%.2f']*3))
+    # point2model: -op for open contour
+    cmd = f"point2model -op {point_file} {model_file} >/dev/null"
+    subprocess.run(cmd, shell=True, check=True)
+    
+    return data
 
 #=========================
 # processing tomo, model
