@@ -3,14 +3,14 @@
 
 import numpy as np
 import multiprocessing.dummy
-from itertools import combinations_with_replacement
-from synseg.utils import gaussian, reverse_coord
+import itertools
+from synseg import utils
 
 __all__ = [
     # 2d hessian, saliency
     "hessian2d", "features2d_H1", "features2d_H2", "features3d",
     # 3d hessian, surface normal
-    "hessian3d", "symmetric_image", "surface_norm"
+    "hessian3d", "symmetric_image", "surface_normal"
 ]
 
 
@@ -27,7 +27,7 @@ def hessian2d(I, sigma):
     # referenced skimage.feature.hessian_matrix
     # here x,y are made explicit
     # I[y,x]
-    Ig = gaussian(I, sigma)
+    Ig = utils.gaussian(I, sigma)
     Hx = np.gradient(Ig, axis=1)
     Hy = np.gradient(Ig, axis=0)
     Hxx = np.gradient(Hx, axis=1)
@@ -79,7 +79,7 @@ def features3d(I, sigma):
     :return: S - saliency, O - tangent of max-amp-eigvec
     """
     # gaussian on 3d image
-    Ig = gaussian(I.astype(np.float_), sigma)
+    Ig = utils.gaussian(I.astype(np.float_), sigma)
 
     # create arrays
     S = np.zeros(Ig.shape, dtype=np.float_)
@@ -107,7 +107,7 @@ def hessian3d(I, sigma):
     # referenced skimage.feature.hessian_matrix
     # here x,y,z are made explicit
     # I[z,y,x]
-    Ig = gaussian(I, sigma)
+    Ig = utils.gaussian(I, sigma)
     Hx = np.gradient(Ig, axis=2)
     Hy = np.gradient(Ig, axis=1)
     Hz = np.gradient(Ig, axis=0)
@@ -119,67 +119,76 @@ def hessian3d(I, sigma):
     Hzz = np.gradient(Hz, axis=0)
     return Hxx, Hxy, Hxz, Hyy, Hyz, Hzz
 
-def symmetric_image(S_elems):
+def symmetric_image(H_elems):
     """ make symmetric image from elements
     ref: skimage.feature.corner._symmetric_image
-    :param S_elems: e.g. Hxx, Hxy, Hyy
+    :param H_elems: e.g. Hxx, Hxy, Hyy
     :return: H_mats
         H_mats: H_mats[z,y,x] = hessian matrix at (z,y,x)
     """
-    image = S_elems[0]
-    symmetric_image = np.zeros(
+    image = H_elems[0]
+    H_mats = np.zeros(
         image.shape + (image.ndim, image.ndim),
-        dtype=S_elems[0].dtype
+        dtype=image.dtype
     )
-    for idx, (row, col) in enumerate(
-        combinations_with_replacement(range(image.ndim), 2)
-    ):
-        symmetric_image[..., row, col] = S_elems[idx]
-        symmetric_image[..., col, row] = S_elems[idx]
-    return symmetric_image
+    iter_rc = itertools.combinations_with_replacement(
+        range(image.ndim), 2)
+    for idx, (row, col) in enumerate(iter_rc):
+        H_mats[..., row, col] = H_elems[idx]
+        H_mats[..., col, row] = H_elems[idx]
+    return H_mats
 
-def surface_norm_one(H_mat, del_ref):
+def surface_normal_one(H_mat):
     """ calculate surface normal at one location, via hessian
     :param H_mat: 3*3 hessian matrix at the location
-    :param del_ref: [x,y,z] of location - [x,y,z] of reference
-    :return: evec_out
-        evec_out: outward normal vector, [x,y,z]
+    :return: normal
+        normal: normal vector, [x,y,z]
     """
     evals, evecs = np.linalg.eigh(H_mat)
     # max eig by abs
     imax = np.argmax(np.abs(evals))
-    evec = evecs[:, imax]
-    # align direction with outward
-    evec_out = evec if np.dot(evec, del_ref) >= 0 else -evec
-    return evec_out
+    normal = evecs[:, imax]
+    return normal
 
-def surface_norm(I, xy_ref, sigma=1):
+def surface_normal(I, sigma, zyx_ref, pos=None):
     """ calculate surface normal at nonzeros of I
     :param I: image, shape=(nz,ny,nx)
-    :param xy_ref: [x,y] of a reference point inside
     :param sigma: gaussian smoothing
-    :return: xyz, norm
+    :param zxy_ref: [z,y,x] of a reference point for inside
+    :param pos: positions of points, for customized ordering or subsetting
+    :return: xyz, normal
         xyz: coordinates, [[x1,y1,z1],...]
-        norm: normal vectors, [[nx1,ny1,nz1],...]
+        normal: normal vectors, [[nx1,ny1,nz1],...]
     """
-    # nonzero pixels
-    pos = np.nonzero(I)
+    # setups
+    if pos is None:
+        pos = np.nonzero(I)
     n_pts = len(pos[0])
+    zyx_ref = np.asarray(zyx_ref)
+
     # coordinates and hessian
-    xyz = reverse_coord(np.transpose(pos))
+    xyz = utils.reverse_coord(np.transpose(pos))
     H_mats = symmetric_image(hessian3d(I, sigma))[pos]
 
     # normal
-    norm = np.zeros((n_pts, 3))
+    normal = np.zeros((n_pts, 3))
     def calc_one(i):
-        xyz_ref = np.array([xy_ref[0], xy_ref[1], xyz[i][-1]])
-        norm[i] = surface_norm_one(
-            H_mats[i],
-            del_ref=xyz[i]-xyz_ref
-        )
+        normal[i] = surface_normal_one(H_mats[i])
 
     pool = multiprocessing.dummy.Pool()
     pool.map(calc_one, range(n_pts))
     pool.close()
-    
-    return xyz, norm
+
+    # direction from ref point to the center of image
+    iz_ref = int(zyx_ref[0])
+    yx_iz_all = utils.mask_to_coord(I[iz_ref])
+    yx_iz_mean = np.mean(yx_iz_all, axis=0)
+    zyx_iz = np.concatenate([[iz_ref], yx_iz_mean])
+    dir_xyz = (zyx_iz - zyx_ref)[::-1]
+
+    # align directions with ref
+    sign = np.sum(normal*dir_xyz, axis=1)
+    mask = sign < 0
+    normal[mask] = -normal[mask]
+
+    return xyz, normal
