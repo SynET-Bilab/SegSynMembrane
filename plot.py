@@ -4,8 +4,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import napari
-# import plotly
-# import plotly.subplots
 
 __all__ = [
     # matplotlib: 2d plot
@@ -193,71 +191,59 @@ def scatter(
 #=========================
 
 def imshow3d(
-        I_back, I_fronts=None,
-        opacity_back=0.75, opacity_front=1,
-        cmap_back="gray", cmap_fronts="default"
+        I, Is_overlay=(),
+        vecs_zyx=(), vecs_dir=(),
+        cmaps="default", vec_width=0.1
     ):
-    """ overlay images using napari, through different channels
-    :param I_back: single background image
-    :param I_fronts: array of front images
-    :param isin_01: is I already in range 01, otherwise minmax scale
-    :param opacity_back, opacity_front: setup opacity
-    :param cmap_back: colormap
-    :param cmap_fronts: default=["green", "yellow", "cyan", "magenta",
+    """ plot images using napari
+    :param I: main image
+    :param Is_overlay: array of overlaying images
+    :param vecs_zyx: array of vector positions, each shape = (npts, 3)
+    :param vecs_dir: array of vector directions, each shape = (npts, 3)
+    :param cmaps: default=["green", "yellow", "cyan", "magenta",
         "bop blue", "bop orange", "bop purple", "red", "blue"]
+    :param vec_width: width of vectors
+    :return: viewer
     """
-    # setup cmap, opacity according to number of front images
-    if I_fronts is None:
-        I_fronts = []
-    n_fronts = len(I_fronts)
-    if cmap_fronts == "default":
-        cmap_fronts = [
+    # setup defaults
+    if cmaps == "default":
+        cmaps = [
             "green", "yellow", "cyan", "magenta",
             "bop blue", "bop orange", "bop purple", "red", "blue"
         ]
-        cmap_fronts = cmap_fronts[:n_fronts]
-    opacity_fronts = [opacity_front]*n_fronts
-    name_fronts = [f"foreground {i}" for i in range(1, n_fronts+1)]
 
+    # setup viewer
+    viewer = napari.Viewer()
+
+    # view images
     # flip y-axis, napari doesn't seem to support orient="lower" as in imshow
-    I_back = np.flip(I_back, -2)
-    I_fronts = [np.flip(I, -2) for I in I_fronts]
-
-    # stack images along axis-0
-    I_stack = np.stack([I_back, *I_fronts], axis=0)
-
-    # view images via channels
-    viewer = napari.view_image(
-        I_stack, channel_axis=0,
-        name=["background", *name_fronts],
-        colormap=[cmap_back, *cmap_fronts],
-        opacity=[opacity_back, *opacity_fronts]
+    # main image
+    I = np.flip(I, -2)
+    viewer.add_image(
+        I, name="image", colormap="gray", opacity=0.8
     )
+    # overlay images
+    for i in range(len(Is_overlay)):
+        Ii = np.flip(Is_overlay[i], -2)
+        viewer.add_image(
+            Ii, name=f"overlay {i+1}", colormap=cmaps[i], opacity=1
+        )
+
+    # view vectors
+    for i in range(len(vecs_zyx)):
+        zyx = vecs_zyx[i]
+        dzyx = vecs_dir[i]
+        # construct vector according to napari's requirement
+        # flip y, as is done to the image
+        vec = np.zeros((len(zyx), 2, 3))
+        zyx[:, 1] = I.shape[1] - zyx[:, 1] - 1
+        dzyx[:, 1] = -dzyx[:, 1]
+        vec[:, 0, :] = zyx
+        vec[:, 1, :] = dzyx
+        # add vector layer
+        viewer.add_vectors(
+            vec, name=f"vector {i+1}", opacity=1,
+            edge_width=vec_width, edge_color=cmaps[i]
+        )
     return viewer
 
-
-#=========================
-# plotly
-#=========================
-
-# def imshowly(I_arr, cmap=None, renderers="vscode"):
-#     """ 2d imshow using plotly (more interactive)
-#     :param I_arr: a 1d list of images
-#     :param cmap: set colorscale
-#     """
-#     # setup
-#     plotly.io.renderers.default = renderers
-#     n = len(I_arr)
-#     fig = plotly.subplots.make_subplots(rows=1, cols=n)
-#     fig.update_layout(yaxis=dict(scaleanchor='x'))
-#     fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
-    
-#     # plot
-#     for i in range(n):
-#         fig.add_trace(
-#             plotly.graph_objects.Heatmap(
-#                 z=I_arr[i], colorscale=cmap
-#             ),
-#             row=1, col=i+1  # 1-based
-#         )
-#     return fig
