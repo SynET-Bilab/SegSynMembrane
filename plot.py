@@ -4,10 +4,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import napari
+from synseg import utils
 
 __all__ = [
     # matplotlib: 2d plot
-    "imshow", "scatter",
+    "imshow", "scatter", "imoverlay",
     # napari: 3d viewer
     "imshow3d"
 ]
@@ -34,11 +35,16 @@ def setup_subplots(n, shape, figsize1):
     elif shape[1] is None:  # (nrows, None)
         shape = (shape[0], int(np.ceil(n/shape[0])))
 
+    # setup figsize
+    if figsize1 is None:
+        figsize = None
+    else:
+        figsize = (
+            figsize1[0]*shape[1],  # size_x * ncols
+            figsize1[1]*shape[0]  # size_y * nrows
+        )
+
     # setup figure
-    figsize = (
-        figsize1[0]*shape[1],  # size_x * ncols
-        figsize1[1]*shape[0]  # size_y * nrows
-    )
     fig, axes = plt.subplots(
         nrows=shape[0], ncols=shape[1],
         sharex=True, sharey=True,
@@ -53,8 +59,7 @@ def imshow(
         vrange=None, qrange=(0, 1),
         cmap="gray", colorbar=True, colorbar_shrink=0.6,
         title_arr=None, suptitle=None,
-        supxlabel=None, supylabel=None,
-        figsize1=(3, 3), save=None
+        figsize1=None, save=None, dpi=None
     ):
     """ show multiple images
     :param I_arr: a 1d list of images
@@ -65,6 +70,7 @@ def imshow(
     :param title_arr, suptitle, supxlabel, supylabel: set labels
     :param figsize1: size of one subplot
     :param save: name to save fig
+    :param dpi: dpi of saved fig
     :return: fig, axes
     """
     # setup styles
@@ -118,12 +124,10 @@ def imshow(
         
     # setup fig title
     fig.suptitle(suptitle)
-    fig.supxlabel(supxlabel)
-    fig.supylabel(supylabel)
 
     # save fig
     if save is not None:
-        fig.savefig(save)
+        fig.savefig(save, dpi=dpi)
 
     return fig, axes
 
@@ -134,8 +138,7 @@ def scatter(
         marker_size=0.1,
         cmap="viridis", colorbar=True, colorbar_shrink=0.6,
         title_arr=None, suptitle=None,
-        supxlabel="x/pixel", supylabel="y/pixel",
-        figsize1=(3.5, 3.5), save=None
+        figsize1=None, save=None, dpi=None
     ):
     """ show multiple scatters
     :param xy_arr: 1d list of 2d array [x, y]
@@ -145,6 +148,7 @@ def scatter(
     :param title_arr, suptitle, supxlabel, supylabel: set labels
     :param figsize1: size of one subplot
     :param save: name to save fig
+    :param dpi: dpi of saved fig
     :return: fig, axes
     """
     # regularize labels_arr
@@ -176,15 +180,63 @@ def scatter(
 
     # setup fig title
     fig.suptitle(suptitle)
-    fig.supxlabel(supxlabel)
-    fig.supylabel(supylabel)
 
     # save fig
     if save is not None:
-        fig.savefig(save)
+        fig.savefig(save, dpi=dpi)
 
     return fig, axes
 
+def imoverlay(im_dict, shape=None,
+        figsize1=None, save=None, dpi=200,
+        bg_qrange=(0.02, 0.98), bg_alpha=0.5, bg_cmap='gray',
+        fg_alpha=1., fg_cmaps=('Blues','Oranges','Greens','Reds')
+    ):
+    """ show multiple images with overlays
+    :param im_dict: {title1: {I: I, yxs: [yx1, yx2]}, title2: ...}
+    :param shape: (nrows, ncols), will auto set if either is None
+    :param bg_qrange, bg_alpha, bg_cmap: quantile range, alpha value, colormap of the background image
+    :param fg_alpha: alpha value of foreground images
+    :param figsize1: size of one subplot
+    :param save: name to save fig
+    :param dpi: dpi of saved fig
+    :return: fig, axes
+    """
+    # setup figure
+    fig, axes = setup_subplots(len(im_dict), shape, figsize1)
+    shape = axes.shape
+
+    # plot on each ax
+    for idx1d, (label, item) in enumerate(im_dict.items()):
+        # setup axes
+        idx2d = np.unravel_index(idx1d, shape)
+        axes[idx2d].set_aspect(1)
+        axes[idx2d].set_axis_off()
+        axes[idx2d].set(title=label)
+
+        # background image
+        vmin = np.quantile(item["I"], bg_qrange[0])
+        vmax = np.quantile(item["I"], bg_qrange[1])
+        axes[idx2d].imshow(
+            item["I"], vmin=vmin, vmax=vmax,
+            cmap=bg_cmap, alpha=bg_alpha, origin="lower"
+        )
+        # overlaying images
+        # yx to im, set zero pixels to alpha=0
+        for i, yx in enumerate(item["yxs"]):
+            im_i = utils.coord_to_mask(yx, item["I"].shape)
+            axes[idx2d].imshow(
+                # set vmax=2 so that midpoint of cmap is shown
+                im_i, vmin=0, vmax=2,
+                cmap=fg_cmaps[i], alpha=im_i*fg_alpha,
+                origin="lower", interpolation='none'
+            )
+
+    # save fig
+    if save is not None:
+        fig.savefig(save, dpi=dpi)
+
+    return fig, axes
 
 #=========================
 # napari
