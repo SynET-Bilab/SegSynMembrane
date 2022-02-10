@@ -16,7 +16,7 @@ SteerTV:
 import numpy as np
 from numpy import fft
 import multiprocessing.dummy
-from TomoSynSegAE import utils
+from etsynseg import utils
 
 __all__ = [
     # stick tv

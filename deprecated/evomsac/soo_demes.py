@@ -6,8 +6,8 @@
 # import pandas as pd
 # import deap, deap.base, deap.tools
 
-# from TomoSynSegAE.utils import coord_to_mask
-# from TomoSynSegAE.evomsac import SOOTools
+# from etsynseg.utils import coord_to_mask
+# from etsynseg.evomsac import SOOTools
 
 # class SOODemes:
 #     """ evolving populations

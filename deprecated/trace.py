@@ -8,7 +8,7 @@
 # import pandas as pd
 # import networkx as nx
 # import geomdl.fitting
-# from TomoSynSegAE import dtvoting, utils
+# from etsynseg import dtvoting, utils
 
 # __all__ = [
 #     # trace within segment

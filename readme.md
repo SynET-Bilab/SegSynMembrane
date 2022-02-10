@@ -1,5 +1,5 @@
 # readme
 
-TomoSynSegAE
+etsynseg
 
 AE for automatic extraction

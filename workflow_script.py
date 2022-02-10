@@ -1,6 +1,6 @@
 import argparse
 import pathlib
-from TomoSynSegAE import workflow
+from etsynseg import workflow
 
 
 def build_parser():

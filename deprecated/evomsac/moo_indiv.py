@@ -6,9 +6,9 @@
 # import sparse
 # import deap, deap.base, deap.tools
 
-# from TomoSynSegAE.utils import mask_to_coord, coord_to_mask
-# from TomoSynSegAE import bspline
-# from TomoSynSegAE.evomsac import Grid
+# from etsynseg.utils import mask_to_coord, coord_to_mask
+# from etsynseg import bspline
+# from etsynseg.evomsac import Grid
 
 
 # class MOOFitness(deap.base.Fitness):

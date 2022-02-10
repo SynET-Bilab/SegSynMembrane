@@ -3,9 +3,9 @@
 
 import time
 import numpy as np
-from TomoSynSegAE import io, utils, plot, trace
-from TomoSynSegAE import hessian, dtvoting, nonmaxsup
-from TomoSynSegAE import division, evomsac, matching
+from etsynseg import io, utils, plot, trace
+from etsynseg import hessian, dtvoting, nonmaxsup
+from etsynseg import division, evomsac, matching
 
 # __all__ = [
 #     "MemDetect"
@@ -20,7 +20,7 @@ class Workflow:
     
     workflow:
         # setup
-        tssa = TomoSynSegAE.workflow.Workflow()
+        tssa = etsynseg.workflow.Workflow()
         tssa.read_tomo(tomo_file, model_file, obj_bound, obj_ref, voxel_size_nm=None)
         # steps
         tssa.detect(factor_tv=1, factor_supp=5, qfilter=0.25)

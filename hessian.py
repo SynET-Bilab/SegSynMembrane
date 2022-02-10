@@ -4,7 +4,7 @@
 import numpy as np
 import multiprocessing.dummy
 import itertools
-from TomoSynSegAE import utils
+from etsynseg import utils
 
 __all__ = [
     # 2d hessian, saliency

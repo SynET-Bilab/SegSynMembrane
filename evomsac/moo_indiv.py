@@ -5,8 +5,8 @@ import numpy as np
 import skimage
 import deap, deap.base, deap.tools
 
-from TomoSynSegAE import utils, bspline
-from TomoSynSegAE.evomsac import Grid
+from etsynseg import utils, bspline
+from etsynseg.evomsac import Grid
 
 
 class MOOFitness(deap.base.Fitness):

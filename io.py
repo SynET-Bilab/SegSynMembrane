@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import skimage
 import mrcfile
-from TomoSynSegAE import utils
+from etsynseg import utils
 
 __all__ = [
     # mrc

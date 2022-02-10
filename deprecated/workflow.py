@@ -2,8 +2,8 @@
 # """
 
 # import numpy as np
-# from TomoSynSegAE import io, utils
-# from TomoSynSegAE import hessian, dtvoting, nonmaxsup
+# from etsynseg import io, utils
+# from etsynseg import hessian, dtvoting, nonmaxsup
 
 # __all__ = [
 #     "MemDetect"
