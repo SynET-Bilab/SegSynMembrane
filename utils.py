@@ -2,6 +2,7 @@
 """
 import numpy as np
 import pandas as pd
+import scipy as sp
 import skimage.filters
 
 __all__ = [
@@ -11,6 +12,8 @@ __all__ = [
     "rotate_orient", "absdiff_orient",
     # coordinates
     "mask_to_coord", "coord_to_mask", "reverse_coord",
+    # sparse
+    "sparsify3d", "densify3d",
     # segments
     "extract_connected", "stats_per_label", "filter_connected_xy", "filter_connected_dz",
     # grid helpers
@@ -112,6 +115,28 @@ def reverse_coord(coord):
     coord = np.asarray(coord)
     index_rev = np.arange(coord.shape[1])[::-1]
     return coord[:, index_rev]
+
+#=========================
+# sparse tools
+#=========================
+
+def sparsify3d(B):
+    """ sparsify 3d image to an array of coo_matrix
+    :param B: 3d image
+    :return: Bs
+    """
+    Bs = np.array(
+        [sp.sparse.coo_matrix(B[i]) for i in range(len(B))]
+    )
+    return Bs
+
+def densify3d(Bs):
+    """ densify an array of coo_matrix to 3d image
+    :param Bs: array of coo_matrix
+    :return: B
+    """
+    B = np.array([Bs[i].todense() for i in range(len(Bs))])
+    return B
 
 
 #=========================
