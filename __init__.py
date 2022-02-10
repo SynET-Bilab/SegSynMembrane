@@ -10,7 +10,7 @@ __version__ = "0.1"
 # "splipy"
 # ]
 
-from synseg import utils, io, plot, trace, bspline # auxiliary
-from synseg import hessian, dtvoting, nonmaxsup   # membrane detection
-from synseg import division, evomsac, matching  #W membrane extraction
-from synseg import workflow  # integrated workflows
+from TomoSynSegAE import utils, io, plot, trace, bspline # auxiliary
+from TomoSynSegAE import hessian, dtvoting, nonmaxsup   # membrane detection
+from TomoSynSegAE import division, evomsac, matching  #W membrane extraction
+from TomoSynSegAE import workflow  # integrated workflows

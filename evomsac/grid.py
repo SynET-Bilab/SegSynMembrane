@@ -1,7 +1,7 @@
 import numpy as np
 import sklearn.decomposition
 
-from synseg.utils import mask_to_coord
+from TomoSynSegAE.utils import mask_to_coord
 
 
 class Grid:

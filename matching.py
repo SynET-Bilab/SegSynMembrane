@@ -5,7 +5,7 @@ usage:
 """
 import numpy as np
 import skimage
-from synseg import hessian, dtvoting, utils, trace
+from TomoSynSegAE import hessian, dtvoting, utils, trace
 
 __all__ = [
     "GMMFixed", "fill_matched", "match_spatial_orient"

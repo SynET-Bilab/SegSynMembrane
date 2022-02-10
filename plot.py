@@ -4,7 +4,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import napari
-from synseg import utils
+from TomoSynSegAE import utils
 
 __all__ = [
     # matplotlib: 2d plot

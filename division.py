@@ -7,7 +7,7 @@ import scipy as sp
 import sklearn.decomposition
 import sklearn.cluster
 import skimage
-from synseg import utils, trace
+from TomoSynSegAE import utils, trace
 
 __all__ = [
     "Segmentalize",

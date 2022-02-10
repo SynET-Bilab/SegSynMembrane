@@ -9,8 +9,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import deap, deap.base, deap.tools
 
-from synseg.utils import coord_to_mask
-from synseg.evomsac import MOOTools
+from TomoSynSegAE.utils import coord_to_mask
+from TomoSynSegAE.evomsac import MOOTools
 
 class MOOPop:
     """ evolving populations

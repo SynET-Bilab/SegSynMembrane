@@ -3,9 +3,9 @@
 
 import time
 import numpy as np
-from synseg import io, utils, plot, trace
-from synseg import hessian, dtvoting, nonmaxsup
-from synseg import division, evomsac, matching
+from TomoSynSegAE import io, utils, plot, trace
+from TomoSynSegAE import hessian, dtvoting, nonmaxsup
+from TomoSynSegAE import division, evomsac, matching
 
 # __all__ = [
 #     "MemDetect"
@@ -20,7 +20,7 @@ class Workflow:
     
     workflow:
         # setup
-        tssa = synseg.workflow.Workflow()
+        tssa = TomoSynSegAE.workflow.Workflow()
         tssa.read_tomo(tomo_file, model_file, obj_bound, obj_ref, voxel_size_nm=None)
         # steps
         tssa.detect(factor_tv=1, factor_supp=5, qfilter=0.25)
@@ -749,4 +749,3 @@ class Workflow:
             zyx2=zyx_fit2,
         ))
         self.steps["surf_fit"]["timing"] = time.process_time()-time_start
-

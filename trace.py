@@ -3,7 +3,7 @@
 
 import numpy as np
 import sklearn.decomposition
-from synseg import utils
+from TomoSynSegAE import utils
 
 __all__ = [
     "Trace"
@@ -13,7 +13,7 @@ __all__ = [
 class Trace:
     """ trace in 2d planes
     usage:
-        tracing = synseg.trace.Trace(B, O)
+        tracing = TomoSynSegAE.trace.Trace(B, O)
         yx_traces_iz, d_traces_iz = tracing.bfs2d(iz)
         traces = tracing.bfs3d()
         yx_traces_iz, d_traces_iz = tracing.dfs2d(iz)
