@@ -7,7 +7,6 @@ import itertools
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-import pandas as pd
 import deap, deap.base, deap.tools
 
 from synseg.utils import coord_to_mask
@@ -30,7 +29,7 @@ class MOOPop:
         B_arr = moopop.fit_surfaces_eval([indiv1, indiv2])
         imshow3d(mootools.B, B_arr)
     """
-    def __init__(self, mootools=None, state=None, pop_size=2):
+    def __init__(self, mootools=None, state=None, pop_size=4):
         """ init
         :param mootools: MOOTools(); if given, init; if None, init later
         :param state: state (from dump_state); or a pickle file

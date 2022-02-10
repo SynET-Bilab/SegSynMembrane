@@ -3,7 +3,6 @@
 
 import numpy as np
 import skimage
-import sparse
 import deap, deap.base, deap.tools
 
 from synseg import utils, bspline
@@ -65,8 +64,6 @@ class MOOTools:
         # if provided as a dict
         elif config is not None:
             self.B = utils.coord_to_mask(config["zyx"], config["shape"])
-            if "zyx_ref" not in config:
-                config["zyx_ref"] = config["zyx"]
             self.n_vxy = config["n_vxy"]
             self.n_uz = config["n_uz"]
             self.nz_eachu = config["nz_eachu"]
@@ -94,12 +91,12 @@ class MOOTools:
         # no. points in the reference image
         self.npts_B = np.sum(self.B)
         # reference image dilated at r's: in sparse format
-        self.dilated_B = {0: sparse.COO(self.B)}
+        self.dilated_pos = {0: np.nonzero(self.B)}
         for r in range(1, self.r_thresh+1):
             dilated_B_r = skimage.morphology.binary_dilation(
                 self.B, skimage.morphology.ball(r)
             ).astype(int)
-            self.dilated_B[r] = sparse.COO(dilated_B_r)
+            self.dilated_pos[r] = np.nonzero(dilated_B_r)
     
     def get_config(self):
         """ save config to dict, convenient for dump and load
@@ -107,7 +104,6 @@ class MOOTools:
         """
         config = dict(
             zyx=utils.mask_to_coord(self.B),
-            zyx_ref=utils.mask_to_coord(self.B),
             shape=self.shape,
             n_vxy=self.n_vxy,
             n_uz=self.n_uz,
@@ -225,12 +221,12 @@ class MOOTools:
         :param Bfit: binary image generated from fitted surface
         """
         # overlaps between fit and membrane
-        # iterate over layers of r's
         fitness_overlap = 0
-        Bfit_sparse = sparse.COO(Bfit)
-        n_accum_prev = np.sum(self.dilated_B[0] * Bfit_sparse)  # no. overlaps accumulated
+        # no. overlaps accumulated
+        n_accum_prev = np.sum(Bfit[self.dilated_pos[0]])
+        # iterate over layers of r's
         for r in range(1, self.r_thresh+1):
-            n_accum_curr = np.sum(self.dilated_B[r] * Bfit_sparse)
+            n_accum_curr = np.sum(Bfit[self.dilated_pos[r]])
             n_r = n_accum_curr - n_accum_prev  # no. overlaps at r
             fitness_overlap += n_r * r**2
             n_accum_prev = n_accum_curr
@@ -239,7 +235,7 @@ class MOOTools:
         fitness_overlap += n_rest * (self.r_thresh+1)**2
 
         # extra pixels of fit compared with membrane
-        fitness_extra = np.sum(Bfit_sparse) - n_accum_prev
+        fitness_extra = np.sum(Bfit) - n_accum_prev
 
         # moo fitness
         fitness = (fitness_overlap, fitness_extra)
