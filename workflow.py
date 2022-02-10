@@ -2,8 +2,7 @@
 """
 
 import numpy as np
-import sparse
-from synseg import io, utils, trace
+from synseg import io, utils, plot, trace
 from synseg import hessian, dtvoting, nonmaxsup
 from synseg import division, evomsac, matching
 
@@ -11,14 +10,29 @@ from synseg import division, evomsac, matching
 #     "MemDetect"
 # ]
 
-class MemSeg:
+class Workflow:
+    """ workflow for segmentation
+    attribute formats:
+        binary images: save coordinates (utils.mask_to_coord, self.coord_to_binary)
+        sparse images (O): save as sparse (utils.sparsify3d, utils.densify3d)
+        MOOPop: save state (MOOPop().dump_state, MOOPop(state=state))
+    
+    workflow:
+        # setup
+        tssa = synseg.workflow.Workflow()
+        tssa.read_tomo(tomo_file, model_file, obj_bound, obj_ref, voxel_size_nm=None)
+        # steps
+        tssa.detect(factor_tv=1, factor_supp=5, qfilter=0.25)
+        tssa.divide(size_ratio_thresh=0.5)
+        tssa.evomsac(grid_z_nm=50, grid_xy_nm=150)
+        tssa.match(factor_tv=1)
+        tssa.surf_normal()
+        tssa.surf_fit(grid_z_nm=10, grid_xy_nm=10)
+        # io
+        tssa.save_steps(filename)
+        tssa.output_results(filenames=dict(tomo, match, plot, surf_normal, surf_fit), nslice=5)
+    """
     def __init__(self):
-        """ define attributes
-        notations:
-            S: float-valued saliency
-            O: float-valued orientation, in (-pi/2,pi/2)
-            N: int-valued nonmax-suppressed image
-        """
         # record of parameters
         self.steps = dict(
             tomo=dict(
@@ -34,6 +48,7 @@ class MemSeg:
                 I=None,
                 shape=None,
                 voxel_size_nm=None,
+                clip_range=None,
                 mask_bound=None,
                 zyx_ref=None,
                 d_mem_vx=None,
@@ -46,16 +61,16 @@ class MemSeg:
                 factor_supp=None,
                 qfilter=None,
                 # results
-                B=None,
-                O=None
+                zyx=None,
+                Oz=None
             ),
             divide=dict(
                 finished=False,
                 # parameters
                 size_ratio_thresh=None,
                 # results
-                B1=None,
-                B2=None,
+                zyx1=None,
+                zyx2=None,
             ),
             evomsac=dict(
                 finished=False,
@@ -66,8 +81,8 @@ class MemSeg:
                 max_iter=None,
                 tol=None,
                 # results
-                mpop1=None,
-                mpop2=None
+                mpop1z=None,
+                mpop2z=None
             ),
             match=dict(
                 finished=False,
@@ -77,14 +92,14 @@ class MemSeg:
                 zyx1=None,
                 zyx2=None,
             ),
-            normal=dict(
+            surf_normal=dict(
                 finished=False,
                 # results
                 normal1=None,
                 normal2=None,
             ),
-            fit=dict(
-                finished=True,
+            surf_fit=dict(
+                finished=False,
                 # parameters
                 grid_z_nm=None,
                 grid_xy_nm=None,
@@ -95,21 +110,109 @@ class MemSeg:
         )
 
     #=========================
+    # io
+    #=========================
+
+    def save_steps(self, filename):
+        """ save steps to npz
+        :param filename: filename to save to
+        """
+        np.savez_compressed(filename, **self.steps)
+    
+    def load_steps(self, filename):
+        """ load steps from npz
+        :param filename: filename to load from
+        """
+        steps = np.load(filename, allow_pickle=True)
+        self.steps = {key: steps[key].item() for key in steps.keys()}
+    
+    def output_results(self, filenames, nslice=5):
+        """ output results
+        :param filenames: dict(tomo(mrc), match(mod), plot(png), surf_normal(npz), surf_fit(mod))
+        """
+        if ("tomo" in filenames) and self.check_steps(["tomo"]):
+            io.write_mrc(
+                data=self.steps["tomo"]["I"],
+                mrcname=filenames["tomo"],
+                voxel_size=self.steps["tomo"]["voxel_size_nm"]*10
+            )
+        
+        if ("match" in filenames) and self.check_steps(["match"]):
+            io.write_model(
+                zyx_arr=[self.steps["match"][f"zyx{i}"] for i in (1, 2)],
+                model_file=filenames["match"]
+            )
+        
+        if ("plot" in filenames) and self.check_steps(["tomo", "match"]):
+            fig, _ = self.plot_slices(
+                I=-self.steps["tomo"]["I"],  # negated
+                zyxs=tuple(self.steps["match"][f"zyx{i}"] for i in (1, 2)),
+                nslice=nslice
+            )
+            fig.savefig(filenames["plot"], dpi=200)
+        
+        if ("surf_normal" in filenames) and self.check_steps(["match", "surf_normal"]):
+            # coordinates: xyz(i) + xyz_shift = xyz in the original tomo
+            np.savez(
+                filenames["surf_normal"],
+                xyz_shift=np.array([
+                    self.steps["tomo"]["clip_range"][i][0]
+                    for i in ['x', 'y', 'z']]),
+                xyz1=utils.reverse_coord(self.steps["match"]["zyx1"]),
+                xyz2=utils.reverse_coord(self.steps["match"]["zyx2"]),
+                normal1=self.steps["surf_normal"]["normal1"],
+                normal2=self.steps["surf_normal"]["normal2"],
+            )
+        
+        if ("surf_fit" in filenames) and self.check_steps(["surf_fit"]):
+            io.write_model(
+                zyx_arr=[self.steps["surf_fit"][f"zyx{i}"] for i in (1, 2)],
+                model_file=filenames["surf_fit"]
+            )
+    
+    def plot_slices(self, I, zyxs, nslice):
+        """ plot sampled slices of image
+        :param I: 3d image
+        :param zyxs: array of zyx to overlay on the image
+        :param nslice: number of slices to show
+        :return: fig, axes
+        """
+        izs = np.linspace(0, I.shape[0]-1, nslice, dtype=int)
+        im_dict = {
+            f"z={iz}": {
+                "I": I[iz],
+                "yxs": tuple(zyx_i[zyx_i[:, 0] == iz][:, 1:]
+                    for zyx_i in zyxs)
+            }
+            for iz in izs
+        }
+        fig, axes = plot.imoverlay(im_dict)
+        return fig, axes
+
+
+
+    #=========================
     # auxiliary
     #=========================
     
-    def check_steps(self, step_curr, steps_prev):
+    def check_steps(self, steps_prev, raise_error=False):
         """ raise error if any prerequisite steps is not finished
+        :param steps_prev: array of names of prerequisite steps
+        :param raise_error: if raise error when prerequisites are not met
         """
+        satisfied = True
         for step in steps_prev:
             if not self.steps[step]["finished"]:
-                raise RuntimeError(f"{step_curr}: step {step} unfinished")
+                if raise_error:
+                    raise RuntimeError(f"unsatisfied prerequisite step: {step}")
+                satisfied = False
+        return satisfied
 
     def coord_to_binary(self, zyx):
         """ convert zyx to binary image
         :param zyx: coordinates
         """
-        self.check_steps("coord_to_binary", ["tomo"])
+        self.check_steps(["tomo"], raise_error=True)
         shape = self.steps["tomo"]["shape"]
         B = utils.coord_to_mask(zyx, shape=shape)
         return B
@@ -205,6 +308,7 @@ class MemSeg:
             I=I,
             shape=I.shape,
             voxel_size_nm=voxel_size_nm,
+            clip_range=clip_range,
             mask_bound=mask_bound,
             zyx_ref=zyx_ref,
             d_mem_vx=d_mem_nm/voxel_size_nm,
@@ -223,7 +327,7 @@ class MemSeg:
         :action: assign steps["detect"]: B, O
         """
         # load from self
-        self.check_steps("detect", ["tomo"])
+        self.check_steps(["tomo"], raise_error=True)
         I = self.steps["tomo"]["I"]
         mask_bound = self.steps["tomo"]["mask_bound"]
         d_mem_vx = self.steps["tomo"]["d_mem_vx"]
@@ -277,8 +381,8 @@ class MemSeg:
             factor_supp=factor_supp,
             qfilter=qfilter,
             # results
-            B=sparse.COO(Bdetect),
-            O=sparse.COO(Odetect)
+            zyx=utils.mask_to_coord(Bdetect),
+            Oz=utils.sparsify3d(Odetect)
         ))
     
     #=========================
@@ -291,12 +395,12 @@ class MemSeg:
         :action: assign steps["divide"]: B1, B2
         """
         # load from self
-        self.check_steps("divide", ["tomo", "detect"])
+        self.check_steps(["tomo", "detect"], raise_error=True)
         d_mem_vx = self.steps["tomo"]["d_mem_vx"]
         d_cleft_vx = self.steps["tomo"]["d_cleft_vx"]
         zyx_ref = self.steps["tomo"]["zyx_ref"]
-        B = self.steps["detect"]["B"].todense()
-        O = self.steps["detect"]["O"].todense()
+        B = self.coord_to_binary(self.steps["detect"]["zyx"])
+        O = utils.densify3d(self.steps["detect"]["Oz"])
 
         # extract two largest components
         comp_arr = list(utils.extract_connected(
@@ -340,8 +444,8 @@ class MemSeg:
             # parameters
             size_ratio_thresh=size_ratio_thresh,
             # results
-            B1=sparse.COO(Bdiv1),
-            B2=sparse.COO(Bdiv2),
+            zyx1=utils.mask_to_coord(Bdiv1),
+            zyx2=utils.mask_to_coord(Bdiv2),
         ))
     
     #=========================
@@ -349,8 +453,8 @@ class MemSeg:
     #=========================
 
     def evomsac_one(self, B, voxel_size_nm,
-            grid_z_nm=50, grid_xy_nm=150,
-            pop_size=40, max_iter=500, tol=(0.01, 10)
+            grid_z_nm, grid_xy_nm,
+            pop_size, max_iter, tol
         ):
         """ evomsac for one divided part
         :param B: 3d binary image
@@ -373,21 +477,29 @@ class MemSeg:
 
         return mpop
 
-    def evomsac(self, grid_z_nm=50, grid_xy_nm=150):
+    def evomsac(self, grid_z_nm=50, grid_xy_nm=150,
+            pop_size=40, max_iter=500, tol=(0.01, 10)
+        ):
         """ evomsac for both divided parts
         :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
+        :param pop_size: size of population
+        :param tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
+        :param max_iter: max number of generations
         :action: assign steps["evomsac"]: mpop1, mpop2
         """
         # load from self
-        self.check_steps("evomsac", ["tomo", "divide"])
+        self.check_steps(["tomo", "divide"], raise_error=True)
         voxel_size_nm = self.steps["tomo"]["voxel_size_nm"]
-        Bdiv1 = self.steps["divide"]["B1"].todense()
-        Bdiv2 = self.steps["divide"]["B2"].todense()
+        Bdiv1 = self.coord_to_binary(self.steps["divide"]["zyx1"])
+        Bdiv2 = self.coord_to_binary(self.steps["divide"]["zyx2"])
 
         # do for each divided part
         params = dict(
             grid_z_nm=grid_z_nm,
-            grid_xy_nm=grid_xy_nm
+            grid_xy_nm=grid_xy_nm,
+            pop_size=pop_size,
+            max_iter=max_iter,
+            tol=tol
         )
         mpop1 = self.evomsac_one(Bdiv1, voxel_size_nm=voxel_size_nm, **params)
         mpop2 = self.evomsac_one(Bdiv2, voxel_size_nm=voxel_size_nm, **params)
@@ -397,8 +509,8 @@ class MemSeg:
         self.steps["evomsac"].update(dict(
             finished=True,
             # results
-            mpop1=mpop1,
-            mpop2=mpop2
+            mpop1z=mpop1.dump_state(),
+            mpop2z=mpop2.dump_state()
         ))
 
     #=========================
@@ -456,12 +568,12 @@ class MemSeg:
         :action: assign steps["match"]: zyx1,  zyx2
         """
         # load from self
-        self.check_steps("match", ["tomo", "detect", "divide", "evomsac"])
-        O = self.steps["detect"]["O"]
-        Bdiv1 = self.steps["divide"]["B1"].todense()
-        Bdiv2 = self.steps["divide"]["B2"].todense()
-        mpop1 = self.steps["evomsac"]["mpop1"]
-        mpop2 = self.steps["evomsac"]["mpop2"]
+        self.check_steps(["tomo", "detect", "divide", "evomsac"], raise_error=True)
+        O = utils.densify3d(self.steps["detect"]["Oz"])
+        Bdiv1 = self.coord_to_binary(self.steps["divide"]["zyx1"])
+        Bdiv2 = self.coord_to_binary(self.steps["divide"]["zyx2"])
+        mpop1 = evomsac.MOOPop(state=self.steps["evomsac"]["mpop1z"])
+        mpop2 = evomsac.MOOPop(state=self.steps["evomsac"]["mpop2z"])
 
         # match
         params = dict(
@@ -493,6 +605,7 @@ class MemSeg:
         :param shape: (nz,ny,nx) of 3d image
         :param d_mem_vx: membrane thickness in voxel
         :return: normal
+            normal: each=(nx,ny,nz)
         """
         B = utils.coord_to_mask(zyx, shape)
         pos = tuple(zyx.T)
@@ -503,10 +616,10 @@ class MemSeg:
     
     def surf_normal(self):
         """ calculate surface normal for both divided parts
-        :action: assign steps["normal"]: normal1,  normal2
+        :action: assign steps["surf_normal"]: normal1,  normal2
         """
         # load from self
-        self.check_steps("normal", ["tomo", "match"])
+        self.check_steps(["tomo", "match"], raise_error=True)
         params = dict(
             shape=self.steps["tomo"]["shape"],
             zyx_ref=self.steps["tomo"]["zyx_ref"],
@@ -520,7 +633,7 @@ class MemSeg:
         normal2 = self.surf_normal_one(zyx2, **params)
 
         # save parameters and results
-        self.steps["normal"].update(dict(
+        self.steps["surf_normal"].update(dict(
             finished=True,
             # results
             normal1=normal1,
@@ -568,10 +681,10 @@ class MemSeg:
     def surf_fit(self, grid_z_nm=10, grid_xy_nm=10):
         """ surface fitting for both divided parts
         :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
-        :action: assign steps["fit"]: zyx1,  zyx2
+        :action: assign steps["surf_fit"]: zyx1,  zyx2
         """
         # load from self
-        self.check_steps("fit", ["tomo", "match"])
+        self.check_steps(["tomo", "match"], raise_error=True)
         zyx1 = self.steps["match"]["zyx1"]
         zyx2 = self.steps["match"]["zyx2"]
 
@@ -588,7 +701,7 @@ class MemSeg:
         _, zyx_fit2 = self.surf_fit_one(B2, **params)
 
         # save parameters and results
-        self.steps["fit"].update(dict(
+        self.steps["surf_fit"].update(dict(
             finished=True,
             # parameters
             grid_z_nm=grid_z_nm,
@@ -598,52 +711,3 @@ class MemSeg:
             zyx2=zyx_fit2,
         ))
 
-    #=========================
-    # integrated
-    #=========================
-    
-    def segmentation(self):
-        if not self.steps["detect"]["finished"]:
-            self.detect()
-
-        if not self.steps["divide"]["finished"]:
-            self.divide()
-
-        if not self.steps["evomsac"]["finished"]:
-            self.evomsac()
-
-        if not self.steps["match"]["finished"]:
-            self.match()
-
-        if not self.steps["normal"]["finished"]:
-            self.surf_normal()
-
-        if not self.steps["fit"]["finished"]:
-            self.surf_fit()
-
-    # def save_result(self, npzname):
-    #     """ save results
-    #     fields: I, voxel_size, clip_range, Nfilt, Ofilt
-    #     """
-    #     results = dict(
-    #         I=self.I.astype(np.int8),
-    #         voxel_size=self.voxel_size,
-    #         clip_range=self.clip_range,
-    #         mask=self.mask,
-    #         Nfilt=self.Nfilt.astype(np.float32),
-    #         Ofilt=self.Ofilt.astype(np.float32)
-    #     )
-    #     np.savez_compressed(npzname, **results)
-
-    # def load_result(self, npzname):
-    #     """ load results
-    #     fields: I, voxel_size, clip_range, Nfilt, Ofilt
-    #     """
-    #     results = np.load(npzname, allow_pickle=True)
-    #     self.I = results["I"]
-    #     self.voxel_size = results["voxel_size"].item()
-    #     self.voxel_size_nm = self.voxel_size / 10
-    #     self.clip_range = results["clip_range"].item()
-    #     self.mask = results["mask"]
-    #     self.Nfilt = results["Nfilt"]
-    #     self.Ofilt = results["Ofilt"]
