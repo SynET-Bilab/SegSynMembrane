@@ -66,6 +66,7 @@ def run_workflow(args):
     
     # setups
     wf = workflow.Workflow()
+    
     wf.read_tomo(
         args.tomo_file, args.model_file,
         obj_bound=args.model_objs[0],
@@ -101,13 +102,14 @@ def run_workflow(args):
     wf.save_steps(name_steps)
 
     # output results
-    wf.output_results(filenames=dict(
+    filenames = dict(
         tomo=f"{name}-clip.mrc",
         match=f"{name}-segs.mod",
         plot=f"{name}-segs.png",
         surf_normal=f"{name}-normal.npz",
         surf_fit=f"{name}-fits.mod"
-    ), nslice=5)
+    )
+    wf.output_results(filenames, plot_nslice=5, plot_dpi=200)
 
 if __name__ == "__main__":
     parser = build_parser()

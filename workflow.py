@@ -1,6 +1,7 @@
 """ workflow
 """
 
+import time
 import numpy as np
 from synseg import io, utils, plot, trace
 from synseg import hessian, dtvoting, nonmaxsup
@@ -37,6 +38,7 @@ class Workflow:
         self.steps = dict(
             tomo=dict(
                 finished=False,
+                timing=None,
                 # parameters
                 tomo_file=None,
                 model_file=None,
@@ -56,6 +58,7 @@ class Workflow:
             ),
             detect=dict(
                 finished=False,
+                timing=None,
                 # parameters
                 factor_tv=None,
                 factor_supp=None,
@@ -66,6 +69,7 @@ class Workflow:
             ),
             divide=dict(
                 finished=False,
+                timing=None,
                 # parameters
                 size_ratio_thresh=None,
                 # results
@@ -74,6 +78,7 @@ class Workflow:
             ),
             evomsac=dict(
                 finished=False,
+                timing=None,
                 # parameters
                 grid_z_nm=None,
                 grid_xy_nm=None,
@@ -86,6 +91,7 @@ class Workflow:
             ),
             match=dict(
                 finished=False,
+                timing=None,
                 # parameters
                 factor_tv=None,
                 # results
@@ -94,12 +100,14 @@ class Workflow:
             ),
             surf_normal=dict(
                 finished=False,
+                timing=None,
                 # results
                 normal1=None,
                 normal2=None,
             ),
             surf_fit=dict(
                 finished=False,
+                timing=None,
                 # parameters
                 grid_z_nm=None,
                 grid_xy_nm=None,
@@ -113,6 +121,15 @@ class Workflow:
     # io
     #=========================
 
+    def view_status(self):
+        """ view status (finished, timing) of each step
+        """
+        status = {
+            k: {"finished": v["finished"], "timing": v["timing"]}
+            for k, v in self.steps.items()
+        }
+        return status
+    
     def save_steps(self, filename):
         """ save steps to npz
         :param filename: filename to save to
@@ -126,9 +143,10 @@ class Workflow:
         steps = np.load(filename, allow_pickle=True)
         self.steps = {key: steps[key].item() for key in steps.keys()}
     
-    def output_results(self, filenames, nslice=5):
+    def output_results(self, filenames, plot_nslice=5, plot_dpi=200):
         """ output results
         :param filenames: dict(tomo(mrc), match(mod), plot(png), surf_normal(npz), surf_fit(mod))
+        :param plot_nslice, plot_dpi: plot nslice slices, save at dpt=plot_dpi
         """
         if ("tomo" in filenames) and self.check_steps(["tomo"]):
             io.write_mrc(
@@ -145,11 +163,11 @@ class Workflow:
         
         if ("plot" in filenames) and self.check_steps(["tomo", "match"]):
             fig, _ = self.plot_slices(
-                I=-self.steps["tomo"]["I"],  # negated
+                I=utils.negate_image(self.steps["tomo"]["I"]),  # negated
                 zyxs=tuple(self.steps["match"][f"zyx{i}"] for i in (1, 2)),
-                nslice=nslice
+                nslice=plot_nslice
             )
-            fig.savefig(filenames["plot"], dpi=200)
+            fig.savefig(filenames["plot"], dpi=plot_dpi)
         
         if ("surf_normal" in filenames) and self.check_steps(["match", "surf_normal"]):
             # coordinates: xyz(i) + xyz_shift = xyz in the original tomo
@@ -255,6 +273,8 @@ class Workflow:
         :param voxel_size_nm: manually set; if None then read from tomo_file
         :action: assign steps["tomo"]: I, voxel_size_nm, mask_bound, zyx_ref, d_mem_vx, d_cleft_vx
         """
+        time_start = time.process_time()
+
         # read model
         model = io.read_model(model_file)
         
@@ -314,6 +334,7 @@ class Workflow:
             d_mem_vx=d_mem_nm/voxel_size_nm,
             d_cleft_vx=d_cleft_nm/voxel_size_nm,
         ))
+        self.steps["tomo"]["timing"] = time.process_time()-time_start
 
     #=========================
     # detect
@@ -326,6 +347,8 @@ class Workflow:
         :param qfilter: quantile to filter out by Stv and Ssupp
         :action: assign steps["detect"]: B, O
         """
+        time_start = time.process_time()
+
         # load from self
         self.check_steps(["tomo"], raise_error=True)
         I = self.steps["tomo"]["I"]
@@ -384,6 +407,7 @@ class Workflow:
             zyx=utils.mask_to_coord(Bdetect),
             Oz=utils.sparsify3d(Odetect)
         ))
+        self.steps["detect"]["timing"] = time.process_time()-time_start
     
     #=========================
     # divide
@@ -394,6 +418,8 @@ class Workflow:
         :param size_ratio_thresh: if size2/size1<size_ratio_thresh, consider that membranes are connected
         :action: assign steps["divide"]: B1, B2
         """
+        time_start = time.process_time()
+
         # load from self
         self.check_steps(["tomo", "detect"], raise_error=True)
         d_mem_vx = self.steps["tomo"]["d_mem_vx"]
@@ -447,6 +473,7 @@ class Workflow:
             zyx1=utils.mask_to_coord(Bdiv1),
             zyx2=utils.mask_to_coord(Bdiv2),
         ))
+        self.steps["divide"]["timing"] = time.process_time()-time_start
     
     #=========================
     # evomsac
@@ -487,6 +514,8 @@ class Workflow:
         :param max_iter: max number of generations
         :action: assign steps["evomsac"]: mpop1, mpop2
         """
+        time_start = time.process_time()
+
         # load from self
         self.check_steps(["tomo", "divide"], raise_error=True)
         voxel_size_nm = self.steps["tomo"]["voxel_size_nm"]
@@ -512,6 +541,7 @@ class Workflow:
             mpop1z=mpop1.dump_state(),
             mpop2z=mpop2.dump_state()
         ))
+        self.steps["evomsac"]["timing"] = time.process_time()-time_start
 
     #=========================
     # matching
@@ -567,6 +597,8 @@ class Workflow:
         :param factor_tv: sigma for tv = factor_tv*d_cleft_vx
         :action: assign steps["match"]: zyx1,  zyx2
         """
+        time_start = time.process_time()
+
         # load from self
         self.check_steps(["tomo", "detect", "divide", "evomsac"], raise_error=True)
         O = utils.densify3d(self.steps["detect"]["Oz"])
@@ -593,6 +625,7 @@ class Workflow:
             zyx1=zyx1,
             zyx2=zyx2,
         ))
+        self.steps["match"]["timing"] = time.process_time()-time_start
 
     #=========================
     # surface normal
@@ -618,6 +651,8 @@ class Workflow:
         """ calculate surface normal for both divided parts
         :action: assign steps["surf_normal"]: normal1,  normal2
         """
+        time_start = time.process_time()
+
         # load from self
         self.check_steps(["tomo", "match"], raise_error=True)
         params = dict(
@@ -639,6 +674,7 @@ class Workflow:
             normal1=normal1,
             normal2=normal2,
         ))
+        self.steps["surf_normal"]["timing"] = time.process_time()-time_start
 
     #=========================
     # fitting
@@ -683,6 +719,8 @@ class Workflow:
         :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
         :action: assign steps["surf_fit"]: zyx1,  zyx2
         """
+        time_start = time.process_time()
+
         # load from self
         self.check_steps(["tomo", "match"], raise_error=True)
         zyx1 = self.steps["match"]["zyx1"]
@@ -710,4 +748,5 @@ class Workflow:
             zyx1=zyx_fit1,
             zyx2=zyx_fit2,
         ))
+        self.steps["surf_fit"]["timing"] = time.process_time()-time_start
 
