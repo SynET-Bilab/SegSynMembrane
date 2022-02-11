@@ -1,5 +1,4 @@
-""" workflow
-"""
+#!/usr/bin/env python
 
 import argparse
 import pathlib
@@ -12,7 +11,7 @@ def build_parser():
     """
     # parser
     parser = argparse.ArgumentParser(
-        prog="workflow_script.py",
+        prog="segprepost_script.py",
         description="Segmentation of synaptic membranes. Outputs: record of steps (-steps.npz), clipped tomo (-clip.mrc), segmentation model (-segs.mod), its quickview image (-segs.png), surface normal (-normal.npz), and smoothed fittings (-fits.mod).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
