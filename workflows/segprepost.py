@@ -208,7 +208,7 @@ class SegPrePost(SegBase):
             d_cleft_nm=d_cleft_nm,
             # results
             zyx_ref=zyx_ref,
-            d_cleft=d_cleft_nm/voxel_size_nm,
+            d_cleft=d_cleft_nm/results["voxel_size_nm"],
         ))
         self.steps["tomo"]["timing"] = time.process_time()-time_start
 
