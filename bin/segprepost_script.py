@@ -19,8 +19,8 @@ def build_parser():
     # tomo
     parser.add_argument("tomo_file", type=str,
         help="str. Filename of tomo (.mrc)")
-    parser.add_argument("model_file", type=str,
-        help="str. Filename of imod model (.mod), which contains a boundary of the synaptic region and a reference point in the presynapse.")
+    parser.add_argument("--model_file", type=str, default=None,
+        help="str. Filename of imod model (.mod), which contains a boundary of the synaptic region and a reference point in the presynapse. If not provided, defaults to the name of tomo_file with suffix replaced by .mod.")
     
     # output
     parser.add_argument("--output_base", type=str, default=None,
@@ -59,7 +59,12 @@ def run_seg(args):
     """ run segmentation
     :param args: args from parser.parse_args()
     """
-    # output naming
+    # default namings
+    if args.model_file is not None:
+        model_file = args.model_file
+    else:
+        model_file = str(pathlib.Path(args.tomo_file).with_suffix(".mod"))
+
     if args.output_base is not None:
         name = args.output_base
     else:
@@ -70,7 +75,7 @@ def run_seg(args):
     seg = SegPrePost()
     
     seg.read_tomo(
-        args.tomo_file, args.model_file,
+        args.tomo_file, model_file,
         obj_bound=args.model_objs[0],
         obj_ref=args.model_objs[1],
         voxel_size_nm=args.voxel_size,
