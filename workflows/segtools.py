@@ -130,6 +130,7 @@ class SegSteps:
                 int(np.ceil(model_bound[i].max())))
             for i in ["x", "y", "z"]
         }
+        zyx_shift = np.array([clip_range[i][0] for i in ['z', 'y', 'x']])
 
         # read tomo, clip to bound
         I, voxel_size_A = io.read_clip_tomo(
@@ -165,6 +166,7 @@ class SegSteps:
             voxel_size_nm=voxel_size_nm,
             model=model,
             clip_range=clip_range,
+            zyx_shift=zyx_shift,
             mask_bound=mask_bound,
             d_mem=d_mem_nm/voxel_size_nm,
         )

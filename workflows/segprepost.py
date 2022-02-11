@@ -35,6 +35,7 @@ class SegPrePost(SegBase):
                 shape=None,
                 voxel_size_nm=None,
                 clip_range=None,
+                zyx_shift=None,
                 mask_bound=None,
                 zyx_ref=None,
                 d_mem=None,
@@ -110,7 +111,11 @@ class SegPrePost(SegBase):
         :param filenames: dict(tomo(mrc), match(mod), plot(png), surf_normal(npz), surf_fit(mod))
         :param plot_nslice, plot_dpi: plot nslice slices, save at dpt=plot_dpi
         """
-        if ("tomo" in filenames) and self.check_steps(["tomo"]):
+        # calc shift
+        self.check_steps(["tomo"], raise_error=True)
+        zyx_shift = self.steps["tomo"]["zyx_shift"]
+
+        if ("tomo" in filenames):
             io.write_mrc(
                 data=self.steps["tomo"]["I"],
                 mrcname=filenames["tomo"],
@@ -122,8 +127,14 @@ class SegPrePost(SegBase):
                 zyx_arr=[self.steps["match"][f"zyx{i}"] for i in (1, 2)],
                 model_file=filenames["match"]
             )
+
+        if ("match_shift" in filenames) and self.check_steps(["match"]):
+            io.write_model(
+                zyx_arr=[self.steps["match"][f"zyx{i}"]+zyx_shift for i in (1, 2)],
+                model_file=filenames["match_shift"]
+            )
         
-        if ("plot" in filenames) and self.check_steps(["tomo", "match"]):
+        if ("plot" in filenames) and self.check_steps(["match"]):
             fig, _ = self.plot_slices(
                 I=utils.negate_image(self.steps["tomo"]["I"]),  # negated
                 zyxs=tuple(self.steps["match"][f"zyx{i}"] for i in (1, 2)),
@@ -135,9 +146,7 @@ class SegPrePost(SegBase):
             # coordinates: xyz(i) + xyz_shift = xyz in the original tomo
             np.savez(
                 filenames["surf_normal"],
-                xyz_shift=np.array([
-                    self.steps["tomo"]["clip_range"][i][0]
-                    for i in ['x', 'y', 'z']]),
+                xyz_shift=zyx_shift[::-1],
                 xyz1=utils.reverse_coord(self.steps["match"]["zyx1"]),
                 xyz2=utils.reverse_coord(self.steps["match"]["zyx2"]),
                 normal1=self.steps["surf_normal"]["normal1"],
@@ -148,6 +157,12 @@ class SegPrePost(SegBase):
             io.write_model(
                 zyx_arr=[self.steps["surf_fit"][f"zyx{i}"] for i in (1, 2)],
                 model_file=filenames["surf_fit"]
+            )
+        
+        if ("surf_fit_shift" in filenames) and self.check_steps(["surf_fit"]):
+            io.write_model(
+                zyx_arr=[self.steps["surf_fit"][f"zyx{i}"]+zyx_shift for i in (1, 2)],
+                model_file=filenames["surf_fit_shift"]
             )
     
     def plot_slices(self, I, zyxs, nslice):
