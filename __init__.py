@@ -10,7 +10,11 @@ __version__ = "0.1"
 # "splipy"
 # ]
 
-from etsynseg import utils, io, plot, trace, bspline # auxiliary
-from etsynseg import hessian, dtvoting, nonmaxsup   # membrane detection
-from etsynseg import division, evomsac, matching  #W membrane extraction
-from etsynseg import workflow  # integrated workflows
+# auxiliary functions
+from etsynseg import utils, io, plot, trace, bspline
+# membrane detection
+from etsynseg import hessian, dtvoting, nonmaxsup
+# membrane extraction
+from etsynseg import division, evomsac, matching
+# workflows
+from etsynseg import workflows

@@ -7,11 +7,8 @@ from etsynseg import io, utils, plot, trace
 from etsynseg import hessian, dtvoting, nonmaxsup
 from etsynseg import division, evomsac, matching
 
-# __all__ = [
-#     "MemDetect"
-# ]
 
-class Workflow:
+class SegPrePost:
     """ workflow for segmentation
     attribute formats:
         binary images: save coordinates (utils.mask_to_coord, self.coord_to_binary)

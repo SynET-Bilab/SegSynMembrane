@@ -1,6 +1,6 @@
 import argparse
 import pathlib
-from etsynseg import workflow
+from etsynseg import workflows
 
 
 def build_parser():
@@ -65,7 +65,7 @@ def run_workflow(args):
     name_steps = f"{name}-steps.npz"
     
     # setups
-    wf = workflow.Workflow()
+    wf = workflows.SegPrePost()
     
     wf.read_tomo(
         args.tomo_file, args.model_file,
