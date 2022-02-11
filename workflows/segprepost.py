@@ -3,35 +3,22 @@
 
 import time
 import numpy as np
-from etsynseg import io, utils, plot, trace
-from etsynseg import hessian, dtvoting, nonmaxsup
-from etsynseg import division, evomsac, matching
+from etsynseg import io, utils, plot
+from etsynseg import division, evomsac
+from etsynseg.workflows import SegBase, SegSteps
 
 
-class SegPrePost:
+class SegPrePost(SegBase):
     """ workflow for segmentation
     attribute formats:
-        binary images: save coordinates (utils.mask_to_coord, self.coord_to_binary)
+        binary images: save coordinates (utils.mask_to_coord, utils.coord_to_mask)
         sparse images (O): save as sparse (utils.sparsify3d, utils.densify3d)
         MOOPop: save state (MOOPop().dump_state, MOOPop(state=state))
     
     workflow:
-        # setup
-        tssa = etsynseg.workflow.Workflow()
-        tssa.read_tomo(tomo_file, model_file, obj_bound, obj_ref, voxel_size_nm=None)
-        # steps
-        tssa.detect(factor_tv=1, factor_supp=5, qfilter=0.25)
-        tssa.divide(size_ratio_thresh=0.5)
-        tssa.evomsac(grid_z_nm=50, grid_xy_nm=150)
-        tssa.match(factor_tv=1)
-        tssa.surf_normal()
-        tssa.surf_fit(grid_z_nm=10, grid_xy_nm=10)
-        # io
-        tssa.save_steps(filename)
-        tssa.output_results(filenames=dict(tomo, match, plot, surf_normal, surf_fit), nslice=5)
+        see segprepost_script.py
     """
     def __init__(self):
-        # record of parameters
         self.steps = dict(
             tomo=dict(
                 finished=False,
@@ -50,8 +37,8 @@ class SegPrePost:
                 clip_range=None,
                 mask_bound=None,
                 zyx_ref=None,
-                d_mem_vx=None,
-                d_cleft_vx=None,
+                d_mem=None,
+                d_cleft=None,
             ),
             detect=dict(
                 finished=False,
@@ -117,29 +104,7 @@ class SegPrePost:
     #=========================
     # io
     #=========================
-
-    def view_status(self):
-        """ view status (finished, timing) of each step
-        """
-        status = {
-            k: {"finished": v["finished"], "timing": v["timing"]}
-            for k, v in self.steps.items()
-        }
-        return status
-    
-    def save_steps(self, filename):
-        """ save steps to npz
-        :param filename: filename to save to
-        """
-        np.savez_compressed(filename, **self.steps)
-    
-    def load_steps(self, filename):
-        """ load steps from npz
-        :param filename: filename to load from
-        """
-        steps = np.load(filename, allow_pickle=True)
-        self.steps = {key: steps[key].item() for key in steps.keys()}
-    
+   
     def output_results(self, filenames, plot_nslice=5, plot_dpi=200):
         """ output results
         :param filenames: dict(tomo(mrc), match(mod), plot(png), surf_normal(npz), surf_fit(mod))
@@ -204,132 +169,46 @@ class SegPrePost:
         fig, axes = plot.imoverlay(im_dict)
         return fig, axes
 
-
-
-    #=========================
-    # auxiliary
-    #=========================
-    
-    def check_steps(self, steps_prev, raise_error=False):
-        """ raise error if any prerequisite steps is not finished
-        :param steps_prev: array of names of prerequisite steps
-        :param raise_error: if raise error when prerequisites are not met
-        """
-        satisfied = True
-        for step in steps_prev:
-            if not self.steps[step]["finished"]:
-                if raise_error:
-                    raise RuntimeError(f"unsatisfied prerequisite step: {step}")
-                satisfied = False
-        return satisfied
-
-    def coord_to_binary(self, zyx):
-        """ convert zyx to binary image
-        :param zyx: coordinates
-        """
-        self.check_steps(["tomo"], raise_error=True)
-        shape = self.steps["tomo"]["shape"]
-        B = utils.coord_to_mask(zyx, shape=shape)
-        return B
-        
-    def set_ngrids(self, B, voxel_size_nm, grid_z_nm, grid_xy_nm):
-        """ setting number of grids for evomsac and fitting
-        :param B: binary image
-        :param voxel_size_nm: voxel spacing in nm
-        :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
-        :return: n_uz, n_vxy
-        """
-        # auxiliary
-        def set_one(span_vx, grid_nm, n_min):
-            span_nm = span_vx * voxel_size_nm
-            n_grid = int(np.round(span_nm/grid_nm)+1)
-            return max(n_min, n_grid)
-
-        # grids in z
-        nz = B.shape[0]
-        n_uz = set_one(nz, grid_z_nm, 3)
-
-        # grids in xy
-        dydx = utils.spans_xy(B)
-        l_xy = np.median(np.linalg.norm(dydx, axis=1))
-        n_vxy = set_one(l_xy, grid_xy_nm, 3)
-        
-        return n_uz, n_vxy
-
     #=========================
     # read tomo
     #=========================
     
     def read_tomo(self, tomo_file, model_file,
-        obj_bound=1, obj_ref=2, voxel_size_nm=None,
-        d_mem_nm=5, d_cleft_nm=20
+            voxel_size_nm=None, d_mem_nm=5, d_cleft_nm=20,
+            obj_bound=1, obj_ref=2
         ):
         """ load and clip tomo and model
         :param tomo_file, model_file: filename of tomo, model
         :param obj_bound, obj_ref: obj label for boundary and presynapse, begins with 1
         :param voxel_size_nm: manually set; if None then read from tomo_file
-        :action: assign steps["tomo"]: I, voxel_size_nm, mask_bound, zyx_ref, d_mem_vx, d_cleft_vx
+        :action: assign steps["tomo"]: I, voxel_size_nm, mask_bound, zyx_ref, d_mem, d_cleft
         """
         time_start = time.process_time()
 
-        # read model
-        model = io.read_model(model_file)
+        # read tomo and model, clip
+        results = SegSteps.read_tomo(
+            tomo_file, model_file,
+            voxel_size_nm=voxel_size_nm, d_mem_nm=d_mem_nm,
+            obj_bound=obj_bound
+        )
         
-        # set the range of clipping
-        # use np.floor/ceil -> int to ensure integers
-        model_bound = model[model["object"] == obj_bound]
-        clip_range = {
-            i: (int(np.floor(model_bound[i].min())),
-                int(np.ceil(model_bound[i].max())))
-            for i in ["x", "y", "z"]
-        }
-
-        # read tomo, clip to bound
-        I, voxel_size_A = io.read_clip_tomo(
-            tomo_file, clip_range
-        )
-        I = np.asarray(I)
-
-        # voxel_size in nm
-        if voxel_size_nm is None:
-            # assumed voxel_size_A is the same for x,y,z
-            voxel_size_nm = voxel_size_A.tolist()[0] / 10
-
-        # shift model coordinates
-        for i in ["x", "y", "z"]:
-            model[i] -= clip_range[i][0]
-
-        # generate mask for bound (after clipping)
-        mask_bound = io.model_to_mask(
-            model=model[model["object"] == obj_bound],
-            yx_shape=I[0].shape
-        )
-
         # get coordinates of presynaptic label
+        model = results["model"]
         series_ref = model[model["object"] == obj_ref].iloc[0]
         zyx_ref = np.array(
             [series_ref[i] for i in ["z", "y", "x"]]
         )
 
         # save parameters and results
+        self.steps["tomo"].update(results)
         self.steps["tomo"].update(dict(
             finished=True,
             # parameters
-            tomo_file=tomo_file,
-            model_file=model_file,
-            obj_bound=obj_bound,
             obj_ref=obj_ref,
-            d_mem_nm=d_mem_nm,
             d_cleft_nm=d_cleft_nm,
             # results
-            I=I,
-            shape=I.shape,
-            voxel_size_nm=voxel_size_nm,
-            clip_range=clip_range,
-            mask_bound=mask_bound,
             zyx_ref=zyx_ref,
-            d_mem_vx=d_mem_nm/voxel_size_nm,
-            d_cleft_vx=d_cleft_nm/voxel_size_nm,
+            d_cleft=d_cleft_nm/voxel_size_nm,
         ))
         self.steps["tomo"]["timing"] = time.process_time()-time_start
 
@@ -339,8 +218,8 @@ class SegPrePost:
     
     def detect(self, factor_tv=1, factor_supp=5, qfilter=0.25):
         """ detect membrane features
-        :param factor_tv: sigma for tv = factor_tv*d_cleft_vx
-        :param factor_supp: sigma for normal suppression = factor_supp*d_cleft_vx
+        :param factor_tv: sigma for tv = factor_tv*d_cleft
+        :param factor_supp: sigma for normal suppression = factor_supp*d_cleft
         :param qfilter: quantile to filter out by Stv and Ssupp
         :action: assign steps["detect"]: B, O
         """
@@ -350,59 +229,26 @@ class SegPrePost:
         self.check_steps(["tomo"], raise_error=True)
         I = self.steps["tomo"]["I"]
         mask_bound = self.steps["tomo"]["mask_bound"]
-        d_mem_vx = self.steps["tomo"]["d_mem_vx"]
-        d_cleft_vx = self.steps["tomo"]["d_cleft_vx"]
-
-        # negate, hessian
-        Ineg = utils.negate_image(I)
-        S, O = hessian.features3d(Ineg, sigma=d_mem_vx)
+        d_mem = self.steps["tomo"]["d_mem"]
+        d_cleft = self.steps["tomo"]["d_cleft"]
         
-        # tv, nms
-        Stv, Otv = dtvoting.stick3d(
-            S*mask_bound,
-            O*mask_bound,
-            sigma=d_cleft_vx*factor_tv
+        # detect: update qfilter, zyx, Oz
+        results = SegSteps.detect(
+            I, mask_bound,
+            sigma_hessian=d_mem,
+            sigma_tv=d_cleft*factor_tv,
+            sigma_supp=d_cleft*factor_supp,
+            qfilter=qfilter,
+            dzfilter=int(I.shape[0]*0.75)
         )
-        Btv = mask_bound*nonmaxsup.nms3d(Stv, Otv)
-        
-        # refine: orientation, nms, orientation changes
-        _, Oref = hessian.features3d(Btv, sigma=d_mem_vx)
-        Bref = nonmaxsup.nms3d(Stv*Btv, Oref*Btv)
-        
-        # normal suppression
-        Bsupp, Ssupp = dtvoting.suppress_by_orient(
-            Bref, Oref*Bref,
-            sigma=d_cleft_vx*factor_supp,
-            dO_threshold=np.pi/4
-        )
-
-        # filter in xy: small Stv, small Ssup
-        Bfilt_xy = utils.filter_connected_xy(
-            Bsupp, [Stv, Ssupp],
-            connectivity=2, stats="median",
-            qfilter=qfilter, min_size=1
-        )
-
-        # filter in 3d: z
-        # z spans a large fraction
-        dzfilter = int(I.shape[0]*0.75)
-        Bfilt_dz = utils.filter_connected_dz(
-            Bfilt_xy, dzfilter=dzfilter, connectivity=3)
-
-        # settle detected
-        Bdetect = Bfilt_dz
-        Odetect = Oref*Bdetect
 
         # save parameters and results
+        self.steps["detect"].update(results)
         self.steps["detect"].update(dict(
             finished=True,
             # parameters
             factor_tv=factor_tv,
             factor_supp=factor_supp,
-            qfilter=qfilter,
-            # results
-            zyx=utils.mask_to_coord(Bdetect),
-            Oz=utils.sparsify3d(Odetect)
         ))
         self.steps["detect"]["timing"] = time.process_time()-time_start
     
@@ -419,10 +265,11 @@ class SegPrePost:
 
         # load from self
         self.check_steps(["tomo", "detect"], raise_error=True)
-        d_mem_vx = self.steps["tomo"]["d_mem_vx"]
-        d_cleft_vx = self.steps["tomo"]["d_cleft_vx"]
+        d_mem = self.steps["tomo"]["d_mem"]
+        shape = self.steps["tomo"]["shape"]
+        d_cleft = self.steps["tomo"]["d_cleft"]
         zyx_ref = self.steps["tomo"]["zyx_ref"]
-        B = self.coord_to_binary(self.steps["detect"]["zyx"])
+        B = utils.coord_to_mask(self.steps["detect"]["zyx"], shape)
         O = utils.densify3d(self.steps["detect"]["Oz"])
 
         # extract two largest components
@@ -440,8 +287,8 @@ class SegPrePost:
         else:
             comps_div = division.divide_connected(
                 comp1_raw, O*comp1_raw,
-                seg_max_size=max(1, int(d_cleft_vx)),
-                seg_neigh_thresh=max(1, int(d_mem_vx)),
+                seg_max_size=max(1, int(d_cleft)),
+                seg_neigh_thresh=max(1, int(d_mem)),
                 n_clusters=2
             )
             comp1, comp2 = comps_div[:2]
@@ -476,30 +323,6 @@ class SegPrePost:
     # evomsac
     #=========================
 
-    def evomsac_one(self, B, voxel_size_nm,
-            grid_z_nm, grid_xy_nm,
-            pop_size, max_iter, tol
-        ):
-        """ evomsac for one divided part
-        :param B: 3d binary image
-        :param voxel_size_nm: voxel spacing in nm
-        :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
-        :param pop_size: size of population
-        :param tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
-        :param max_iter: max number of generations
-        """
-        # setup grid and mootools
-        n_uz, n_vxy = self.set_ngrids(B, voxel_size_nm, grid_z_nm, grid_xy_nm)
-        mtools = evomsac.MOOTools(
-            B, n_vxy=n_vxy, n_uz=n_uz, nz_eachu=1, r_thresh=1
-        )
-
-        # setup pop, evolve
-        mpop = evomsac.MOOPop(mtools, pop_size=pop_size)
-        mpop.init_pop()
-        mpop.evolve(max_iter=max_iter, tol=tol)
-
-        return mpop
 
     def evomsac(self, grid_z_nm=50, grid_xy_nm=150,
             pop_size=40, max_iter=500, tol=(0.01, 10)
@@ -516,8 +339,9 @@ class SegPrePost:
         # load from self
         self.check_steps(["tomo", "divide"], raise_error=True)
         voxel_size_nm = self.steps["tomo"]["voxel_size_nm"]
-        Bdiv1 = self.coord_to_binary(self.steps["divide"]["zyx1"])
-        Bdiv2 = self.coord_to_binary(self.steps["divide"]["zyx2"])
+        shape = self.steps["tomo"]["shape"]
+        Bdiv1 = utils.coord_to_mask(self.steps["divide"]["zyx1"], shape)
+        Bdiv2 = utils.coord_to_mask(self.steps["divide"]["zyx2"], shape)
 
         # do for each divided part
         params = dict(
@@ -527,8 +351,8 @@ class SegPrePost:
             max_iter=max_iter,
             tol=tol
         )
-        mpop1 = self.evomsac_one(Bdiv1, voxel_size_nm=voxel_size_nm, **params)
-        mpop2 = self.evomsac_one(Bdiv2, voxel_size_nm=voxel_size_nm, **params)
+        mpop1 = SegSteps.evomsac(Bdiv1, voxel_size_nm=voxel_size_nm, **params)
+        mpop2 = SegSteps.evomsac(Bdiv2, voxel_size_nm=voxel_size_nm, **params)
 
         # save parameters and results
         self.steps["evomsac"].update(params)
@@ -544,74 +368,31 @@ class SegPrePost:
     # matching
     #=========================
 
-    def match_one(self, B, O, mpop, d_cleft_vx, d_mem_vx, factor_tv):
-        """ match for one divided part
-        :param B, O: 3d binary image, orientation
-        :param mpop: MOOPop from evomsac_one
-        :param d_cleft_vx, d_mem_vx: lengthscales in voxel
-        :param factor_tv: sigma for tv = factor_tv*d_cleft_vx
-        :return: Bsmooth, zyx_sorted
-            Bsmooth: resulting binary image from matching
-            zyx_sorted: coordinates sorted by tracing
-        """
-        # fit surface
-        indiv = mpop.select_by_hypervolume(mpop.log_front[-1])
-        pts_net = mpop.mootools.get_coord_net(indiv)
-        nu_eval = np.max(utils.wireframe_lengths(pts_net, axis=0))
-        nv_eval = np.max(utils.wireframe_lengths(pts_net, axis=1))
-        Bfit, _ = mpop.mootools.fit_surface_eval(
-            indiv,
-            u_eval=np.linspace(0, 1, 2*int(nu_eval)),
-            v_eval=np.linspace(0, 1, 2*int(nv_eval))
-        )
-
-        # tv
-        Stv, Otv = dtvoting.stick3d(B, O,
-            sigma=d_cleft_vx*factor_tv
-        )
-        Btv = nonmaxsup.nms3d(Stv, Otv)
-
-        # matching
-        Bmatch = matching.match_spatial_orient(
-            Btv, Otv*Btv, Bfit,
-            sigma_gauss=d_mem_vx,
-            sigma_tv=d_mem_vx
-        )
-
-        # smoothing
-        _, Osmooth = hessian.features3d(Bmatch, d_mem_vx)
-        Bsmooth = nonmaxsup.nms3d(Bmatch, Osmooth*Bmatch)
-        Bsmooth = next(iter(utils.extract_connected(Bsmooth)))[1]
-        Osmooth = Osmooth*Bsmooth
-
-        # ordering
-        zyx_sorted = trace.Trace(Bsmooth, Osmooth).sort_coord()
-        
-        return Bsmooth, zyx_sorted
 
     def match(self, factor_tv=1):
         """ match for both divided parts
-        :param factor_tv: sigma for tv = factor_tv*d_cleft_vx
+        :param factor_tv: sigma for tv = factor_tv*d_cleft
         :action: assign steps["match"]: zyx1,  zyx2
         """
         time_start = time.process_time()
 
         # load from self
         self.check_steps(["tomo", "detect", "divide", "evomsac"], raise_error=True)
+        shape = self.steps["tomo"]["shape"]
         O = utils.densify3d(self.steps["detect"]["Oz"])
-        Bdiv1 = self.coord_to_binary(self.steps["divide"]["zyx1"])
-        Bdiv2 = self.coord_to_binary(self.steps["divide"]["zyx2"])
+        Bdiv1 = utils.coord_to_mask(self.steps["divide"]["zyx1"], shape)
+        Bdiv2 = utils.coord_to_mask(self.steps["divide"]["zyx2"], shape)
         mpop1 = evomsac.MOOPop(state=self.steps["evomsac"]["mpop1z"])
         mpop2 = evomsac.MOOPop(state=self.steps["evomsac"]["mpop2z"])
 
         # match
         params = dict(
-            d_mem_vx=self.steps["tomo"]["d_mem_vx"],
-            d_cleft_vx=self.steps["tomo"]["d_cleft_vx"],
-            factor_tv=factor_tv
+            sigma_tv=self.steps["tomo"]["d_cleft"]*factor_tv,
+            sigma_hessian=self.steps["tomo"]["d_mem"],
+            sigma_dilate=self.steps["tomo"]["d_mem"]
         )
-        _, zyx1 = self.match_one(Bdiv1, O*Bdiv1, mpop1, **params)
-        _, zyx2 = self.match_one(Bdiv2, O*Bdiv2, mpop2, **params)
+        _, zyx1 = SegSteps.match(Bdiv1, O*Bdiv1, mpop1, **params)
+        _, zyx2 = SegSteps.match(Bdiv2, O*Bdiv2, mpop2, **params)
 
         # save parameters and results
         self.steps["match"].update(dict(
@@ -627,22 +408,6 @@ class SegPrePost:
     #=========================
     # surface normal
     #=========================
-
-    def surf_normal_one(self, zyx, zyx_ref, shape, d_mem_vx):
-        """ calculate surface normal for one divided part
-        :param zyx: coordinates
-        :param zyx_ref: reference zyx
-        :param shape: (nz,ny,nx) of 3d image
-        :param d_mem_vx: membrane thickness in voxel
-        :return: normal
-            normal: each=(nx,ny,nz)
-        """
-        B = utils.coord_to_mask(zyx, shape)
-        pos = tuple(zyx.T)
-        _, normal = hessian.surface_normal(
-            B, sigma=d_mem_vx, zyx_ref=zyx_ref, pos=pos
-        )
-        return normal
     
     def surf_normal(self):
         """ calculate surface normal for both divided parts
@@ -655,14 +420,14 @@ class SegPrePost:
         params = dict(
             shape=self.steps["tomo"]["shape"],
             zyx_ref=self.steps["tomo"]["zyx_ref"],
-            d_mem_vx=self.steps["tomo"]["d_mem_vx"],
+            d_mem=self.steps["tomo"]["d_mem"],
         )
         zyx1 = self.steps["match"]["zyx1"]
         zyx2 = self.steps["match"]["zyx2"]
 
         # calc normal
-        normal1 = self.surf_normal_one(zyx1, **params)
-        normal2 = self.surf_normal_one(zyx2, **params)
+        normal1 = SegSteps.surf_normal(zyx1, **params)
+        normal2 = SegSteps.surf_normal(zyx2, **params)
 
         # save parameters and results
         self.steps["surf_normal"].update(dict(
@@ -676,40 +441,6 @@ class SegPrePost:
     #=========================
     # fitting
     #=========================
-    
-    def surf_fit_one(self, B, voxel_size_nm, d_mem_vx, grid_z_nm=10, grid_xy_nm=10):
-        """ surface fitting for one divided part
-        :param B: 3d binary image
-        :param voxel_size_nm: voxel spacing in nm
-        :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
-        :return: Bfit, zyx_sorted
-        """
-        # setup grids, mtools
-        n_uz, n_vxy = self.set_ngrids(B, voxel_size_nm, grid_z_nm, grid_xy_nm)
-        mtools = evomsac.MOOTools(
-            B, n_uz=n_uz, n_vxy=n_vxy, nz_eachu=1, r_thresh=1
-        )
-
-        # generate indiv
-        grid_sizes = list(mtools.grid.uv_size.values())
-        index = int((np.median(grid_sizes)-1)/2)
-        indiv = mtools.uniform(index=index)
-        
-        # fit
-        pts_net = mtools.get_coord_net(indiv)
-        nu_eval = np.max(utils.wireframe_lengths(pts_net, axis=0))
-        nv_eval = np.max(utils.wireframe_lengths(pts_net, axis=1))
-        Bfit, _ = mtools.fit_surface_eval(
-            indiv,
-            u_eval=np.linspace(0, 1, 5*int(nu_eval)),
-            v_eval=np.linspace(0, 1, 5*int(nv_eval))
-        )
-
-        # ordering
-        _, Ofit = hessian.features3d(Bfit, d_mem_vx)
-        zyx_sorted = trace.Trace(Bfit, Ofit).sort_coord()
-
-        return Bfit, zyx_sorted
 
     def surf_fit(self, grid_z_nm=10, grid_xy_nm=10):
         """ surface fitting for both divided parts
@@ -720,20 +451,20 @@ class SegPrePost:
 
         # load from self
         self.check_steps(["tomo", "match"], raise_error=True)
+        shape = self.steps["tomo"]["shape"]
         zyx1 = self.steps["match"]["zyx1"]
         zyx2 = self.steps["match"]["zyx2"]
 
         # fit
         params = dict(
             voxel_size_nm=self.steps["tomo"]["voxel_size_nm"],
-            d_mem_vx=self.steps["tomo"]["d_mem_vx"],
             grid_z_nm=grid_z_nm,
             grid_xy_nm=grid_xy_nm
         )
-        B1 = self.coord_to_binary(zyx1)
-        B2 = self.coord_to_binary(zyx2)
-        _, zyx_fit1 = self.surf_fit_one(B1, **params)
-        _, zyx_fit2 = self.surf_fit_one(B2, **params)
+        B1 = utils.coord_to_mask(zyx1, shape)
+        B2 = utils.coord_to_mask(zyx2, shape)
+        _, zyx_fit1 = SegSteps.surf_fit(B1, **params)
+        _, zyx_fit2 = SegSteps.surf_fit(B2, **params)
 
         # save parameters and results
         self.steps["surf_fit"].update(dict(

@@ -1,6 +1,9 @@
+""" workflow
+"""
+
 import argparse
 import pathlib
-from etsynseg import workflows
+from etsynseg.workflows import SegPrePost
 
 
 def build_parser():
@@ -53,8 +56,8 @@ def build_parser():
         help="float float (in nm). Step 'surf_fit': spacings in z- and xy-axes of the sampling grids. Set to a scale that could be enough to capture membranes' uneveness.")
     return parser
 
-def run_workflow(args):
-    """ run workflow
+def run_seg(args):
+    """ run segmentation
     :param args: args from parser.parse_args()
     """
     # output naming
@@ -65,9 +68,9 @@ def run_workflow(args):
     name_steps = f"{name}-steps.npz"
     
     # setups
-    wf = workflows.SegPrePost()
+    seg = SegPrePost()
     
-    wf.read_tomo(
+    seg.read_tomo(
         args.tomo_file, args.model_file,
         obj_bound=args.model_objs[0],
         obj_ref=args.model_objs[1],
@@ -75,31 +78,31 @@ def run_workflow(args):
         d_mem_nm=args.lengths[0],
         d_cleft_nm=args.lengths[1]
     )
-    wf.save_steps(name_steps)
+    seg.save_steps(name_steps)
 
     # run steps
-    wf.detect(
+    seg.detect(
         factor_tv=1, factor_supp=5,
         qfilter=args.detect_thresh
     )
-    wf.save_steps(name_steps)
+    seg.save_steps(name_steps)
 
-    wf.divide(size_ratio_thresh=args.divide_thresh)
-    wf.save_steps(name_steps)
+    seg.divide(size_ratio_thresh=args.divide_thresh)
+    seg.save_steps(name_steps)
 
-    wf.evomsac(
+    seg.evomsac(
         grid_z_nm=args.evomsac_grids[0],
         grid_xy_nm=args.evomsac_grids[1]
     )
-    wf.save_steps(name_steps)
+    seg.save_steps(name_steps)
 
-    wf.match(factor_tv=1)
-    wf.surf_normal()
-    wf.surf_fit(
+    seg.match(factor_tv=1)
+    seg.surf_normal()
+    seg.surf_fit(
         grid_z_nm=args.fit_grids[0],
         grid_xy_nm=args.fit_grids[1]
     )
-    wf.save_steps(name_steps)
+    seg.save_steps(name_steps)
 
     # output results
     filenames = dict(
@@ -109,9 +112,9 @@ def run_workflow(args):
         surf_normal=f"{name}-normal.npz",
         surf_fit=f"{name}-fits.mod"
     )
-    wf.output_results(filenames, plot_nslice=5, plot_dpi=200)
+    seg.output_results(filenames, plot_nslice=5, plot_dpi=200)
 
 if __name__ == "__main__":
     parser = build_parser()
     args = parser.parse_args()
-    run_workflow(args)
+    run_seg(args)

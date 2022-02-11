@@ -1,8 +1,3 @@
-""" refine
-usage:
-    dO, mask = diff_fit_seg(mootools, indiv, O_seg, sigma_gauss, sigma_tv)
-    B_filt = filter_seg(mootools.B, dO, mask, factor)
-"""
 import numpy as np
 import skimage
 from etsynseg import hessian, dtvoting, utils, trace
@@ -132,16 +127,16 @@ def fill_matched(B_seg, O_seg, B_match):
 
     return B_fill
 
-def match_spatial_orient(B_seg, O_seg, B_fit, sigma_gauss, sigma_tv):
+def match_spatial_orient(B_seg, O_seg, B_fit, sigma_hessian, sigma_tv):
     """ filter segmented image by dO, and fill holes
     :param B_seg, O_seg: binary image and orientation from previous segmentation
     :param B_fit: binary image from moo fitting
-    :param sigma_gauss, sigma_tv: sigma's for calculating orientation, tv on fitted surface
+    :param sigma_<hessian,tv>: sigma's for calculating orientation, tv on fitted surface
     :return: B_match
         B_match: matched image
     """
     # spatial closeness: TV for fit
-    _, O_fit = hessian.features3d(B_fit, sigma=sigma_gauss)
+    _, O_fit = hessian.features3d(B_fit, sigma=sigma_hessian)
     S_fit_tv, O_fit_tv = dtvoting.stick3d(B_fit, O_fit*B_fit, sigma=sigma_tv)
 
     # mask: belongs to B and close to Bfit
