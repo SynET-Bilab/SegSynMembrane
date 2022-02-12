@@ -3,7 +3,7 @@
 
 import numpy as np
 import sklearn.decomposition
-from etsynseg import io, utils, trace
+from etsynseg import io, utils
 from etsynseg import hessian, dtvoting, nonmaxsup
 from etsynseg import evomsac, matching
 
@@ -255,12 +255,12 @@ class SegSteps:
         return mpop
 
     @staticmethod
-    def match(B, O, mpop, sigma_tv, sigma_hessian, sigma_dilate):
+    def match(B, O, mpop, sigma_smooth, sigma_hessian, sigma_extend):
         """ match for one divided part
         :param B, O: 3d binary image, orientation
         :param mpop: MOOPop from evomsac_one
-        :param sigma_tv: sigma for tv enhancement of B
-        :param sigma_<hessian,dilate>: sigmas for hessian and dilation of evomsac'ed image
+        :param sigma_smooth: sigma for tv enhancement of B
+        :param sigma_<hessian,extend>: sigmas for hessian and tv extension of evomsac'ed image
         :return: Bsmooth, zyx_sorted
             Bsmooth: resulting binary image from matching
             zyx_sorted: coordinates sorted by tracing
@@ -277,14 +277,14 @@ class SegSteps:
         )
 
         # tv
-        Stv, Otv = dtvoting.stick3d(B, O, sigma=sigma_tv)
+        Stv, Otv = dtvoting.stick3d(B, O, sigma=sigma_smooth)
         Btv = nonmaxsup.nms3d(Stv, Otv)
 
         # matching
         Bmatch = matching.match_spatial_orient(
             Btv, Otv*Btv, Bfit,
             sigma_hessian=sigma_hessian,
-            sigma_tv=sigma_dilate
+            sigma_tv=sigma_extend
         )
 
         # smoothing

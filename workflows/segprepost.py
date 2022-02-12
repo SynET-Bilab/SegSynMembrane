@@ -3,6 +3,7 @@
 
 import time
 import numpy as np
+import mrcfile
 from etsynseg import io, utils, plot
 from etsynseg import division, evomsac
 from etsynseg.workflows import SegBase, SegSteps
@@ -78,7 +79,8 @@ class SegPrePost(SegBase):
                 finished=False,
                 timing=None,
                 # parameters
-                factor_tv=None,
+                factor_smooth=None,
+                factor_extend=None,
                 # results
                 zyx1=None,
                 zyx2=None,
@@ -142,6 +144,16 @@ class SegPrePost(SegBase):
             )
             fig.savefig(filenames["plot"], dpi=plot_dpi)
         
+        if ("plot_shift" in filenames) and self.check_steps(["match"]):
+            with mrcfile.mmap(self.steps["tomo"]["tomo_file"], permissive=True) as mrc:
+                I_full = mrc.data
+            fig, _ = self.plot_slices(
+                I=I_full,
+                zyxs=tuple(self.steps["match"][f"zyx{i}"]+zyx_shift for i in (1, 2)),
+                nslice=plot_nslice
+            )
+            fig.savefig(filenames["plot_shift"], dpi=plot_dpi)
+        
         if ("surf_normal" in filenames) and self.check_steps(["match", "surf_normal"]):
             # coordinates: xyz(i) + xyz_shift = xyz in the original tomo
             np.savez(
@@ -172,7 +184,9 @@ class SegPrePost(SegBase):
         :param nslice: number of slices to show
         :return: fig, axes
         """
-        izs = np.linspace(0, I.shape[0]-1, nslice, dtype=int)
+        iz_min = np.min([np.min(zyx_i[:, 0]) for zyx_i in zyxs])
+        iz_max = np.max([np.max(zyx_i[:, 0]) for zyx_i in zyxs])
+        izs = np.linspace(iz_min, iz_max, nslice, dtype=int)
         im_dict = {
             f"z={iz}": {
                 "I": I[iz],
@@ -384,9 +398,10 @@ class SegPrePost(SegBase):
     #=========================
 
 
-    def match(self, factor_tv=1):
+    def match(self, factor_smooth=1, factor_extend=1):
         """ match for both divided parts
-        :param factor_tv: sigma for tv = factor_tv*d_cleft
+        :param factor_smooth: sigma for tv on detected = factor_smooth*d_cleft
+        :param factor_extend: sigma for tv extension on evomsac surface = factor_extend*d_mem
         :action: assign steps["match"]: zyx1,  zyx2
         """
         time_start = time.process_time()
@@ -402,9 +417,9 @@ class SegPrePost(SegBase):
 
         # match
         params = dict(
-            sigma_tv=self.steps["tomo"]["d_cleft"]*factor_tv,
+            sigma_smooth=self.steps["tomo"]["d_cleft"]*factor_smooth,
             sigma_hessian=self.steps["tomo"]["d_mem"],
-            sigma_dilate=self.steps["tomo"]["d_mem"]
+            sigma_extend=self.steps["tomo"]["d_mem"]*factor_extend
         )
         _, zyx1 = SegSteps.match(Bdiv1, O*Bdiv1, mpop1, **params)
         _, zyx2 = SegSteps.match(Bdiv2, O*Bdiv2, mpop2, **params)
@@ -413,7 +428,8 @@ class SegPrePost(SegBase):
         self.steps["match"].update(dict(
             finished=True,
             # parameters
-            factor_tv=factor_tv,
+            factor_smooth=factor_smooth,
+            factor_extend=factor_extend,
             # results
             zyx1=zyx1,
             zyx2=zyx2,

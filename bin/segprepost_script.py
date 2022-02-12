@@ -17,23 +17,21 @@ def build_parser():
     )
 
     # tomo
-    parser.add_argument("tomo_file", type=str,
-        help="str. Filename of tomo (.mrc)")
-    parser.add_argument("--model_file", type=str, default=None,
-        help="str. Filename of imod model (.mod), which contains a boundary of the synaptic region and a reference point in the presynapse. If not provided, defaults to the name of tomo_file with suffix replaced by .mod.")
+    parser.add_argument("input_files", type=str, nargs='+',
+        help="str, or str str. Filename of tomo (.mrc) and filename of model (.mod, optional, if not provided then set to tomo name with suffix replaced by .mod).")
     
     # output
-    parser.add_argument("--output_base", type=str, default=None,
+    parser.add_argument("-o", "--output_base", type=str, default=None,
         help="str. Basename for output files. If not set, then use --output_prefix + basename of tomo_file."
     )
-    parser.add_argument("--output_prefix", type=str, default="mem-",
+    parser.add_argument("-op", "--output_prefix", type=str, default="mem-",
         help="str. See --output_base."
     )
 
     # tomo continued
     parser.add_argument("--model_objs", type=int, nargs=2, default=[1, 2],
         help="int int (1-based). Object id's of the boundary and the reference point in the model file.")
-    parser.add_argument("--voxel_size", type=float, default=None,
+    parser.add_argument("-vx", "--voxel_size", type=float, default=None,
         help="float (in nm). Voxel size in nm. If not set, then read from tomo file's header.")
     parser.add_argument("--lengths", type=float, default=[5, 20],
         help="float float (in nm). Membrane thickness and cleft width.")
@@ -50,6 +48,10 @@ def build_parser():
     parser.add_argument("--evomsac_grids", type=float, nargs=2, default=[50, 150],
         help="float float (in nm). Step 'evomsac': spacings in z- and xy-axes of the sampling grids. Fine grids may be prone to noise; too-coarse grids may miss too much of the membrane.")
 
+    # match
+    parser.add_argument("--match_extend", type=float, default=1,
+        help="float. Step 'match': factor for extension (by tensor voting, TV) of surface from evomsac. The sigma value for TV = match_extend * membrane thickness (set in --lengths). Larger value means more detected segments would be matched with evomsac surface.")
+
     # fit
     parser.add_argument("--fit_grids", type=float, nargs=2, default=[10, 10],
         help="float float (in nm). Step 'surf_fit': spacings in z- and xy-axes of the sampling grids. Set to a scale that could be enough to capture membranes' uneveness.")
@@ -59,23 +61,34 @@ def run_seg(args):
     """ run segmentation
     :param args: args from parser.parse_args()
     """
-    # default namings
-    if args.model_file is not None:
-        model_file = args.model_file
+    # input files
+    if len(args.input_files) == 1:
+        tomo_file = args.input_files[0]
+        model_file = str(pathlib.Path(tomo_file).with_suffix(".mod"))
     else:
-        model_file = str(pathlib.Path(args.tomo_file).with_suffix(".mod"))
+        tomo_file = args.input_files[0]
+        model_file = args.input_files[1]
 
+    # check files
+    if not pathlib.Path(tomo_file).is_file():
+        print(f"tomo file not found: {tomo_file}")
+        return
+    if not pathlib.Path(model_file).is_file():
+        print(f"model file not found: {model_file}")
+        return
+
+    # output namings
     if args.output_base is not None:
         name = args.output_base
     else:
-        name = args.output_prefix + pathlib.Path(args.tomo_file).stem
+        name = args.output_prefix + pathlib.Path(tomo_file).stem
     name_steps = f"{name}-steps.npz"
     
     # setups
     seg = SegPrePost()
     
     seg.read_tomo(
-        args.tomo_file, model_file,
+        tomo_file, model_file,
         obj_bound=args.model_objs[0],
         obj_ref=args.model_objs[1],
         voxel_size_nm=args.voxel_size,
@@ -100,7 +113,7 @@ def run_seg(args):
     )
     seg.save_steps(name_steps)
 
-    seg.match(factor_tv=1)
+    seg.match(factor_smooth=1, factor_extend=args.match_extend)
     seg.surf_normal()
     seg.surf_fit(
         grid_z_nm=args.fit_grids[0],
@@ -113,12 +126,12 @@ def run_seg(args):
         tomo=f"{name}-clip.mrc",
         match=f"{name}-segs.mod",
         match_shift=f"{name}-segs-shift.mod",
-        plot=f"{name}-segs.png",
+        plot_shift=f"{name}-segs-shift.png",
         surf_normal=f"{name}-normal.npz",
         surf_fit=f"{name}-fits.mod",
         surf_fit_shift=f"{name}-fits-shift.mod"
     )
-    seg.output_results(filenames, plot_nslice=5, plot_dpi=200)
+    seg.output_results(filenames, plot_nslice=5, plot_dpi=500)
 
 if __name__ == "__main__":
     parser = build_parser()
