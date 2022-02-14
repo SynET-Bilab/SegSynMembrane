@@ -49,7 +49,9 @@ class SegPrePost(SegBase):
                 factor_tv=None,
                 factor_supp=None,
                 qfilter=None,
+                zfilter=None,
                 # results
+                dzfilter=None,
                 zyx=None,
                 Oz=None
             ),
@@ -58,6 +60,7 @@ class SegPrePost(SegBase):
                 timing=None,
                 # parameters
                 size_ratio_thresh=None,
+                dzfilter=None,
                 # results
                 zyx1=None,
                 zyx2=None,
@@ -245,11 +248,26 @@ class SegPrePost(SegBase):
     # detect
     #=========================
     
-    def detect(self, factor_tv=1, factor_supp=5, qfilter=0.25):
+    def set_dzfilter(self, zfilter, nz):
+        """ set dzfilter. see self.detect.
+        :return: dzfilter
+        """
+        # set dzfilter
+        if zfilter <= 0:  # as offset
+            dzfilter = int(nz + zfilter)
+        elif zfilter < 1:  # as fraction
+            dzfilter = int(nz * zfilter)
+        else:  # as direct value
+            dzfilter = int(zfilter)
+        return dzfilter
+
+    def detect(self, factor_tv=1, factor_supp=5, qfilter=0.25, zfilter=-1):
         """ detect membrane features
         :param factor_tv: sigma for tv = factor_tv*d_cleft
         :param factor_supp: sigma for normal suppression = factor_supp*d_cleft
-        :param qfilter: quantile to filter out by Stv and Ssupp
+        :param qfilter: a component will be filtered out if its Stv or Ssup is below this quantile
+        :param zfilter: a component will be filtered out if its z-range < dzfilter;
+            dzfilter = {z-length+zfilter if zfilter<=0, z-length*zfilter if 0<zfilter<1, zfilter if zfilter>1}
         :action: assign steps["detect"]: B, O
         """
         time_start = time.process_time()
@@ -261,14 +279,18 @@ class SegPrePost(SegBase):
         d_mem = self.steps["tomo"]["d_mem"]
         d_cleft = self.steps["tomo"]["d_cleft"]
         
-        # detect: update qfilter, zyx, Oz
+        # set dzfilter
+        dzfilter = self.set_dzfilter(zfilter, nz=I.shape[0])
+
+        # detect
         results = SegSteps.detect(
             I, mask_bound,
             sigma_hessian=d_mem,
             sigma_tv=d_cleft*factor_tv,
             sigma_supp=d_cleft*factor_supp,
+            dO_threshold=np.pi/4,
             qfilter=qfilter,
-            dzfilter=int(I.shape[0]*0.75)
+            dzfilter=dzfilter
         )
 
         # save parameters and results
@@ -278,16 +300,18 @@ class SegPrePost(SegBase):
             # parameters
             factor_tv=factor_tv,
             factor_supp=factor_supp,
+            zfilter=zfilter
         ))
         self.steps["detect"]["timing"] = time.process_time()-time_start
     
     #=========================
     # divide
     #=========================
-    
-    def divide(self, size_ratio_thresh=0.5):
+
+    def divide(self, size_ratio_thresh=0.5, zfilter=-1):
         """ divide detected image into pre-post candidates
-        :param size_ratio_thresh: if size2/size1<size_ratio_thresh, consider that membranes are connected
+        :param size_ratio_thresh: divide the largest component if size2/size1<size_ratio_thresh
+        :param zfilter: consider a component as candidate if its z-span >= dzfilter. see self.detect for relations between zfilter and dzfilter.
         :action: assign steps["divide"]: B1, B2
         """
         time_start = time.process_time()
@@ -302,25 +326,38 @@ class SegPrePost(SegBase):
         O = utils.densify3d(self.steps["detect"]["Oz"])
 
         # extract two largest components
-        comp_arr = list(utils.extract_connected(
-            B, n_keep=2, connectivity=3
-        ))
-        size1_raw, comp1_raw = comp_arr[0]
-        size2_raw, comp2_raw = comp_arr[1]
+        # could get only one component
+        comps = [comp[1] for comp in utils.extract_connected(B, n_keep=2, connectivity=3)]
+
+        # check if components need to be divided
+        dzfilter = self.set_dzfilter(zfilter, nz=shape[0])
+        def need_to_divide(comps):
+            # only one component: True
+            if len(comps) == 1:
+                return True
+            else:
+                zyx1, zyx2 = [utils.mask_to_coord(comp) for comp in comps[:2]]
+                # size of component-2 too small: True
+                if len(zyx2)/len(zyx1) < size_ratio_thresh:
+                    return True
+                # z-span of component-2 too small: True
+                # loophole here: z-span of component-1 too small?
+                elif np.ptp(zyx2[:, 0]) < dzfilter:
+                    return True
+                else:
+                    return False
 
         # if two membranes seem connected, divide
-        size_ratio = size2_raw / size1_raw
-        if size_ratio > size_ratio_thresh:
-            comp1 = comp1_raw
-            comp2 = comp2_raw
-        else:
-            comps_div = division.divide_connected(
-                comp1_raw, O*comp1_raw,
+        while need_to_divide(comps):
+            comps = division.divide_connected(
+                comps[0], O*comps[0],
                 seg_max_size=max(1, int(d_cleft)),
                 seg_neigh_thresh=max(1, int(d_mem)),
                 n_clusters=2
             )
-            comp1, comp2 = comps_div[:2]
+
+        # set two components
+        comp1, comp2 = comps[:2]
         
         # compare components' distance to ref
         iz_ref = int(zyx_ref[0])

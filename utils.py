@@ -231,7 +231,7 @@ def filter_connected_dz(B, dzfilter=1, connectivity=2):
     """ label by connectivity in 3d, filter out dz<dzfilter segments
     :param B: binary image
     :param connectivity: used for determining connected segments, 1 or 2
-    :param dzfilter: threshold of z-range
+    :param dzfilter: minimal value of z-range
     :return: B_filt
         B_filt: filtered binary image
     """

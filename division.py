@@ -4,6 +4,7 @@
 import multiprocessing.dummy
 import numpy as np
 import scipy as sp
+import pandas as pd
 import sklearn.decomposition
 import sklearn.cluster
 import skimage
@@ -124,7 +125,7 @@ def divide_connected(B, O, seg_max_size=10, seg_neigh_thresh=5, n_clusters=2):
     :param seg_neigh_thresh: distance threshold for finding neighbors
     :param n_clusters: number of clusters to divide into
     :return: B_arr
-        B_arr: [B_0, B_1, ...], binary image for each cluster
+        B_arr: [B_0, B_1, ...], binary image for each cluster, sorted from largest in size
     """
     # segmentalize image
     segment = Segmentalize(B, O, max_size=seg_max_size, r_thresh=seg_neigh_thresh)
@@ -141,11 +142,16 @@ def divide_connected(B, O, seg_max_size=10, seg_neigh_thresh=5, n_clusters=2):
     )
     clust.fit(mat)
     
+    # sort cluster labels by size
+    clust_labels = (pd.Series(clust.labels_)
+                .value_counts(sort=True, ascending=False)
+                .index.tolist())
+
     # label image
     n_segs = len(iz_segs)
     label_segs = np.arange(n_segs) + 1
     B_arr = []
-    for i in range(2):
+    for i in clust_labels:
         B_i = np.zeros_like(L)
         mask_i = np.isin(L, label_segs[clust.labels_ == i])
         B_i[mask_i] = 1

@@ -224,6 +224,7 @@ class SegSteps:
         results = dict(
             # parameters
             qfilter=qfilter,
+            dzfilter=dzfilter,
             # results
             zyx=utils.mask_to_coord(Bdetect),
             Oz=utils.sparsify3d(Odetect)

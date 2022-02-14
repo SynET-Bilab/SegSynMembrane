@@ -37,8 +37,10 @@ def build_parser():
         help="float float (in nm). Membrane thickness and cleft width.")
     
     # detect
-    parser.add_argument("--detect_thresh", type=float, default=0.25,
+    parser.add_argument("--detect_qfilter", type=float, default=0.25,
         help="float (between 0 and 1). Step 'detect': after tensor voting and normal suppression, there is a simple saliency-based filtering. Segments with saliency below this quantile threshold will be filtered out. Higher values could potentially filter out more noises.")
+    parser.add_argument("--detect_zfilter", type=float, default=-1,
+        help="float. Step 'detect': filtering out components if their span in z < dzfilter. dzfilter = {z-length+zfilter if zfilter<=0, z-length*zfilter if 0<zfilter<1, zfilter if zfilter>1}")
     
     # divide
     parser.add_argument("--divide_thresh", type=float, default=0.5,
@@ -100,7 +102,8 @@ def run_seg(args):
     # run steps
     seg.detect(
         factor_tv=1, factor_supp=5,
-        qfilter=args.detect_thresh
+        qfilter=args.detect_qfilter,
+        zfilter=args.detect_zfilter,
     )
     seg.save_steps(name_steps)
 
