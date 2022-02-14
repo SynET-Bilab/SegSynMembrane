@@ -330,9 +330,7 @@ class SegSteps:
         )
 
         # generate indiv
-        grid_sizes = list(mtools.grid.uv_size.values())
-        index = int((np.median(grid_sizes)-1)/2)
-        indiv = mtools.uniform(index=index)
+        indiv = mtools.indiv_middle()
         
         # fit
         pts_net = mtools.get_coord_net(indiv)

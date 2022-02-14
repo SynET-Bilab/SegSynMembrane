@@ -31,7 +31,7 @@ class MOOTools:
     Usage:
         # setup
         mootools = MOOTools(B, n_vxy, n_uz, nz_eachu, degree, r_thresh)
-        indiv = mootools.random()
+        indiv = mootools.indiv_random()
         # evolution
         mootools.mutate(indiv)
         indiv.fitness.values = mootools.evaluate(indiv)
@@ -112,8 +112,8 @@ class MOOTools:
         )
         return config
 
-    def random(self):
-        """ generate individual, by random sampling in each grid
+    def indiv_random(self):
+        """ generate individual with random sampling in each grid
         :return: individual
         """
         indiv = MOOIndiv()
@@ -125,18 +125,35 @@ class MOOTools:
             indiv.append(indiv_u)
         return indiv
 
-    def uniform(self, index=0):
-        """ generate individual, by uniform index in each grid
+    def indiv_uniform(self, index=0):
+        """ generate individual with uniform index in each grid
         :return: individual
         """
         indiv = MOOIndiv()
         for iu in range(self.n_uz):
             indiv_u = []
             for iv in range(self.n_vxy):
-                indiv_uv = np.clip(index, 0, self.grid.uv_size[(iu, iv)])
+                indiv_uv = np.clip(index, 0, self.grid.uv_size[(iu, iv)]-1)
                 indiv_u.append(indiv_uv)
             indiv.append(indiv_u)
         return indiv
+    
+    def indiv_middle(self):
+        """ generate individual with middle index in each grid
+        :return: individual
+        """
+        indiv = MOOIndiv()
+        for iu in range(self.n_uz):
+            indiv_u = []
+            for iv in range(self.n_vxy):
+                size_uv = self.grid.uv_size[(iu, iv)]
+                index = int((size_uv-1)/2)
+                indiv_uv = np.clip(index, 0, size_uv-1)
+                indiv_u.append(indiv_uv)
+            indiv.append(indiv_u)
+        return indiv
+
+
     
     def from_list_fitness(self, sample_list, fitness=None):
         """ generate individual from sample list, fitness

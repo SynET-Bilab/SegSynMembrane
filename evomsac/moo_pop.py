@@ -139,7 +139,7 @@ class MOOPop:
         """
         # generation population
         if pop is None:
-            self.pop = [self.mootools.random() for _ in range(self.pop_size)]
+            self.pop = [self.mootools.indiv_random() for _ in range(self.pop_size)]
         else:
             self.pop = pop
 
