@@ -117,7 +117,7 @@ class SegSteps:
         :param obj_bound: obj label for boundary
         :return: results
             results: {tomo_file,model_file,obj_bound,d_mem_nm,
-                I,shape,voxel_size_nm,model,clip_range,mask_bound,d_mem}
+                I,shape,voxel_size_nm,model,clip_range,zyx_shift,zyx_bound,d_mem}
         """
         # read model
         model = io.read_model(model_file)
@@ -167,7 +167,7 @@ class SegSteps:
             model=model,
             clip_range=clip_range,
             zyx_shift=zyx_shift,
-            mask_bound=mask_bound,
+            zyx_bound=utils.mask_to_coord(mask_bound),
             d_mem=d_mem_nm/voxel_size_nm,
         )
         return results

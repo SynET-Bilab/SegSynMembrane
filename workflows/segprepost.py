@@ -37,7 +37,7 @@ class SegPrePost(SegBase):
                 voxel_size_nm=None,
                 clip_range=None,
                 zyx_shift=None,
-                mask_bound=None,
+                zyx_bound=None,
                 zyx_ref=None,
                 d_mem=None,
                 d_cleft=None,
@@ -213,7 +213,7 @@ class SegPrePost(SegBase):
         :param tomo_file, model_file: filename of tomo, model
         :param obj_bound, obj_ref: obj label for boundary and presynapse, begins with 1
         :param voxel_size_nm: manually set; if None then read from tomo_file
-        :action: assign steps["tomo"]: I, voxel_size_nm, mask_bound, zyx_ref, d_mem, d_cleft
+        :action: assign steps["tomo"]: I, voxel_size_nm, zyx_shift, zyx_bound, zyx_ref, d_mem, d_cleft
         """
         time_start = time.process_time()
 
@@ -275,7 +275,7 @@ class SegPrePost(SegBase):
         # load from self
         self.check_steps(["tomo"], raise_error=True)
         I = self.steps["tomo"]["I"]
-        mask_bound = self.steps["tomo"]["mask_bound"]
+        mask_bound = utils.coord_to_mask(self.steps["tomo"]["zyx_bound"], I.shape)
         d_mem = self.steps["tomo"]["d_mem"]
         d_cleft = self.steps["tomo"]["d_cleft"]
         
