@@ -24,19 +24,20 @@ class Grid:
         self.nz = self.B.shape[0]
         self.nz_eachu = nz_eachu
 
-        # nv, nu: try to avoid empty grids
-        # nv: <= min number of pixels among z's
-        max_nv = np.sum(self.B, axis=(1, 2)).min()
-        self.n_vxy = min(n_vxy, max_nv)
-        # nu: <= nz/nz_eachu
-        max_nu = int(self.nz/self.nz_eachu)
-        self.n_uz = min(n_uz, max_nu)
+        # slices with nonzero points
+        npts_iz = np.sum(self.B, axis=(1, 2))
+        self.iz_non0 = np.arange(self.nz)[npts_iz>0]
+        self.nz_non0 = len(self.iz_non0)
 
-        # info of each bin[iu]: indexes of z, coordinates
+        # nu, nv: try to avoid empty grids
+        self.n_uz = min(n_uz, int(self.nz_non0/self.nz_eachu))
+        self.n_vxy = min(n_vxy, npts_iz[npts_iz>0].min())
+
+        # # info of each bin[iu]: indexes of z, coordinates
         self.ubin_iz = self.get_ubin_iz()
         self.ubin_zyx = self.get_ubin_zyx()
 
-        # info of each grid[iu][iv]: size, coordinates
+        # # info of each grid[iu][iv]: size, coordinates
         self.uv_size, self.uv_zyx = self.get_grid_zyx()
 
     def get_ubin_iz(self):
@@ -44,23 +45,17 @@ class Grid:
         :return: ubin_iz
             ubin_iz: shape=(n_uz, nz_eachu), ubin_iz[iu]=(z1,z2,z3,...)
         """
-        # interval between u-bins
-        # used np.array_split to deal with uneven intervals
-        interval_size = (self.nz - self.n_uz*self.nz_eachu)
-        interval_arr = np.array_split(np.ones(interval_size), self.n_uz-1)
+        # split iz_non0 into n_uz parts
+        iz_split = np.array_split(
+            self.iz_non0[:-self.nz_eachu], self.n_uz-1
+        )
+        # last part = last nz_eachu elements
+        iz_split.append(self.iz_non0[-self.nz_eachu:])
 
-        # z-indexes for each u-bin
-        ubin_iz = []
-        iz = 0
-        for i in range(self.n_uz-1):
-            # take samples
-            ubin_iz.append(tuple(range(iz, iz+self.nz_eachu)))
-            # skip interval
-            iz += self.nz_eachu + len(interval_arr[i])
-        # take the last bin
-        ubin_iz.append(tuple(range(self.nz-self.nz_eachu, self.nz)))
-
-        ubin_iz = tuple(ubin_iz)
+        # take the first nz_eachu elements from each part
+        ubin_iz = tuple(
+            tuple(izs[:self.nz_eachu]) for izs in iz_split
+        )
         return ubin_iz
 
     def get_ubin_zyx(self):
