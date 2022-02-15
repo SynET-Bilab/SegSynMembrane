@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 import scipy as sp
-import skimage.filters
+import skimage
 
 __all__ = [
     # basics
@@ -11,7 +11,7 @@ __all__ = [
     # orientation
     "rotate_orient", "absdiff_orient",
     # coordinates
-    "mask_to_coord", "coord_to_mask", "reverse_coord",
+    "mask_to_coord", "coord_to_mask", "reverse_coord", "mask_to_contour",
     # sparse
     "sparsify3d", "densify3d",
     # segments
@@ -115,6 +115,30 @@ def reverse_coord(coord):
     coord = np.asarray(coord)
     index_rev = np.arange(coord.shape[1])[::-1]
     return coord[:, index_rev]
+
+def mask_to_contour(mask):
+    """ convert a (connected) binary mask to contour
+    :return: contour
+        contour: yx for 2d, zyx for 3d
+    """
+    if mask.ndim == 2:
+        contour = np.concatenate(
+            skimage.measure.find_contours(mask),
+            axis=0
+        )
+    elif mask.ndim == 3:
+        contour = []
+        for i, mask_i in enumerate(mask):
+            yx_i = np.concatenate(
+                skimage.measure.find_contours(mask_i),
+                axis=0
+            )
+            zyx_i = np.concatenate(
+                [i*np.ones((len(yx_i), 1)), yx_i], axis=1)
+            contour.append(zyx_i)
+        contour = np.concatenate(contour, axis=0)
+    return contour
+
 
 #=========================
 # sparse tools

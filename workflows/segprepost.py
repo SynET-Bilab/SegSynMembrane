@@ -116,10 +116,21 @@ class SegPrePost(SegBase):
         :param filenames: dict(tomo(mrc), match(mod), plot(png), surf_normal(npz), surf_fit(mod))
         :param plot_nslice, plot_dpi: plot nslice slices, save at dpt=plot_dpi
         """
-        # calc shift
-        self.check_steps(["tomo"], raise_error=True)
-        zyx_shift = self.steps["tomo"]["zyx_shift"]
+        # precalc shift
+        if any([step in filenames for step in
+            ["match_shift", "plot_shift"]
+            ]):
+            self.check_steps(["tomo"], raise_error=True)
+            zyx_shift = self.steps["tomo"]["zyx_shift"]
+        
+        # precalc zyx for bounday contour
+        if any([step in filenames for step in
+            ["match", "match_shift", "plot", "plot_shift", "surf_fit", "surf_fit_shift"]
+            ]):
+            self.check_steps(["tomo"], raise_error=True)
+            zyx_bound = self.steps["tomo"]["zyx_bound"]
 
+        # tomo
         if ("tomo" in filenames):
             io.write_mrc(
                 data=self.steps["tomo"]["I"],
@@ -127,22 +138,27 @@ class SegPrePost(SegBase):
                 voxel_size=self.steps["tomo"]["voxel_size_nm"]*10
             )
         
+        # matched segs: model
         if ("match" in filenames) and self.check_steps(["match"]):
+            zyx_segs = [self.steps["match"][f"zyx{i}"] for i in (1, 2)]
             io.write_model(
-                zyx_arr=[self.steps["match"][f"zyx{i}"] for i in (1, 2)],
+                zyx_arr=[zyx_bound]+zyx_segs,
                 model_file=filenames["match"]
             )
 
         if ("match_shift" in filenames) and self.check_steps(["match"]):
+            zyx_segs = [self.steps["match"][f"zyx{i}"]+zyx_shift for i in (1, 2)]
             io.write_model(
-                zyx_arr=[self.steps["match"][f"zyx{i}"]+zyx_shift for i in (1, 2)],
+                zyx_arr=[zyx_bound+zyx_shift] + zyx_segs,
                 model_file=filenames["match_shift"]
             )
         
+        # matched segs: plot
         if ("plot" in filenames) and self.check_steps(["match"]):
+            zyx_segs = [self.steps["match"][f"zyx{i}"] for i in (1, 2)]
             fig, _ = self.plot_slices(
                 I=utils.negate_image(self.steps["tomo"]["I"]),  # negated
-                zyxs=tuple(self.steps["match"][f"zyx{i}"] for i in (1, 2)),
+                zyxs=[zyx_bound]+zyx_segs,
                 nslice=plot_nslice
             )
             fig.savefig(filenames["plot"], dpi=plot_dpi)
@@ -150,13 +166,15 @@ class SegPrePost(SegBase):
         if ("plot_shift" in filenames) and self.check_steps(["match"]):
             with mrcfile.mmap(self.steps["tomo"]["tomo_file"], permissive=True) as mrc:
                 I_full = mrc.data
+            zyx_segs = [self.steps["match"][f"zyx{i}"]+zyx_shift for i in (1, 2)]
             fig, _ = self.plot_slices(
                 I=I_full,
-                zyxs=tuple(self.steps["match"][f"zyx{i}"]+zyx_shift for i in (1, 2)),
+                zyxs=[zyx_bound+zyx_shift] + zyx_segs,
                 nslice=plot_nslice
             )
             fig.savefig(filenames["plot_shift"], dpi=plot_dpi)
         
+        # surface normal
         if ("surf_normal" in filenames) and self.check_steps(["match", "surf_normal"]):
             # coordinates: xyz(i) + xyz_shift = xyz in the original tomo
             np.savez(
@@ -168,15 +186,18 @@ class SegPrePost(SegBase):
                 normal2=self.steps["surf_normal"]["normal2"],
             )
         
+        # fitted segs: model
         if ("surf_fit" in filenames) and self.check_steps(["surf_fit"]):
+            zyx_segs = [self.steps["surf_fit"][f"zyx{i}"] for i in (1, 2)]
             io.write_model(
-                zyx_arr=[self.steps["surf_fit"][f"zyx{i}"] for i in (1, 2)],
+                zyx_arr=[zyx_bound]+zyx_segs,
                 model_file=filenames["surf_fit"]
             )
         
         if ("surf_fit_shift" in filenames) and self.check_steps(["surf_fit"]):
+            zyx_segs = [self.steps["surf_fit"][f"zyx{i}"]+zyx_shift for i in (1, 2)]
             io.write_model(
-                zyx_arr=[self.steps["surf_fit"][f"zyx{i}"]+zyx_shift for i in (1, 2)],
+                zyx_arr=[zyx_bound+zyx_shift] + zyx_segs,
                 model_file=filenames["surf_fit_shift"]
             )
     

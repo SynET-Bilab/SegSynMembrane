@@ -167,7 +167,7 @@ class SegSteps:
             model=model,
             clip_range=clip_range,
             zyx_shift=zyx_shift,
-            zyx_bound=utils.mask_to_coord(mask_bound),
+            zyx_bound=utils.mask_to_contour(mask_bound),
             d_mem=d_mem_nm/voxel_size_nm,
         )
         return results
