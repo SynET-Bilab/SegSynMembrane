@@ -12,7 +12,7 @@ def build_parser():
     # parser
     parser = argparse.ArgumentParser(
         prog="segprepost_script.py",
-        description="Segmentation of synaptic membranes. Outputs: record of steps (-steps.npz), clipped tomo (-clip.mrc), segmentation model (-segs.mod), its quickview image (-segs.png), surface normal (-normal.npz), and smoothed fittings (-fits.mod).",
+        description="Segmentation of synaptic membranes. Outputs: record of steps (-steps.npz), clipped tomo (-clip.mrc), segmentation model (-segs.mod, -segs-shift.mod), its quickview image (-segs.png), surface normal (-normal.npz), and smoothed fittings (-fits.mod,-fits-shift.mod).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
@@ -37,14 +37,10 @@ def build_parser():
         help="float float (in nm). Membrane thickness and cleft width.")
     
     # detect
-    parser.add_argument("--detect_qfilter", type=float, default=0.25,
-        help="float (between 0 and 1). Step 'detect': after tensor voting and normal suppression, there is a simple saliency-based filtering. Segments with saliency below this quantile threshold will be filtered out. Higher values could potentially filter out more noises.")
-    parser.add_argument("--detect_zfilter", type=float, default=-1,
-        help="float. Step 'detect': filtering out components if their span in z < dzfilter. dzfilter = {z-length+zfilter if zfilter<=0, z-length*zfilter if 0<zfilter<1, zfilter if zfilter>1}")
-    
-    # divide
-    parser.add_argument("--divide_thresh", type=float, default=0.5,
-        help="float (between 0 and 1). Step 'divide': after step 'detect', the largest two connected components are extracted; if the ratio of their sizes is below this threshold, consider that the largest component contains both membranes, so that it has to be divided")
+    parser.add_argument("--detect_tv", type=float, default=5,
+        help="float. Step 'detect': sigma for tensor voting = membrane thickness * detect_tv. The larger the smoother and more connected.")
+    parser.add_argument("--detect_xyfilter", type=float, default=0.25,
+        help="float (>1). Step 'detect': after tensor voting and normal suppression, filter out voxels with Ssupp below quantile threshold, the threshold = 1-xyfilter*fraction_mems.Smaller values filter out more voxels.")
     
     # evomsac
     parser.add_argument("--evomsac_grids", type=float, nargs=2, default=[50, 150],
@@ -101,13 +97,14 @@ def run_seg(args):
 
     # run steps
     seg.detect(
-        factor_tv=1, factor_supp=5,
-        qfilter=args.detect_qfilter,
-        zfilter=args.detect_zfilter,
+        factor_tv=args.detect_tv,
+        factor_supp=0.25,
+        xyfilter=args.detect_xyfilter,
+        zfilter=-1,
     )
     seg.save_steps(name_steps)
 
-    seg.divide(size_ratio_thresh=args.divide_thresh)
+    seg.divide(size_ratio_thresh=0.5, zfilter=-1)
     seg.save_steps(name_steps)
 
     seg.evomsac(
@@ -116,12 +113,12 @@ def run_seg(args):
     )
     seg.save_steps(name_steps)
 
-    seg.match(factor_smooth=1, factor_extend=args.match_extend)
-    seg.surf_normal()
+    seg.match(factor_tv=5, factor_extend=args.match_extend)
     seg.surf_fit(
         grid_z_nm=args.fit_grids[0],
         grid_xy_nm=args.fit_grids[1]
     )
+    seg.surf_normal()
     seg.save_steps(name_steps)
 
     # output results

@@ -1,4 +1,4 @@
-""" workflow
+""" 
 """
 
 import numpy as np
@@ -7,7 +7,9 @@ from etsynseg import io, utils
 from etsynseg import hessian, dtvoting, nonmaxsup
 from etsynseg import evomsac, matching
 
-
+__all__ = [
+    "SegBase", "SegSteps"
+]
 class SegBase:
     """ workflow for segmentation
     attribute formats:
@@ -163,7 +165,7 @@ class SegSteps:
             contour_len_iz = np.sum(np.linalg.norm(
                 np.diff(yx_iz[::2], axis=0), axis=1))
             contour_len_bound.append(contour_len_iz)
-        contour_len_bound = np.array(contour_len_bound)        
+        contour_len_bound = np.array(contour_len_bound)
 
         # save parameters and results
         results = dict(
@@ -193,8 +195,7 @@ class SegSteps:
         ):
         """ detect membrane features
         :param sigma_<hessian,tv,supp>: sigma in voxel for hessian, tv, normal suppression
-        :param xyfilter: a pixel will be filtered out if its Ssupp in each xy plane is below a quantile of qthresh
-            qthresh = {1-xyfilter*fraction_mems if xyfilter>=1, xyfilter if xyfilter<1}
+        :param xyfilter: for each xy plane, filter out pixels with Ssupp below quantile threshold; the threshold = 1-xyfilter*fraction_mems, fraction_mems is estimated by the ratio between contour length of boundary and the number of points. the smaller xyfilter, more will be filtered out.
         :param dzfilter: a component will be filtered out if its z-range < dzfilter
         :return: results
             results: {qfilter,zyx_supp,zyx,Oz}
@@ -224,19 +225,19 @@ class SegSteps:
         # filter in xy: small Ssupp
         Bfilt_xy = np.zeros(Bsupp.shape, dtype=int)
         for iz in range(Bsupp.shape[0]):
-            if xyfilter >= 1:
-                # estimating the fraction of membranes by no. of pts
-                npts_bound = contour_len_bound[iz]
-                npts_ref = np.sum(Bref[iz])
-                fraction_mems = npts_bound/npts_ref
-                # set thresh according to the fraction
-                qthresh = 1 - np.clip(xyfilter*fraction_mems, 0, 1)
-            else:
-                qthresh = xyfilter
+            # estimating the fraction of membranes by no. of pts
+            npts_bound = contour_len_bound[iz]
+            npts_ref = np.sum(Bref[iz])
+            fraction_mems = npts_bound/npts_ref
+            
+            # set thresh according to the fraction
+            qthresh = 1 - np.clip(xyfilter*fraction_mems, 0, 1)
             
             # filter out pixels with small Ssupp
             ssupp = Ssupp[iz][Bsupp[iz].astype(bool)]
             sthresh = np.quantile(ssupp, qthresh)
+            
+            # assign filtered results
             Bfilt_xy[iz][Ssupp[iz]>sthresh] = 1
 
         # filter in 3d: z-span
@@ -286,11 +287,11 @@ class SegSteps:
         return mpop
 
     @staticmethod
-    def match(B, O, mpop, sigma_smooth, sigma_hessian, sigma_extend, mask_bound=None):
+    def match(B, O, mpop, sigma_tv, sigma_hessian, sigma_extend, mask_bound=None):
         """ match for one divided part
         :param B, O: 3d binary image, orientation
         :param mpop: MOOPop from evomsac_one
-        :param sigma_smooth: sigma for tv enhancement of B
+        :param sigma_tv: sigma for tv enhancement of B, so that lines gets more connected
         :param sigma_<hessian,extend>: sigmas for hessian and tv extension of evomsac'ed image
         :param mask_bound: 3d binary mask for bounding polygon
         :return: Bsmooth, zyx_sorted
@@ -309,7 +310,7 @@ class SegSteps:
         )
 
         # tv
-        Stv, Otv = dtvoting.stick3d(B, O, sigma=sigma_smooth)
+        Stv, Otv = dtvoting.stick3d(B, O, sigma=sigma_tv)
         Btv = nonmaxsup.nms3d(Stv, Otv)
 
         # matching

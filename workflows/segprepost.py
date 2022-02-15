@@ -35,6 +35,7 @@ class SegPrePost(SegBase):
                 I=None,
                 shape=None,
                 voxel_size_nm=None,
+                model=None,
                 clip_range=None,
                 zyx_shift=None,
                 zyx_bound=None,
@@ -47,24 +48,27 @@ class SegPrePost(SegBase):
             detect=dict(
                 finished=False,
                 timing=None,
-                # parameters
+                # parameters: input
                 factor_tv=None,
                 factor_supp=None,
                 xyfilter=None,
                 zfilter=None,
-                # results
+                # parameters: inferred
                 sigma_tv=None,
                 sigma_supp=None,
                 dzfilter=None,
                 zyx_supp=None,
+                # results
                 zyx=None,
                 Oz=None
             ),
             divide=dict(
                 finished=False,
                 timing=None,
-                # parameters
+                # parameters: input
                 size_ratio_thresh=None,
+                zfilter=None,
+                # parameters: inferred
                 dzfilter=None,
                 # results
                 zyx1=None,
@@ -73,7 +77,7 @@ class SegPrePost(SegBase):
             evomsac=dict(
                 finished=False,
                 timing=None,
-                # parameters
+                # parameters: input
                 grid_z_nm=None,
                 grid_xy_nm=None,
                 pop_size=None,
@@ -86,8 +90,8 @@ class SegPrePost(SegBase):
             match=dict(
                 finished=False,
                 timing=None,
-                # parameters
-                factor_smooth=None,
+                # parameters: input
+                factor_tv=None,
                 factor_extend=None,
                 # results
                 zyx1=None,
@@ -96,7 +100,7 @@ class SegPrePost(SegBase):
             surf_fit=dict(
                 finished=False,
                 timing=None,
-                # parameters
+                # parameters: input
                 grid_z_nm=None,
                 grid_xy_nm=None,
                 # results
@@ -123,38 +127,40 @@ class SegPrePost(SegBase):
         :param filenames: dict(tomo(mrc), match(mod), plot(png), surf_normal(npz), surf_fit(mod))
         :param plot_nslice, plot_dpi: plot nslice slices, save at dpt=plot_dpi
         """
+        steps = self.steps
+
         # precalc shift
-        if any([step in filenames for step in
-            ["match_shift", "plot_shift"]
+        if any([name in filenames for name in
+            ["match_shift", "plot_shift", "surf_normal"]
             ]):
             self.check_steps(["tomo"], raise_error=True)
-            zyx_shift = self.steps["tomo"]["zyx_shift"]
+            zyx_shift = steps["tomo"]["zyx_shift"]
         
         # precalc zyx for bounday contour
-        if any([step in filenames for step in
+        if any([name in filenames for name in
             ["match", "match_shift", "plot", "plot_shift", "surf_fit", "surf_fit_shift"]
             ]):
             self.check_steps(["tomo"], raise_error=True)
-            contour_bound = self.steps["tomo"]["contour_bound"]
+            contour_bound = steps["tomo"]["contour_bound"]
 
         # tomo
         if ("tomo" in filenames):
             io.write_mrc(
-                data=self.steps["tomo"]["I"],
+                data=steps["tomo"]["I"],
                 mrcname=filenames["tomo"],
-                voxel_size=self.steps["tomo"]["voxel_size_nm"]*10
+                voxel_size=steps["tomo"]["voxel_size_nm"]*10
             )
         
         # matched segs: model
         if ("match" in filenames) and self.check_steps(["match"]):
-            zyx_segs = [self.steps["match"][f"zyx{i}"] for i in (1, 2)]
+            zyx_segs = [steps["match"][f"zyx{i}"] for i in (1, 2)]
             io.write_model(
                 zyx_arr=[contour_bound]+zyx_segs,
                 model_file=filenames["match"]
             )
 
         if ("match_shift" in filenames) and self.check_steps(["match"]):
-            zyx_segs = [self.steps["match"][f"zyx{i}"]+zyx_shift for i in (1, 2)]
+            zyx_segs = [steps["match"][f"zyx{i}"]+zyx_shift for i in (1, 2)]
             io.write_model(
                 zyx_arr=[contour_bound+zyx_shift] + zyx_segs,
                 model_file=filenames["match_shift"]
@@ -162,18 +168,18 @@ class SegPrePost(SegBase):
         
         # matched segs: plot
         if ("plot" in filenames) and self.check_steps(["match"]):
-            zyx_segs = [self.steps["match"][f"zyx{i}"] for i in (1, 2)]
+            zyx_segs = [steps["match"][f"zyx{i}"] for i in (1, 2)]
             fig, _ = self.plot_slices(
-                I=utils.negate_image(self.steps["tomo"]["I"]),  # negated
+                I=utils.negate_image(steps["tomo"]["I"]),  # negated
                 zyxs=[contour_bound]+zyx_segs,
                 nslice=plot_nslice
             )
             fig.savefig(filenames["plot"], dpi=plot_dpi)
         
         if ("plot_shift" in filenames) and self.check_steps(["match"]):
-            with mrcfile.mmap(self.steps["tomo"]["tomo_file"], permissive=True) as mrc:
+            with mrcfile.mmap(steps["tomo"]["tomo_file"], permissive=True) as mrc:
                 I_full = mrc.data
-            zyx_segs = [self.steps["match"][f"zyx{i}"]+zyx_shift for i in (1, 2)]
+            zyx_segs = [steps["match"][f"zyx{i}"]+zyx_shift for i in (1, 2)]
             fig, _ = self.plot_slices(
                 I=I_full,
                 zyxs=[contour_bound+zyx_shift] + zyx_segs,
@@ -188,27 +194,27 @@ class SegPrePost(SegBase):
                 filenames["surf_normal"],
                 xyz_shift=zyx_shift[::-1],
                 # segs
-                xyz1=utils.reverse_coord(self.steps["match"]["zyx1"]),
-                xyz2=utils.reverse_coord(self.steps["match"]["zyx2"]),
-                normal1=self.steps["surf_normal"]["normal1"],
-                normal2=self.steps["surf_normal"]["normal2"],
+                xyz1=utils.reverse_coord(steps["match"]["zyx1"]),
+                xyz2=utils.reverse_coord(steps["match"]["zyx2"]),
+                normal1=steps["surf_normal"]["normal1"],
+                normal2=steps["surf_normal"]["normal2"],
                 # fits
-                xyz_fit1=utils.reverse_coord(self.steps["surf_fit"]["zyx1"]),
-                xyz_fit2=utils.reverse_coord(self.steps["surf_fit"]["zyx2"]),
-                normal_fit1=self.steps["surf_normal"]["normal_fit1"],
-                normal_fit2=self.steps["surf_normal"]["normal_fit2"],
+                xyz_fit1=utils.reverse_coord(steps["surf_fit"]["zyx1"]),
+                xyz_fit2=utils.reverse_coord(steps["surf_fit"]["zyx2"]),
+                normal_fit1=steps["surf_normal"]["normal_fit1"],
+                normal_fit2=steps["surf_normal"]["normal_fit2"],
             )
         
         # fitted segs: model
         if ("surf_fit" in filenames) and self.check_steps(["surf_fit"]):
-            zyx_segs = [self.steps["surf_fit"][f"zyx{i}"] for i in (1, 2)]
+            zyx_segs = [steps["surf_fit"][f"zyx{i}"] for i in (1, 2)]
             io.write_model(
                 zyx_arr=[contour_bound]+zyx_segs,
                 model_file=filenames["surf_fit"]
             )
         
         if ("surf_fit_shift" in filenames) and self.check_steps(["surf_fit"]):
-            zyx_segs = [self.steps["surf_fit"][f"zyx{i}"]+zyx_shift for i in (1, 2)]
+            zyx_segs = [steps["surf_fit"][f"zyx{i}"]+zyx_shift for i in (1, 2)]
             io.write_model(
                 zyx_arr=[contour_bound+zyx_shift] + zyx_segs,
                 model_file=filenames["surf_fit_shift"]
@@ -266,7 +272,6 @@ class SegPrePost(SegBase):
         )
 
         # save parameters and results
-        self.steps["tomo"].update(results)
         self.steps["tomo"].update(dict(
             finished=True,
             # parameters
@@ -276,6 +281,7 @@ class SegPrePost(SegBase):
             zyx_ref=zyx_ref,
             d_cleft=d_cleft_nm/results["voxel_size_nm"],
         ))
+        self.steps["tomo"].update(results)
         self.steps["tomo"]["timing"] = time.process_time()-time_start
 
     #=========================
@@ -295,15 +301,13 @@ class SegPrePost(SegBase):
             dzfilter = int(zfilter)
         return dzfilter
 
-    def detect(self, factor_tv=1, factor_supp=0.25, xyfilter=2.5, zfilter=-1):
+    def detect(self, factor_tv=5, factor_supp=0.25, xyfilter=2.5, zfilter=-1):
         """ detect membrane features
-        :param factor_tv: sigma for tv = factor_tv*d_cleft
-        :param factor_supp: sigma for normal suppression
-            sigma = {factor_supp*d_cleft if factor_supp>=1, factor_supp*mean(contour_len_bound) if factor_supp<1}
-        :param xyfilter: a pixel will be filtered out if its Ssupp in each xy plane is below a quantile of qthresh
-            qthresh = {1-xyfilter*fraction_mems if xyfilter>=1, xyfilter if xyfilter<1}
-        :param zfilter: a component will be filtered out if its z-range < dzfilter;
-            dzfilter = {z-length+zfilter if zfilter<=0, z-length*zfilter if 0<zfilter<1, zfilter if zfilter>1}
+        :param factor_tv: sigma for tv = factor_tv*d_mem
+        :param factor_supp: sigma for normal suppression = factor_supp*mean(contour_len_bound)
+        :param xyfilter: for each xy plane, filter out pixels with Ssupp below quantile threshold; the threshold = 1-xyfilter*fraction_mems. see SegSteps().detect()
+        :param zfilter: a component will be filtered out if its z-span < dzfilter;
+            dzfilter = {nz+zfilter if zfilter<=0, nz*zfilter if 0<zfilter<1}
         :action: assign steps["detect"]: B, O
         """
         time_start = time.process_time()
@@ -313,17 +317,9 @@ class SegPrePost(SegBase):
         I = self.steps["tomo"]["I"]
         mask_bound = utils.coord_to_mask(self.steps["tomo"]["zyx_bound"], I.shape)
         d_mem = self.steps["tomo"]["d_mem"]
-        d_cleft = self.steps["tomo"]["d_cleft"]
         
-        # set sigma_supp
-        if 0 < factor_supp < 1:
-            sigma_supp = factor_supp * np.mean(self.steps["tomo"]["contour_len_bound"])
-        elif factor_supp >= 1:
-            sigma_supp = factor_supp * d_cleft
-        else:
-            sigma_supp = np.abs(factor_supp)
-
-        # set dzfilter
+        # sets sigma_supp, dzfilter
+        sigma_supp = factor_supp * np.mean(self.steps["tomo"]["contour_len_bound"])
         dzfilter = self.set_dzfilter(zfilter, nz=I.shape[0])
 
         # detect
@@ -331,7 +327,7 @@ class SegPrePost(SegBase):
             I, mask_bound,
             contour_len_bound=self.steps["tomo"]["contour_len_bound"],
             sigma_hessian=d_mem,
-            sigma_tv=d_cleft*factor_tv,
+            sigma_tv=d_mem*factor_tv,
             sigma_supp=sigma_supp,
             dO_threshold=np.pi/4,
             xyfilter=xyfilter,
@@ -357,14 +353,14 @@ class SegPrePost(SegBase):
         """ divide detected image into pre-post candidates
         :param size_ratio_thresh: divide the largest component if size2/size1<size_ratio_thresh
         :param zfilter: consider a component as candidate if its z-span >= dzfilter. see self.detect for relations between zfilter and dzfilter.
-        :action: assign steps["divide"]: B1, B2
+        :action: assign steps["divide"]: zyx1, zyx2
         """
         time_start = time.process_time()
 
         # load from self
         self.check_steps(["tomo", "detect"], raise_error=True)
-        d_mem = self.steps["tomo"]["d_mem"]
         shape = self.steps["tomo"]["shape"]
+        d_mem = self.steps["tomo"]["d_mem"]
         d_cleft = self.steps["tomo"]["d_cleft"]
         zyx_ref = self.steps["tomo"]["zyx_ref"]
         B = utils.coord_to_mask(self.steps["detect"]["zyx"], shape)
@@ -422,8 +418,11 @@ class SegPrePost(SegBase):
         # save parameters and results
         self.steps["divide"].update(dict(
             finished=True,
-            # parameters
+            # parameters: input
             size_ratio_thresh=size_ratio_thresh,
+            zfilter=zfilter,
+            # parameters: inferred
+            dzfilter=dzfilter,
             # results
             zyx1=utils.mask_to_coord(Bdiv1),
             zyx2=utils.mask_to_coord(Bdiv2),
@@ -480,9 +479,9 @@ class SegPrePost(SegBase):
     #=========================
 
 
-    def match(self, factor_smooth=1, factor_extend=1):
+    def match(self, factor_tv=5, factor_extend=1):
         """ match for both divided parts
-        :param factor_smooth: sigma for tv on detected = factor_smooth*d_cleft
+        :param factor_tv: sigma for tv on detected = factor_tv*d_mem
         :param factor_extend: sigma for tv extension on evomsac surface = factor_extend*d_mem
         :action: assign steps["match"]: zyx1,  zyx2
         """
@@ -491,6 +490,7 @@ class SegPrePost(SegBase):
         # load from self
         self.check_steps(["tomo", "detect", "divide", "evomsac"], raise_error=True)
         shape = self.steps["tomo"]["shape"]
+        d_mem = self.steps["tomo"]["d_mem"]
         O = utils.densify3d(self.steps["detect"]["Oz"])
         Bdiv1 = utils.coord_to_mask(self.steps["divide"]["zyx1"], shape)
         Bdiv2 = utils.coord_to_mask(self.steps["divide"]["zyx2"], shape)
@@ -499,9 +499,9 @@ class SegPrePost(SegBase):
 
         # match
         params = dict(
-            sigma_smooth=self.steps["tomo"]["d_cleft"]*factor_smooth,
-            sigma_hessian=self.steps["tomo"]["d_mem"],
-            sigma_extend=self.steps["tomo"]["d_mem"]*factor_extend,
+            sigma_tv=d_mem*factor_tv,
+            sigma_hessian=d_mem,
+            sigma_extend=d_mem*factor_extend,
             mask_bound=utils.coord_to_mask(self.steps["tomo"]["zyx_bound"], shape)
         )
         _, zyx1 = SegSteps.match(Bdiv1, O*Bdiv1, mpop1, **params)
@@ -511,7 +511,7 @@ class SegPrePost(SegBase):
         self.steps["match"].update(dict(
             finished=True,
             # parameters
-            factor_smooth=factor_smooth,
+            factor_tv=factor_tv,
             factor_extend=factor_extend,
             # results
             zyx1=zyx1,
