@@ -39,7 +39,7 @@ def build_parser():
     # detect
     parser.add_argument("--detect_tv", type=float, default=5,
         help="float. Step 'detect': sigma for tensor voting = membrane thickness * detect_tv. The larger the smoother and more connected.")
-    parser.add_argument("--detect_xyfilter", type=float, default=0.25,
+    parser.add_argument("--detect_xyfilter", type=float, default=2.5,
         help="float (>1). Step 'detect': after tensor voting and normal suppression, filter out voxels with Ssupp below quantile threshold, the threshold = 1-xyfilter*fraction_mems.Smaller values filter out more voxels.")
     
     # evomsac
@@ -47,7 +47,7 @@ def build_parser():
         help="float float (in nm). Step 'evomsac': spacings in z- and xy-axes of the sampling grids. Fine grids may be prone to noise; too-coarse grids may miss too much of the membrane.")
 
     # match
-    parser.add_argument("--match_extend", type=float, default=1,
+    parser.add_argument("--match_extend", type=float, default=5,
         help="float. Step 'match': factor for extension (by tensor voting, TV) of surface from evomsac. The sigma value for TV = match_extend * membrane thickness (set in --lengths). Larger value means more detected segments would be matched with evomsac surface.")
 
     # fit

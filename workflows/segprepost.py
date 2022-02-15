@@ -479,7 +479,7 @@ class SegPrePost(SegBase):
     #=========================
 
 
-    def match(self, factor_tv=5, factor_extend=1):
+    def match(self, factor_tv=5, factor_extend=5):
         """ match for both divided parts
         :param factor_tv: sigma for tv on detected = factor_tv*d_mem
         :param factor_extend: sigma for tv extension on evomsac surface = factor_extend*d_mem
@@ -535,6 +535,7 @@ class SegPrePost(SegBase):
         shape = self.steps["tomo"]["shape"]
         zyx1 = self.steps["match"]["zyx1"]
         zyx2 = self.steps["match"]["zyx2"]
+        mask_bound = utils.coord_to_mask(self.steps["tomo"]["zyx_bound"], shape)
 
         # fit
         params = dict(
@@ -542,8 +543,8 @@ class SegPrePost(SegBase):
             grid_z_nm=grid_z_nm,
             grid_xy_nm=grid_xy_nm
         )
-        B1 = utils.coord_to_mask(zyx1, shape)
-        B2 = utils.coord_to_mask(zyx2, shape)
+        B1 = mask_bound*utils.coord_to_mask(zyx1, shape)
+        B2 = mask_bound*utils.coord_to_mask(zyx2, shape)
         _, zyx_fit1 = SegSteps.surf_fit(B1, **params)
         _, zyx_fit2 = SegSteps.surf_fit(B2, **params)
 
