@@ -39,6 +39,7 @@ class SegPrePost(SegBase):
                 zyx_shift=None,
                 zyx_bound=None,
                 contour_bound=None,
+                contour_len_bound=None,
                 zyx_ref=None,
                 d_mem=None,
                 d_cleft=None,
@@ -49,10 +50,13 @@ class SegPrePost(SegBase):
                 # parameters
                 factor_tv=None,
                 factor_supp=None,
-                qfilter=None,
+                xyfilter=None,
                 zfilter=None,
                 # results
+                sigma_tv=None,
+                sigma_supp=None,
                 dzfilter=None,
+                zyx_supp=None,
                 zyx=None,
                 Oz=None
             ),
@@ -89,13 +93,6 @@ class SegPrePost(SegBase):
                 zyx1=None,
                 zyx2=None,
             ),
-            surf_normal=dict(
-                finished=False,
-                timing=None,
-                # results
-                normal1=None,
-                normal2=None,
-            ),
             surf_fit=dict(
                 finished=False,
                 timing=None,
@@ -105,7 +102,16 @@ class SegPrePost(SegBase):
                 # results
                 zyx1=None,
                 zyx2=None,
-            )
+            ),
+            surf_normal=dict(
+                finished=False,
+                timing=None,
+                # results
+                normal1=None,
+                normal2=None,
+                normal_fit1=None,
+                normal_fit2=None,
+            ),
         )
 
     #=========================
@@ -176,15 +182,21 @@ class SegPrePost(SegBase):
             fig.savefig(filenames["plot_shift"], dpi=plot_dpi)
         
         # surface normal
-        if ("surf_normal" in filenames) and self.check_steps(["match", "surf_normal"]):
+        if ("surf_normal" in filenames) and self.check_steps(["match", "surf_normal", "surf_fit"]):
             # coordinates: xyz(i) + xyz_shift = xyz in the original tomo
             np.savez(
                 filenames["surf_normal"],
                 xyz_shift=zyx_shift[::-1],
+                # segs
                 xyz1=utils.reverse_coord(self.steps["match"]["zyx1"]),
                 xyz2=utils.reverse_coord(self.steps["match"]["zyx2"]),
                 normal1=self.steps["surf_normal"]["normal1"],
                 normal2=self.steps["surf_normal"]["normal2"],
+                # fits
+                xyz_fit1=utils.reverse_coord(self.steps["surf_fit"]["zyx1"]),
+                xyz_fit2=utils.reverse_coord(self.steps["surf_fit"]["zyx2"]),
+                normal_fit1=self.steps["surf_normal"]["normal_fit1"],
+                normal_fit2=self.steps["surf_normal"]["normal_fit2"],
             )
         
         # fitted segs: model
@@ -283,11 +295,13 @@ class SegPrePost(SegBase):
             dzfilter = int(zfilter)
         return dzfilter
 
-    def detect(self, factor_tv=1, factor_supp=5, qfilter=0.25, zfilter=-1):
+    def detect(self, factor_tv=1, factor_supp=0.25, xyfilter=2.5, zfilter=-1):
         """ detect membrane features
         :param factor_tv: sigma for tv = factor_tv*d_cleft
-        :param factor_supp: sigma for normal suppression = factor_supp*d_cleft
-        :param qfilter: a component will be filtered out if its Stv or Ssup is below this quantile
+        :param factor_supp: sigma for normal suppression
+            sigma = {factor_supp*d_cleft if factor_supp>=1, factor_supp*mean(contour_len_bound) if factor_supp<1}
+        :param xyfilter: a pixel will be filtered out if its Ssupp in each xy plane is below a quantile of qthresh
+            qthresh = {1-xyfilter*fraction_mems if xyfilter>=1, xyfilter if xyfilter<1}
         :param zfilter: a component will be filtered out if its z-range < dzfilter;
             dzfilter = {z-length+zfilter if zfilter<=0, z-length*zfilter if 0<zfilter<1, zfilter if zfilter>1}
         :action: assign steps["detect"]: B, O
@@ -301,22 +315,30 @@ class SegPrePost(SegBase):
         d_mem = self.steps["tomo"]["d_mem"]
         d_cleft = self.steps["tomo"]["d_cleft"]
         
+        # set sigma_supp
+        if 0 < factor_supp < 1:
+            sigma_supp = factor_supp * np.mean(self.steps["tomo"]["contour_len_bound"])
+        elif factor_supp >= 1:
+            sigma_supp = factor_supp * d_cleft
+        else:
+            sigma_supp = np.abs(factor_supp)
+
         # set dzfilter
         dzfilter = self.set_dzfilter(zfilter, nz=I.shape[0])
 
         # detect
         results = SegSteps.detect(
             I, mask_bound,
+            contour_len_bound=self.steps["tomo"]["contour_len_bound"],
             sigma_hessian=d_mem,
             sigma_tv=d_cleft*factor_tv,
-            sigma_supp=d_cleft*factor_supp,
+            sigma_supp=sigma_supp,
             dO_threshold=np.pi/4,
-            qfilter=qfilter,
+            xyfilter=xyfilter,
             dzfilter=dzfilter
         )
 
         # save parameters and results
-        self.steps["detect"].update(results)
         self.steps["detect"].update(dict(
             finished=True,
             # parameters
@@ -324,6 +346,7 @@ class SegPrePost(SegBase):
             factor_supp=factor_supp,
             zfilter=zfilter
         ))
+        self.steps["detect"].update(results)
         self.steps["detect"]["timing"] = time.process_time()-time_start
     
     #=========================
@@ -497,39 +520,6 @@ class SegPrePost(SegBase):
         self.steps["match"]["timing"] = time.process_time()-time_start
 
     #=========================
-    # surface normal
-    #=========================
-    
-    def surf_normal(self):
-        """ calculate surface normal for both divided parts
-        :action: assign steps["surf_normal"]: normal1,  normal2
-        """
-        time_start = time.process_time()
-
-        # load from self
-        self.check_steps(["tomo", "match"], raise_error=True)
-        params = dict(
-            shape=self.steps["tomo"]["shape"],
-            zyx_ref=self.steps["tomo"]["zyx_ref"],
-            d_mem=self.steps["tomo"]["d_mem"],
-        )
-        zyx1 = self.steps["match"]["zyx1"]
-        zyx2 = self.steps["match"]["zyx2"]
-
-        # calc normal
-        normal1 = SegSteps.surf_normal(zyx1, **params)
-        normal2 = SegSteps.surf_normal(zyx2, **params)
-
-        # save parameters and results
-        self.steps["surf_normal"].update(dict(
-            finished=True,
-            # results
-            normal1=normal1,
-            normal2=normal2,
-        ))
-        self.steps["surf_normal"]["timing"] = time.process_time()-time_start
-
-    #=========================
     # fitting
     #=========================
 
@@ -568,3 +558,40 @@ class SegPrePost(SegBase):
             zyx2=zyx_fit2,
         ))
         self.steps["surf_fit"]["timing"] = time.process_time()-time_start
+
+    #=========================
+    # surface normal
+    #=========================
+
+    def surf_normal(self):
+        """ calculate surface normal for both divided parts
+        :action: assign steps["surf_normal"]: normal1,  normal2
+        """
+        time_start = time.process_time()
+
+        # load from self
+        self.check_steps(["tomo", "match", "surf_fit"], raise_error=True)
+        params = dict(
+            shape=self.steps["tomo"]["shape"],
+            zyx_ref=self.steps["tomo"]["zyx_ref"],
+            d_mem=self.steps["tomo"]["d_mem"],
+        )
+
+        # calc normal from segs
+        normal1 = SegSteps.surf_normal(self.steps["match"]["zyx1"], **params)
+        normal2 = SegSteps.surf_normal(self.steps["match"]["zyx2"], **params)
+
+        # calc normal from segs from fits
+        normal_fit1 = SegSteps.surf_normal(self.steps["surf_fit"]["zyx1"], **params)
+        normal_fit2 = SegSteps.surf_normal(self.steps["surf_fit"]["zyx2"], **params)
+
+        # save parameters and results
+        self.steps["surf_normal"].update(dict(
+            finished=True,
+            # results
+            normal1=normal1,
+            normal2=normal2,
+            normal_fit1=normal_fit1,
+            normal_fit2=normal_fit2,
+        ))
+        self.steps["surf_normal"]["timing"] = time.process_time()-time_start

@@ -117,7 +117,7 @@ class SegSteps:
         :param obj_bound: obj label for boundary
         :return: results
             results: {tomo_file,model_file,obj_bound,d_mem_nm,
-                I,shape,voxel_size_nm,model,clip_range,zyx_shift,zyx_bound,contour_bound,d_mem}
+                I,shape,voxel_size_nm,model,clip_range,zyx_shift,zyx_bound,contour_bound,contour_len_bound,d_mem}
         """
         # read model
         model = io.read_model(model_file)
@@ -153,6 +153,18 @@ class SegSteps:
             yx_shape=I[0].shape
         )
 
+        # calculate bound contours and lengths
+        contour_bound = utils.mask_to_contour(mask_bound)
+        contour_bound = np.round(contour_bound).astype(np.int_)
+        contour_len_bound = []
+        for iz in range(I.shape[0]):
+            yx_iz = contour_bound[contour_bound[:, 0] == iz][:, 1:]
+            # step=2 to avoid zigzags
+            contour_len_iz = np.sum(np.linalg.norm(
+                np.diff(yx_iz[::2], axis=0), axis=1))
+            contour_len_bound.append(contour_len_iz)
+        contour_len_bound = np.array(contour_len_bound)        
+
         # save parameters and results
         results = dict(
             # parameters
@@ -168,21 +180,24 @@ class SegSteps:
             clip_range=clip_range,
             zyx_shift=zyx_shift,
             zyx_bound=utils.mask_to_coord(mask_bound),
-            contour_bound=utils.mask_to_contour(mask_bound),
+            contour_bound=contour_bound,
+            contour_len_bound=contour_len_bound,
             d_mem=d_mem_nm/voxel_size_nm,
         )
         return results
 
     @staticmethod
-    def detect(I, mask_bound,
+    def detect(I, mask_bound, contour_len_bound,
             sigma_hessian, sigma_tv, sigma_supp,
-            dO_threshold=np.pi/4, qfilter=0.25, dzfilter=1
+            dO_threshold=np.pi/4, xyfilter=2.5, dzfilter=1
         ):
         """ detect membrane features
         :param sigma_<hessian,tv,supp>: sigma in voxel for hessian, tv, normal suppression
-        :param qfilter: quantile to filter out by Stv and Ssupp
+        :param xyfilter: a pixel will be filtered out if its Ssupp in each xy plane is below a quantile of qthresh
+            qthresh = {1-xyfilter*fraction_mems if xyfilter>=1, xyfilter if xyfilter<1}
+        :param dzfilter: a component will be filtered out if its z-range < dzfilter
         :return: results
-            results: {qfilter,zyx,Oz}
+            results: {qfilter,zyx_supp,zyx,Oz}
         """
         # negate, hessian
         Ineg = utils.negate_image(I)
@@ -204,16 +219,27 @@ class SegSteps:
             sigma=sigma_supp,
             dO_threshold=dO_threshold
         )
+        Ssupp = Ssupp * Bsupp
 
-        # filter in xy: small Stv, small Ssup
-        Bfilt_xy = utils.filter_connected_xy(
-            Bsupp, [Stv, Ssupp],
-            connectivity=2, stats="median",
-            qfilter=qfilter, min_size=1
-        )
+        # filter in xy: small Ssupp
+        Bfilt_xy = np.zeros(Bsupp.shape, dtype=int)
+        for iz in range(Bsupp.shape[0]):
+            if xyfilter >= 1:
+                # estimating the fraction of membranes by no. of pts
+                npts_bound = contour_len_bound[iz]
+                npts_ref = np.sum(Bref[iz])
+                fraction_mems = npts_bound/npts_ref
+                # set thresh according to the fraction
+                qthresh = 1 - np.clip(xyfilter*fraction_mems, 0, 1)
+            else:
+                qthresh = xyfilter
+            
+            # filter out pixels with small Ssupp
+            ssupp = Ssupp[iz][Bsupp[iz].astype(bool)]
+            sthresh = np.quantile(ssupp, qthresh)
+            Bfilt_xy[iz][Ssupp[iz]>sthresh] = 1
 
-        # filter in 3d: z
-        # z spans a large fraction
+        # filter in 3d: z-span
         Bfilt_dz = utils.filter_connected_dz(
             Bfilt_xy, dzfilter=dzfilter, connectivity=3)
 
@@ -224,9 +250,12 @@ class SegSteps:
         # save parameters and results
         results = dict(
             # parameters
-            qfilter=qfilter,
+            sigma_tv=sigma_tv,
+            sigma_supp=sigma_supp,
+            xyfilter=xyfilter,
             dzfilter=dzfilter,
             # results
+            zyx_supp=utils.mask_to_coord(Bsupp),
             zyx=utils.mask_to_coord(Bdetect),
             Oz=utils.sparsify3d(Odetect)
         )
