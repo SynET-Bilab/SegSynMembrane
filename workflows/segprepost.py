@@ -38,6 +38,7 @@ class SegPrePost(SegBase):
                 clip_range=None,
                 zyx_shift=None,
                 zyx_bound=None,
+                contour_bound=None,
                 zyx_ref=None,
                 d_mem=None,
                 d_cleft=None,
@@ -128,7 +129,7 @@ class SegPrePost(SegBase):
             ["match", "match_shift", "plot", "plot_shift", "surf_fit", "surf_fit_shift"]
             ]):
             self.check_steps(["tomo"], raise_error=True)
-            zyx_bound = self.steps["tomo"]["zyx_bound"]
+            contour_bound = self.steps["tomo"]["contour_bound"]
 
         # tomo
         if ("tomo" in filenames):
@@ -142,14 +143,14 @@ class SegPrePost(SegBase):
         if ("match" in filenames) and self.check_steps(["match"]):
             zyx_segs = [self.steps["match"][f"zyx{i}"] for i in (1, 2)]
             io.write_model(
-                zyx_arr=[zyx_bound]+zyx_segs,
+                zyx_arr=[contour_bound]+zyx_segs,
                 model_file=filenames["match"]
             )
 
         if ("match_shift" in filenames) and self.check_steps(["match"]):
             zyx_segs = [self.steps["match"][f"zyx{i}"]+zyx_shift for i in (1, 2)]
             io.write_model(
-                zyx_arr=[zyx_bound+zyx_shift] + zyx_segs,
+                zyx_arr=[contour_bound+zyx_shift] + zyx_segs,
                 model_file=filenames["match_shift"]
             )
         
@@ -158,7 +159,7 @@ class SegPrePost(SegBase):
             zyx_segs = [self.steps["match"][f"zyx{i}"] for i in (1, 2)]
             fig, _ = self.plot_slices(
                 I=utils.negate_image(self.steps["tomo"]["I"]),  # negated
-                zyxs=[zyx_bound]+zyx_segs,
+                zyxs=[contour_bound]+zyx_segs,
                 nslice=plot_nslice
             )
             fig.savefig(filenames["plot"], dpi=plot_dpi)
@@ -169,7 +170,7 @@ class SegPrePost(SegBase):
             zyx_segs = [self.steps["match"][f"zyx{i}"]+zyx_shift for i in (1, 2)]
             fig, _ = self.plot_slices(
                 I=I_full,
-                zyxs=[zyx_bound+zyx_shift] + zyx_segs,
+                zyxs=[contour_bound+zyx_shift] + zyx_segs,
                 nslice=plot_nslice
             )
             fig.savefig(filenames["plot_shift"], dpi=plot_dpi)
@@ -190,14 +191,14 @@ class SegPrePost(SegBase):
         if ("surf_fit" in filenames) and self.check_steps(["surf_fit"]):
             zyx_segs = [self.steps["surf_fit"][f"zyx{i}"] for i in (1, 2)]
             io.write_model(
-                zyx_arr=[zyx_bound]+zyx_segs,
+                zyx_arr=[contour_bound]+zyx_segs,
                 model_file=filenames["surf_fit"]
             )
         
         if ("surf_fit_shift" in filenames) and self.check_steps(["surf_fit"]):
             zyx_segs = [self.steps["surf_fit"][f"zyx{i}"]+zyx_shift for i in (1, 2)]
             io.write_model(
-                zyx_arr=[zyx_bound+zyx_shift] + zyx_segs,
+                zyx_arr=[contour_bound+zyx_shift] + zyx_segs,
                 model_file=filenames["surf_fit_shift"]
             )
     
@@ -234,7 +235,7 @@ class SegPrePost(SegBase):
         :param tomo_file, model_file: filename of tomo, model
         :param obj_bound, obj_ref: obj label for boundary and presynapse, begins with 1
         :param voxel_size_nm: manually set; if None then read from tomo_file
-        :action: assign steps["tomo"]: I, voxel_size_nm, zyx_shift, zyx_bound, zyx_ref, d_mem, d_cleft
+        :action: assign steps["tomo"]: I, voxel_size_nm, zyx_shift, zyx_bound, contour_bound, zyx_ref, d_mem, d_cleft
         """
         time_start = time.process_time()
 
@@ -477,7 +478,8 @@ class SegPrePost(SegBase):
         params = dict(
             sigma_smooth=self.steps["tomo"]["d_cleft"]*factor_smooth,
             sigma_hessian=self.steps["tomo"]["d_mem"],
-            sigma_extend=self.steps["tomo"]["d_mem"]*factor_extend
+            sigma_extend=self.steps["tomo"]["d_mem"]*factor_extend,
+            mask_bound=utils.coord_to_mask(self.steps["tomo"]["zyx_bound"], shape)
         )
         _, zyx1 = SegSteps.match(Bdiv1, O*Bdiv1, mpop1, **params)
         _, zyx2 = SegSteps.match(Bdiv2, O*Bdiv2, mpop2, **params)

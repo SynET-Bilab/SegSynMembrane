@@ -117,7 +117,7 @@ class SegSteps:
         :param obj_bound: obj label for boundary
         :return: results
             results: {tomo_file,model_file,obj_bound,d_mem_nm,
-                I,shape,voxel_size_nm,model,clip_range,zyx_shift,zyx_bound,d_mem}
+                I,shape,voxel_size_nm,model,clip_range,zyx_shift,zyx_bound,contour_bound,d_mem}
         """
         # read model
         model = io.read_model(model_file)
@@ -167,7 +167,8 @@ class SegSteps:
             model=model,
             clip_range=clip_range,
             zyx_shift=zyx_shift,
-            zyx_bound=utils.mask_to_contour(mask_bound),
+            zyx_bound=utils.mask_to_coord(mask_bound),
+            contour_bound=utils.mask_to_contour(mask_bound),
             d_mem=d_mem_nm/voxel_size_nm,
         )
         return results
@@ -256,12 +257,13 @@ class SegSteps:
         return mpop
 
     @staticmethod
-    def match(B, O, mpop, sigma_smooth, sigma_hessian, sigma_extend):
+    def match(B, O, mpop, sigma_smooth, sigma_hessian, sigma_extend, mask_bound=None):
         """ match for one divided part
         :param B, O: 3d binary image, orientation
         :param mpop: MOOPop from evomsac_one
         :param sigma_smooth: sigma for tv enhancement of B
         :param sigma_<hessian,extend>: sigmas for hessian and tv extension of evomsac'ed image
+        :param mask_bound: 3d binary mask for bounding polygon
         :return: Bsmooth, zyx_sorted
             Bsmooth: resulting binary image from matching
             zyx_sorted: coordinates sorted by tracing
@@ -287,16 +289,21 @@ class SegSteps:
             sigma_hessian=sigma_hessian,
             sigma_tv=sigma_extend
         )
+        Bmatch = next(iter(utils.extract_connected(Bmatch)))[1]
 
-        # smoothing
-        _, Osmooth = hessian.features3d(Bmatch, sigma_hessian)
-        Bsmooth = nonmaxsup.nms3d(Bmatch, Osmooth*Bmatch)
-        Bsmooth = next(iter(utils.extract_connected(Bsmooth)))[1]
+        # # smoothing
+        # _, Osmooth = hessian.features3d(Bmatch, sigma_hessian)
+        # Bsmooth = nonmaxsup.nms3d(Bmatch, Osmooth*Bmatch)
+        # Bsmooth = next(iter(utils.extract_connected(Bsmooth)))[1]
+
+        # bounding
+        if mask_bound is not None:
+            Bmatch = Bmatch * mask_bound
 
         # ordering
-        zyx_sorted = SegSteps.sort_coord(utils.mask_to_coord(Bsmooth))
+        zyx_sorted = SegSteps.sort_coord(utils.mask_to_coord(Bmatch))
         
-        return Bsmooth, zyx_sorted
+        return Bmatch, zyx_sorted
 
     @staticmethod
     def surf_normal(zyx, zyx_ref, shape, d_mem):
