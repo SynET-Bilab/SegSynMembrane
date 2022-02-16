@@ -134,12 +134,12 @@ def model_to_mask(model, yx_shape):
     mask = np.round(mask).astype(int)
     return mask
 
-def write_model(zyx_arr, model_file):
+def write_model(zyx_arr, model_file, dist_thresh=2):
     """ write points to model
-    one object for each zyx in array
-    one open contour for each z
+    one object for each zyx in array, one open contour for each consecutive line in each z
     :param zyx_arr: array of zyx=[[z1,y1,x1],...]
     :param model_file: filename of model
+    :param dist_thresh: if the distance between adjacent points > this threshold, break contour
     :return: data
         data: object, contour, x, y, z
     """
@@ -147,14 +147,23 @@ def write_model(zyx_arr, model_file):
     # data format: object, contour, x, y, z
     data_arr = []
     for i_obj, zyx_obj in enumerate(zyx_arr):
-        obj = i_obj + 1
         z_obj = zyx_obj[:, 0]
-        for i_ct, z_ct in enumerate(np.unique(z_obj)):
-            ct = i_ct + 1
-            xyz_ct = utils.reverse_coord(zyx_obj[z_obj==z_ct])
-            ones = np.ones((len(xyz_ct), 1), dtype=np.int_)
+        ct_prev = 0
+        for z in np.unique(z_obj):
+            xy_z = utils.reverse_coord(zyx_obj[z_obj == z][:, 1:])
+            n_z = len(xy_z)
+
+            # break array by distance
+            dist_z = np.linalg.norm(np.diff(xy_z, axis=0), axis=1)
+            ct_z = np.zeros(n_z, dtype=int)
+            ct_z[np.nonzero(dist_z > dist_thresh)[0] + 1] = 1  # jumps
+            ct_z = np.cumsum(ct_z)  # cumulate
+            ct_z += ct_prev + 1  # add prev
+            ct_prev = ct_z[-1]
+
+            ones = np.ones((n_z, 1), dtype=np.int_)
             data_ct = np.concatenate(
-                [obj*ones, ct*ones, xyz_ct],
+                [(i_obj+1)*ones, ct_z.reshape((-1, 1)), xy_z, z*ones],
                 axis=1
             )
             data_arr.append(data_ct)

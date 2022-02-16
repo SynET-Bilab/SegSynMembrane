@@ -241,6 +241,18 @@ class SegPrePost(SegBase):
         fig, axes = plot.imoverlay(im_dict)
         return fig, axes
 
+
+    #=========================
+    # utils
+    #=========================
+    
+    def coord_to_mask(self, coord):
+        """ coord to mask, use default shape
+        """
+        self.check_steps(["tomo"], raise_error=True)
+        shape = self.steps["tomo"]["shape"]
+        return utils.coord_to_mask(coord, shape)
+
     #=========================
     # read tomo
     #=========================
@@ -315,7 +327,7 @@ class SegPrePost(SegBase):
         # load from self
         self.check_steps(["tomo"], raise_error=True)
         I = self.steps["tomo"]["I"]
-        mask_bound = utils.coord_to_mask(self.steps["tomo"]["zyx_bound"], I.shape)
+        mask_bound = self.coord_to_mask(self.steps["tomo"]["zyx_bound"])
         d_mem = self.steps["tomo"]["d_mem"]
         
         # sets sigma_supp, dzfilter
@@ -363,7 +375,7 @@ class SegPrePost(SegBase):
         d_mem = self.steps["tomo"]["d_mem"]
         d_cleft = self.steps["tomo"]["d_cleft"]
         zyx_ref = self.steps["tomo"]["zyx_ref"]
-        B = utils.coord_to_mask(self.steps["detect"]["zyx"], shape)
+        B = self.coord_to_mask(self.steps["detect"]["zyx"])
         O = utils.densify3d(self.steps["detect"]["Oz"])
 
         # extract two largest components
@@ -449,9 +461,8 @@ class SegPrePost(SegBase):
         # load from self
         self.check_steps(["tomo", "divide"], raise_error=True)
         voxel_size_nm = self.steps["tomo"]["voxel_size_nm"]
-        shape = self.steps["tomo"]["shape"]
-        Bdiv1 = utils.coord_to_mask(self.steps["divide"]["zyx1"], shape)
-        Bdiv2 = utils.coord_to_mask(self.steps["divide"]["zyx2"], shape)
+        Bdiv1 = self.coord_to_mask(self.steps["divide"]["zyx1"])
+        Bdiv2 = self.coord_to_mask(self.steps["divide"]["zyx2"])
 
         # do for each divided part
         params = dict(
@@ -489,11 +500,10 @@ class SegPrePost(SegBase):
 
         # load from self
         self.check_steps(["tomo", "detect", "divide", "evomsac"], raise_error=True)
-        shape = self.steps["tomo"]["shape"]
         d_mem = self.steps["tomo"]["d_mem"]
         O = utils.densify3d(self.steps["detect"]["Oz"])
-        Bdiv1 = utils.coord_to_mask(self.steps["divide"]["zyx1"], shape)
-        Bdiv2 = utils.coord_to_mask(self.steps["divide"]["zyx2"], shape)
+        Bdiv1 = self.coord_to_mask(self.steps["divide"]["zyx1"])
+        Bdiv2 = self.coord_to_mask(self.steps["divide"]["zyx2"])
         mpop1 = evomsac.MOOPop(state=self.steps["evomsac"]["mpop1z"])
         mpop2 = evomsac.MOOPop(state=self.steps["evomsac"]["mpop2z"])
 
@@ -502,7 +512,7 @@ class SegPrePost(SegBase):
             sigma_tv=d_mem*factor_tv,
             sigma_hessian=d_mem,
             sigma_extend=d_mem*factor_extend,
-            mask_bound=utils.coord_to_mask(self.steps["tomo"]["zyx_bound"], shape)
+            mask_bound=self.coord_to_mask(self.steps["tomo"]["zyx_bound"])
         )
         _, zyx1 = SegSteps.match(Bdiv1, O*Bdiv1, mpop1, **params)
         _, zyx2 = SegSteps.match(Bdiv2, O*Bdiv2, mpop2, **params)
@@ -532,10 +542,9 @@ class SegPrePost(SegBase):
 
         # load from self
         self.check_steps(["tomo", "match"], raise_error=True)
-        shape = self.steps["tomo"]["shape"]
         zyx1 = self.steps["match"]["zyx1"]
         zyx2 = self.steps["match"]["zyx2"]
-        mask_bound = utils.coord_to_mask(self.steps["tomo"]["zyx_bound"], shape)
+        mask_bound = self.coord_to_mask(self.steps["tomo"]["zyx_bound"])
 
         # fit
         params = dict(
@@ -543,8 +552,8 @@ class SegPrePost(SegBase):
             grid_z_nm=grid_z_nm,
             grid_xy_nm=grid_xy_nm
         )
-        B1 = mask_bound*utils.coord_to_mask(zyx1, shape)
-        B2 = mask_bound*utils.coord_to_mask(zyx2, shape)
+        B1 = mask_bound*self.coord_to_mask(zyx1)
+        B2 = mask_bound*self.coord_to_mask(zyx2)
         _, zyx_fit1 = SegSteps.surf_fit(B1, **params)
         _, zyx_fit2 = SegSteps.surf_fit(B2, **params)
 
