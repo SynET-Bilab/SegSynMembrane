@@ -2,8 +2,7 @@
 """
 
 import numpy as np
-import sklearn.decomposition
-from etsynseg import io, utils
+from etsynseg import io, utils, trace
 from etsynseg import hessian, dtvoting, nonmaxsup
 from etsynseg import evomsac, matching
 
@@ -86,27 +85,27 @@ class SegSteps:
         
         return n_uz, n_vxy
     
-    @staticmethod
-    def sort_coord(zyx):
-        """ sort coordinates by pc
-        :param zyx: zyx
-        :return: zyx_sorted
-        """
-        # fit pca
-        pca = sklearn.decomposition.PCA(n_components=1)
-        pca.fit(zyx[:, 1:])
+    # @staticmethod
+    # def sort_coord(zyx):
+    #     """ sort coordinates by pc
+    #     :param zyx: zyx
+    #     :return: zyx_sorted
+    #     """
+    #     # fit pca
+    #     pca = sklearn.decomposition.PCA(n_components=1)
+    #     pca.fit(zyx[:, 1:])
 
-        # sort for each z
-        iz_arr = sorted(np.unique(zyx[:, 0]))
-        zyx_sorted_arr = []
-        for iz in iz_arr:
-            zyx_iz = zyx[zyx[:, 0] == iz]
-            pc1_iz = pca.transform(zyx_iz[:, 1:])[:, 0]
-            idx_sort = np.argsort(pc1_iz)
-            zyx_sorted_arr.append(zyx_iz[idx_sort])
+    #     # sort for each z
+    #     iz_arr = sorted(np.unique(zyx[:, 0]))
+    #     zyx_sorted_arr = []
+    #     for iz in iz_arr:
+    #         zyx_iz = zyx[zyx[:, 0] == iz]
+    #         pc1_iz = pca.transform(zyx_iz[:, 1:])[:, 0]
+    #         idx_sort = np.argsort(pc1_iz)
+    #         zyx_sorted_arr.append(zyx_iz[idx_sort])
         
-        zyx_sorted = np.concatenate(zyx_sorted_arr)
-        return zyx_sorted
+    #     zyx_sorted = np.concatenate(zyx_sorted_arr)
+    #     return zyx_sorted
 
     @staticmethod
     def read_tomo(tomo_file, model_file,
@@ -256,8 +255,8 @@ class SegSteps:
             xyfilter=xyfilter,
             dzfilter=dzfilter,
             # results
-            zyx_supp=utils.mask_to_coord(Bsupp),
-            zyx=utils.mask_to_coord(Bdetect),
+            zyx_supp=trace.Trace(Bsupp, Odetect*Bsupp).sort_coord(),
+            zyx=trace.Trace(Bdetect, Odetect*Bdetect).sort_coord(),
             Oz=utils.sparsify3d(Odetect)
         )
         return results
@@ -331,7 +330,7 @@ class SegSteps:
             Bmatch = Bmatch * mask_bound
 
         # ordering
-        zyx_sorted = SegSteps.sort_coord(utils.mask_to_coord(Bmatch))
+        zyx_sorted = trace.Trace(Bmatch, O*Bmatch).sort_coord()
         
         return Bmatch, zyx_sorted
 
@@ -380,6 +379,7 @@ class SegSteps:
         )
 
         # ordering
-        zyx_sorted = SegSteps.sort_coord(utils.mask_to_coord(Bfit))
+        _, Ofit = hessian.features3d(Bfit, 1)
+        zyx_sorted = trace.Trace(Bfit, Ofit*Bfit).sort_coord()
 
         return Bfit, zyx_sorted

@@ -125,11 +125,10 @@ def run_seg(args):
     filenames = dict(
         tomo=f"{name}-clip.mrc",
         match=f"{name}-segs.mod",
-        match_shift=f"{name}-segs-shift.mod",
-        plot_shift=f"{name}-segs-shift.png",
+        plot=f"{name}-segs.png",
+        match_shift=f"{name}-segs.mod",
+        surf_fit_shift=f"{name}-fits.mod",
         surf_normal=f"{name}-normal.npz",
-        surf_fit=f"{name}-fits.mod",
-        surf_fit_shift=f"{name}-fits-shift.mod"
     )
     seg.output_results(filenames, plot_nslice=5, plot_dpi=500)
 

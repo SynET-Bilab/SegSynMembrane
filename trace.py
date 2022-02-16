@@ -19,7 +19,7 @@ class Trace:
         yx_traces_iz, d_traces_iz = tracing.dfs2d(iz)
         traces = tracing.dfs3d()
     """
-    def __init__(self, B, O, max_size=np.inf):
+    def __init__(self, B, O, n_next=2, max_size=np.inf):
         # save variables
         self.B = B
         self.O = np.copy(O)
@@ -31,7 +31,7 @@ class Trace:
         self.set_direction()
 
         # prep for finding next yx
-        self.next_yx_tools = self.prep_find_next_yx()
+        self.next_yx_tools = self.prep_find_next_yx(n_next)
     
     #=========================
     # auxiliary functions
@@ -50,8 +50,9 @@ class Trace:
         inner_prod = np.cos(self.O)*axis_x + np.sin(self.O)*axis_y
         self.O[(self.B>0)&(inner_prod<0)] += np.pi
 
-    def prep_find_next_yx(self):
+    def prep_find_next_yx(self, n_next):
         """ prep for finding next yx
+        :param n_next: number of next points, max=3
         :return: {map_dydx, bins}
         """
         # dict from direction to dydx
@@ -75,6 +76,12 @@ class Trace:
             14: [(-1, 1), (0, 1), (-1, 0)],  # (pi*14/8 ,pi*15/8)
             15: [(0, 1), (-1, 1), (1, 1)],  # (pi*15/8 ,pi*16/8)
         }
+
+        # keep first n_next in map_dydx 
+        n_next = int(np.clip(n_next, 1, 3))
+        for k, v in map_dydx.items():
+            map_dydx[k] = v[:n_next]
+
         bins = np.pi*np.arange(0, 16.1, 1)/8
         return dict(map_dydx=map_dydx, bins=bins)
 
