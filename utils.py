@@ -87,13 +87,17 @@ def absdiff_orient(O1, O2):
 
 def mask_to_coord(mask):
     """ convert mask[y,x] to coordinates (y,x) of points>0
-    :return: coord, shape=(npts, mask.ndim)
+    :param mask: binary image
+    :return: coord
+        coord: shape=(npts, mask.ndim)
     """
     coord = np.argwhere(mask)
     return coord
 
 def coord_to_mask(coord, shape):
     """ convert coordinates (y,x) to mask[y,x] with 1's on points
+    :param coord: yx or zyx
+    :param shape: (ny,nx) or (nz,ny,nx)
     :return: mask
     """
     coord = np.asarray(coord)
@@ -110,29 +114,39 @@ def coord_to_mask(coord, shape):
 
 def reverse_coord(coord):
     """ convert (y,x) to (x,y)
+    :param coord: yx or zyx
     :return: reversed coord
     """
     coord = np.asarray(coord)
     index_rev = np.arange(coord.shape[1])[::-1]
     return coord[:, index_rev]
 
-def mask_to_contour(mask):
-    """ convert a (connected) binary mask to contour
+def mask_to_contour(mask, erode=True):
+    """ convert a (connected) binary mask to contour (largest one in each plane)
+    :param mask: binary image
+    :param erode: whether to erode the image first, to avoid broken contours due to the boundary
     :return: contour
         contour: yx for 2d, zyx for 3d
     """
+    def get_largest(contours):
+        # find the largest of an array of contours
+        sizes = [len(c) for c in contours]
+        imax = np.argmax(sizes)
+        return contours[imax]
+
+    # 2d case
     if mask.ndim == 2:
-        contour = np.concatenate(
-            skimage.measure.find_contours(mask),
-            axis=0
-        )
+        if erode:
+            mask = skimage.morphology.binary_erosion(mask)
+        contour = get_largest(skimage.measure.find_contours(mask))
+    
+    # 3d case
     elif mask.ndim == 3:
         contour = []
         for i, mask_i in enumerate(mask):
-            yx_i = np.concatenate(
-                skimage.measure.find_contours(mask_i),
-                axis=0
-            )
+            if erode:
+                mask_i = skimage.morphology.binary_erosion(mask_i)
+            yx_i = get_largest(skimage.measure.find_contours(mask_i))
             zyx_i = np.concatenate(
                 [i*np.ones((len(yx_i), 1)), yx_i], axis=1)
             contour.append(zyx_i)
