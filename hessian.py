@@ -156,9 +156,8 @@ def surface_normal(I, sigma, zyx_ref, pos=None):
     :param sigma: gaussian smoothing
     :param zxy_ref: [z,y,x] of a reference point for inside
     :param pos: positions of points, for customized ordering or subsetting
-    :return: xyz, normal
-        xyz: coordinates, [[x1,y1,z1],...]
-        normal: normal vectors, [[nx1,ny1,nz1],...]
+    :return: normal
+        normal: normal vectors pointing outwards, [[nx1,ny1,nz1],...]
     """
     # setups
     if pos is None:

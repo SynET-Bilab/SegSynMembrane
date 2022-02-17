@@ -244,26 +244,42 @@ def imoverlay(im_dict, shape=None,
 
 def imshow3d(
         I, Is_overlay=(),
-        vecs_zyx=(), vecs_dir=(),
-        cmaps="default", vec_width=0.1
+        vecs_zyx=(), vecs_dir=(), vec_width=0.1,
+        name_I="image", name_Is=None, name_vecs=None,
+        cmap_Is=None, cmap_vecs=None,
+        visible_Is=True, visible_vecs=True
     ):
     """ plot images using napari
     :param I: main image
     :param Is_overlay: array of overlaying images
     :param vecs_zyx: array of vector positions, each shape = (npts, 3)
     :param vecs_dir: array of vector directions, each shape = (npts, 3)
-    :param cmaps: default=["green", "yellow", "cyan", "magenta",
+    :param cmap_Is, cmap_vecs: default=["green", "yellow", "cyan", "magenta",
         "bop blue", "bop orange", "bop purple", "red", "blue"]
     :param vec_width: width of vectors
+    :param visible_Is, visible_vecs: if visible, True/False, or array of bools
     :return: viewer
     """
     # setup defaults
-    if cmaps == "default":
-        cmaps = [
+    # cmaps
+    if cmap_Is is None:
+        cmap_Is = [
             "green", "yellow", "cyan", "magenta",
             "bop blue", "bop orange", "bop purple", "red", "blue"
         ]
-
+    if cmap_vecs is None:
+        cmap_vecs = cmap_Is
+    # Is
+    if name_Is is None:
+        name_Is = [f"overlay {i+1}" for i in range(len(Is_overlay))]
+    if visible_Is in [True, False]:
+        visible_Is = [visible_Is for _ in range(len(Is_overlay))]
+    # vecs
+    if name_vecs is None:
+        name_vecs = [f"vector {i+1}" for i in range(len(vecs_zyx))]
+    if visible_vecs in [True, False]:
+        visible_vecs = [visible_vecs for _ in range(len(vecs_zyx))]
+    
     # setup viewer
     viewer = napari.Viewer()
 
@@ -272,15 +288,15 @@ def imshow3d(
     # main image
     I = np.flip(I, -2)
     viewer.add_image(
-        I, name="image", colormap="gray",
+        I, name=name_I, colormap="gray",
         opacity=0.75, blending="additive"
     )
     # overlay images
     for i in range(len(Is_overlay)):
         Ii = np.flip(Is_overlay[i], -2)
         viewer.add_image(
-            Ii, name=f"overlay {i+1}", colormap=cmaps[i],
-            opacity=1, blending="additive"
+            Ii, name=name_Is[i], colormap=cmap_Is[i],
+            opacity=1, blending="additive", visible=visible_Is[i]
         )
 
     # view vectors
@@ -290,14 +306,14 @@ def imshow3d(
         # construct vector according to napari's requirement
         # flip y, as is done to the image
         vec = np.zeros((len(zyx), 2, 3))
-        zyx[:, 1] = I.shape[1] - zyx[:, 1] - 1
-        dzyx[:, 1] = -dzyx[:, 1]
         vec[:, 0, :] = zyx
+        vec[:, 0, 1] = I.shape[1] - zyx[:, 1] - 1
         vec[:, 1, :] = dzyx
+        vec[:, 1, 1] = -dzyx[:, 1]
         # add vector layer
         viewer.add_vectors(
-            vec, name=f"vector {i+1}", opacity=1,
-            edge_width=vec_width, edge_color=cmaps[i]
+            vec, name=name_vecs[i], opacity=1, visible=visible_vecs[i],
+            edge_width=vec_width, edge_color=cmap_vecs[i]
         )
     return viewer
 

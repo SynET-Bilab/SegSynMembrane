@@ -5,7 +5,7 @@ import time
 import numpy as np
 import mrcfile
 from etsynseg import io, utils, plot
-from etsynseg import division, evomsac
+from etsynseg import division
 from etsynseg.workflows import SegBase, SegSteps
 
 
@@ -84,8 +84,8 @@ class SegPrePost(SegBase):
                 max_iter=None,
                 tol=None,
                 # results
-                mpop1z=None,
-                mpop2z=None
+                zyx1=None,
+                zyx2=None
             ),
             match=dict(
                 finished=False,
@@ -111,114 +111,102 @@ class SegPrePost(SegBase):
                 finished=False,
                 timing=None,
                 # results
-                normal1=None,
-                normal2=None,
-                normal_fit1=None,
-                normal_fit2=None,
+                nxyz_seg1=None,
+                nxyz_seg2=None,
+                nxyz_fit1=None,
+                nxyz_fit2=None,
             ),
         )
 
     #=========================
     # io
     #=========================
-   
-    def output_results(self, filenames, plot_nslice=5, plot_dpi=200):
-        """ output results
-        :param filenames: dict(tomo(mrc), match(mod), plot(png), surf_normal(npz), surf_fit(mod))
-        :param plot_nslice, plot_dpi: plot nslice slices, save at dpt=plot_dpi
+    
+    def output_tomo(self, filename):
+        """ output clipped tomo
+        :param filename: filename(.mrc) for saving
         """
+        self.check_steps(["tomo"], raise_error=True)
+        io.write_mrc(
+            data=self.steps["tomo"]["I"],
+            mrcname=filename,
+            voxel_size=self.steps["tomo"]["voxel_size_nm"]*10
+        )
+
+    def output_model(self, step, filename, clipped=False):
+        """ output results to a model file
+        :param step: step name, one of {match, surf_fit}
+        :param filename: filename(.mod) for saving
+        :param clipped: if coordinates are for the clipped data
+        """
+        self.check_steps(["tomo", step], raise_error=True)
+        
+        # collect zyx's
+        contour_bound = self.steps["tomo"]["contour_bound"]
+        zyx_segs = [self.steps[step][f"zyx{i}"] for i in (1, 2)]
+        zyx_arr = [contour_bound] + zyx_segs
+
+        # shift
+        if not clipped:
+            zyx_shift = self.steps["tomo"]["zyx_shift"]
+            zyx_arr = [zyx_i+zyx_shift for zyx_i in zyx_arr]
+        
+        # write model
+        io.write_model(zyx_arr=zyx_arr, model_file=filename)
+    
+    def output_normal(self, filename):
+        """ output points and normal
+        :param filename: filename(.npz) for saving
+        """
+        self.check_steps(["tomo", "match", "surf_normal", "surf_fit"],
+            raise_error=True)
         steps = self.steps
+        np.savez(
+            filename,
+            xyz_shift=steps["tomo"]["zyx_shift"][::-1],
+            # segs
+            xyz_seg1=utils.reverse_coord(steps["match"]["zyx1"]),
+            xyz_seg2=utils.reverse_coord(steps["match"]["zyx2"]),
+            normal_seg1=steps["surf_normal"]["nxyz_seg1"],
+            normal_seg2=steps["surf_normal"]["nxyz_seg2"],
+            # fits
+            xyz_fit1=utils.reverse_coord(steps["surf_fit"]["zyx1"]),
+            xyz_fit2=utils.reverse_coord(steps["surf_fit"]["zyx2"]),
+            normal_fit1=steps["surf_normal"]["nxyz_fit1"],
+            normal_fit2=steps["surf_normal"]["nxyz_fit2"],
+        )
 
-        # precalc shift
-        if any([name in filenames for name in
-            ["match_shift", "plot_shift", "surf_normal"]
-            ]):
-            self.check_steps(["tomo"], raise_error=True)
-            zyx_shift = steps["tomo"]["zyx_shift"]
-        
-        # precalc zyx for bounday contour
-        if any([name in filenames for name in
-            ["match", "match_shift", "plot", "plot_shift", "surf_fit", "surf_fit_shift"]
-            ]):
-            self.check_steps(["tomo"], raise_error=True)
-            contour_bound = steps["tomo"]["contour_bound"]
+    def output_figure(self, step, filename, clipped=True, nslice=5, dpi=200):
+        """ output results to a figure
+        :param step: step name, one of {match, surf_fit}
+        :param filename: filename(.png) for saving
+        :param clipped: if coordinates are for the clipped data
+        :param nslice: no. of slices to plot
+        :param dpi: dpi for saving
+        """
+        self.check_steps(["tomo", step], raise_error=True)
 
-        # tomo
-        if ("tomo" in filenames):
-            io.write_mrc(
-                data=steps["tomo"]["I"],
-                mrcname=filenames["tomo"],
-                voxel_size=steps["tomo"]["voxel_size_nm"]*10
-            )
-        
-        # matched segs: model
-        if ("match" in filenames) and self.check_steps(["match"]):
-            zyx_segs = [steps["match"][f"zyx{i}"] for i in (1, 2)]
-            io.write_model(
-                zyx_arr=[contour_bound]+zyx_segs,
-                model_file=filenames["match"]
-            )
+        # collect zyx's
+        contour_bound = self.steps["tomo"]["contour_bound"]
+        zyx_segs = [self.steps[step][f"zyx{i}"] for i in (1, 2)]
+        zyx_arr = [contour_bound] + zyx_segs
 
-        if ("match_shift" in filenames) and self.check_steps(["match"]):
-            zyx_segs = [steps["match"][f"zyx{i}"]+zyx_shift for i in (1, 2)]
-            io.write_model(
-                zyx_arr=[contour_bound+zyx_shift] + zyx_segs,
-                model_file=filenames["match_shift"]
-            )
+        # shift
+        if not clipped:
+            zyx_shift = self.steps["tomo"]["zyx_shift"]
+            zyx_arr = [zyx_i+zyx_shift for zyx_i in zyx_arr]
+            with mrcfile.mmap(self.steps["tomo"]["tomo_file"], permissive=True) as mrc:
+                I = mrc.data
+        else:
+            I = self.steps["tomo"]["I"]
         
-        # matched segs: plot
-        if ("plot" in filenames) and self.check_steps(["match"]):
-            zyx_segs = [steps["match"][f"zyx{i}"] for i in (1, 2)]
-            fig, _ = self.plot_slices(
-                I=utils.negate_image(steps["tomo"]["I"]),  # negated
-                zyxs=[contour_bound]+zyx_segs,
-                nslice=plot_nslice
-            )
-            fig.savefig(filenames["plot"], dpi=plot_dpi)
-        
-        if ("plot_shift" in filenames) and self.check_steps(["match"]):
-            with mrcfile.mmap(steps["tomo"]["tomo_file"], permissive=True) as mrc:
-                I_full = mrc.data
-            zyx_segs = [steps["match"][f"zyx{i}"]+zyx_shift for i in (1, 2)]
-            fig, _ = self.plot_slices(
-                I=I_full,
-                zyxs=[contour_bound+zyx_shift] + zyx_segs,
-                nslice=plot_nslice
-            )
-            fig.savefig(filenames["plot_shift"], dpi=plot_dpi)
-        
-        # surface normal
-        if ("surf_normal" in filenames) and self.check_steps(["match", "surf_normal", "surf_fit"]):
-            # coordinates: xyz(i) + xyz_shift = xyz in the original tomo
-            np.savez(
-                filenames["surf_normal"],
-                xyz_shift=zyx_shift[::-1],
-                # segs
-                xyz1=utils.reverse_coord(steps["match"]["zyx1"]),
-                xyz2=utils.reverse_coord(steps["match"]["zyx2"]),
-                normal1=steps["surf_normal"]["normal1"],
-                normal2=steps["surf_normal"]["normal2"],
-                # fits
-                xyz_fit1=utils.reverse_coord(steps["surf_fit"]["zyx1"]),
-                xyz_fit2=utils.reverse_coord(steps["surf_fit"]["zyx2"]),
-                normal_fit1=steps["surf_normal"]["normal_fit1"],
-                normal_fit2=steps["surf_normal"]["normal_fit2"],
-            )
-        
-        # fitted segs: model
-        if ("surf_fit" in filenames) and self.check_steps(["surf_fit"]):
-            zyx_segs = [steps["surf_fit"][f"zyx{i}"] for i in (1, 2)]
-            io.write_model(
-                zyx_arr=[contour_bound]+zyx_segs,
-                model_file=filenames["surf_fit"]
-            )
-        
-        if ("surf_fit_shift" in filenames) and self.check_steps(["surf_fit"]):
-            zyx_segs = [steps["surf_fit"][f"zyx{i}"]+zyx_shift for i in (1, 2)]
-            io.write_model(
-                zyx_arr=[contour_bound+zyx_shift] + zyx_segs,
-                model_file=filenames["surf_fit_shift"]
-            )
+        fig, _ = self.plot_slices(I=I, zyxs=zyx_arr, nslice=nslice)
+        fig.savefig(filename, dpi=dpi)
+    
+
+    #=========================
+    # plotting
+    #=========================
     
     def plot_slices(self, I, zyxs, nslice):
         """ plot sampled slices of image
@@ -240,6 +228,67 @@ class SegPrePost(SegBase):
         }
         fig, axes = plot.imoverlay(im_dict)
         return fig, axes
+    
+    def imshow3d_steps(self, vec_width=0.25):
+        """ imshow important intermediate results
+        :param vec_width: width for plotting normal vectors
+        """
+        # setup
+        self.check_steps(
+            ["tomo", "detect", "divide", "evomsac", "match", "surf_normal"],
+            raise_error=True
+        )
+        steps = self.steps
+
+        # image
+        I = steps["tomo"]["I"]
+        name_I = "clipped image"
+
+        # results from steps
+        Is_overlay = [
+            self.coord_to_mask(zyx) for zyx in [
+                steps["detect"]["zyx_supp"],
+                steps["detect"]["zyx"],
+                steps["divide"]["zyx1"],
+                steps["divide"]["zyx2"],
+                steps["evomsac"]["zyx1"],
+                steps["evomsac"]["zyx2"],
+                steps["surf_fit"]["zyx1"],
+                steps["surf_fit"]["zyx2"],
+            ]
+        ]
+        name_Is = [
+            "detect(not filtered)", "detect(filtered)",
+            "divide(pre)", "divide(post)",
+            "evomsac(pre)", "evomsac(post)",
+            "surf_fit(pre)", "surf_fit(post)",
+        ]
+        cmap_Is = [
+            "red", "magenta",
+            "green", "green",
+            "cyan", "cyan",
+            "yellow", "yellow",
+        ]
+        cmap_vecs = ["yellow", "yellow"]
+        visible_Is = [True]*2 + [False]*6
+        visible_vecs = True
+
+        # normals
+        vecs_zyx = [steps["surf_fit"][f"zyx{i}"] for i in (1, 2)]
+        vecs_dir = [
+            utils.reverse_coord(steps["surf_normal"][f"nxyz_fit{i}"])
+            for i in (1, 2)
+        ]
+        name_vecs = ["normal(pre)", "normal(post)"]
+
+        # imshow
+        plot.imshow3d(
+            I, Is_overlay,
+            vecs_zyx=vecs_zyx, vecs_dir=vecs_dir, vec_width=vec_width,
+            name_I=name_I, name_Is=name_Is, name_vecs=name_vecs,
+            cmap_Is=cmap_Is, cmap_vecs=cmap_vecs,
+            visible_Is=visible_Is, visible_vecs=visible_vecs
+        )
 
 
     #=========================
@@ -445,15 +494,15 @@ class SegPrePost(SegBase):
     # evomsac
     #=========================
 
-
     def evomsac(self, grid_z_nm=50, grid_xy_nm=150,
-            pop_size=40, max_iter=500, tol=(0.01, 10)
+            pop_size=40, max_iter=500, tol=(0.01, 10), factor_eval=1
         ):
         """ evomsac for both divided parts
         :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
         :param pop_size: size of population
         :param tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
         :param max_iter: max number of generations
+        :param factor_eval: factor for assigning evaluation points
         :action: assign steps["evomsac"]: mpop1, mpop2
         """
         time_start = time.process_time()
@@ -470,18 +519,19 @@ class SegPrePost(SegBase):
             grid_xy_nm=grid_xy_nm,
             pop_size=pop_size,
             max_iter=max_iter,
-            tol=tol
+            tol=tol,
+            factor_eval=factor_eval
         )
-        mpop1 = SegSteps.evomsac(Bdiv1, voxel_size_nm=voxel_size_nm, **params)
-        mpop2 = SegSteps.evomsac(Bdiv2, voxel_size_nm=voxel_size_nm, **params)
+        _, zyx1 = SegSteps.evomsac(Bdiv1, voxel_size_nm=voxel_size_nm, **params)
+        _, zyx2 = SegSteps.evomsac(Bdiv2, voxel_size_nm=voxel_size_nm, **params)
 
         # save parameters and results
         self.steps["evomsac"].update(params)
         self.steps["evomsac"].update(dict(
             finished=True,
             # results
-            mpop1z=mpop1.dump_state(),
-            mpop2z=mpop2.dump_state()
+            zyx1=zyx1,
+            zyx2=zyx2
         ))
         self.steps["evomsac"]["timing"] = time.process_time()-time_start
 
@@ -490,7 +540,7 @@ class SegPrePost(SegBase):
     #=========================
 
 
-    def match(self, factor_tv=5, factor_extend=5):
+    def match(self, factor_tv=1, factor_extend=5):
         """ match for both divided parts
         :param factor_tv: sigma for tv on detected = factor_tv*d_mem
         :param factor_extend: sigma for tv extension on evomsac surface = factor_extend*d_mem
@@ -504,8 +554,8 @@ class SegPrePost(SegBase):
         O = utils.densify3d(self.steps["detect"]["Oz"])
         Bdiv1 = self.coord_to_mask(self.steps["divide"]["zyx1"])
         Bdiv2 = self.coord_to_mask(self.steps["divide"]["zyx2"])
-        mpop1 = evomsac.MOOPop(state=self.steps["evomsac"]["mpop1z"])
-        mpop2 = evomsac.MOOPop(state=self.steps["evomsac"]["mpop2z"])
+        Bsac1 = self.coord_to_mask(self.steps["evomsac"]["zyx1"])
+        Bsac2 = self.coord_to_mask(self.steps["evomsac"]["zyx2"])
 
         # match
         params = dict(
@@ -514,8 +564,8 @@ class SegPrePost(SegBase):
             sigma_extend=d_mem*factor_extend,
             mask_bound=self.coord_to_mask(self.steps["tomo"]["zyx_bound"])
         )
-        _, zyx1 = SegSteps.match(Bdiv1, O*Bdiv1, mpop1, **params)
-        _, zyx2 = SegSteps.match(Bdiv2, O*Bdiv2, mpop2, **params)
+        _, zyx1 = SegSteps.match(Bdiv1, O*Bdiv1, Bsac1, **params)
+        _, zyx2 = SegSteps.match(Bdiv2, O*Bdiv2, Bsac2, **params)
 
         # save parameters and results
         self.steps["match"].update(dict(
@@ -533,7 +583,10 @@ class SegPrePost(SegBase):
     # fitting
     #=========================
 
-    def surf_fit(self, grid_z_nm=10, grid_xy_nm=10):
+    def surf_fit(self, grid_z_nm=10, grid_xy_nm=10,
+        pop_size=20, max_iter=100, tol=(0.01, 10), factor_eval=1
+        ):
+        
         """ surface fitting for both divided parts
         :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
         :action: assign steps["surf_fit"]: zyx1,  zyx2
@@ -550,7 +603,11 @@ class SegPrePost(SegBase):
         params = dict(
             voxel_size_nm=self.steps["tomo"]["voxel_size_nm"],
             grid_z_nm=grid_z_nm,
-            grid_xy_nm=grid_xy_nm
+            grid_xy_nm=grid_xy_nm,
+            pop_size=pop_size,
+            max_iter=max_iter,
+            tol=tol,
+            factor_eval=factor_eval
         )
         B1 = mask_bound*self.coord_to_mask(zyx1)
         B2 = mask_bound*self.coord_to_mask(zyx2)
@@ -574,8 +631,8 @@ class SegPrePost(SegBase):
     #=========================
 
     def surf_normal(self):
-        """ calculate surface normal for both divided parts
-        :action: assign steps["surf_normal"]: normal1,  normal2
+        """ calculate surface normal(order is nx,ny,nz) for both divided parts
+        :action: assign steps["surf_normal"]: nxyz_seg1/2,  nxyz_fit1/2
         """
         time_start = time.process_time()
 
@@ -588,20 +645,20 @@ class SegPrePost(SegBase):
         )
 
         # calc normal from segs
-        normal1 = SegSteps.surf_normal(self.steps["match"]["zyx1"], **params)
-        normal2 = SegSteps.surf_normal(self.steps["match"]["zyx2"], **params)
+        nxyz_seg1 = SegSteps.surf_normal(self.steps["match"]["zyx1"], **params)
+        nxyz_seg2 = -SegSteps.surf_normal(self.steps["match"]["zyx2"], **params)
 
         # calc normal from segs from fits
-        normal_fit1 = SegSteps.surf_normal(self.steps["surf_fit"]["zyx1"], **params)
-        normal_fit2 = SegSteps.surf_normal(self.steps["surf_fit"]["zyx2"], **params)
+        nxyz_fit1 = SegSteps.surf_normal(self.steps["surf_fit"]["zyx1"], **params)
+        nxyz_fit2 = -SegSteps.surf_normal(self.steps["surf_fit"]["zyx2"], **params)
 
         # save parameters and results
         self.steps["surf_normal"].update(dict(
             finished=True,
             # results
-            normal1=normal1,
-            normal2=normal2,
-            normal_fit1=normal_fit1,
-            normal_fit2=normal_fit2,
+            nxyz_seg1=nxyz_seg1,
+            nxyz_seg2=nxyz_seg2,
+            nxyz_fit1=nxyz_fit1,
+            nxyz_fit2=nxyz_fit2,
         ))
         self.steps["surf_normal"]["timing"] = time.process_time()-time_start

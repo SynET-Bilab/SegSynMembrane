@@ -20,10 +20,10 @@ class SegBase:
         self.steps = {}
 
     def view_status(self):
-        """ view status (finished, timing) of each step
+        """ view status (finished, process_time) of each step
         """
         status = {
-            k: {"finished": v["finished"], "timing": v["timing"]}
+            k: {"finished": v["finished"], "process_time": v["timing"]}
             for k, v in self.steps.items()
         }
         return status
@@ -255,15 +255,15 @@ class SegSteps:
             xyfilter=xyfilter,
             dzfilter=dzfilter,
             # results
-            zyx_supp=trace.Trace(Bsupp, Odetect*Bsupp).sort_coord(),
-            zyx=trace.Trace(Bdetect, Odetect*Bdetect).sort_coord(),
+            zyx_supp=utils.mask_to_coord(Bsupp),
+            zyx=utils.mask_to_coord(Bdetect),
             Oz=utils.sparsify3d(Odetect)
         )
         return results
 
     @staticmethod
     def evomsac(B, voxel_size_nm, grid_z_nm, grid_xy_nm,
-            pop_size, max_iter, tol
+            pop_size, max_iter, tol, factor_eval
         ):
         """ evomsac for one divided part
         :param B: 3d binary image
@@ -272,6 +272,8 @@ class SegSteps:
         :param pop_size: size of population
         :param tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
         :param max_iter: max number of generations
+        :param factor_eval: factor for assigning evaluation points
+        :return: mpop, zyx_sac
         """
         # setup grid and mootools
         n_uz, n_vxy = SegSteps.set_ngrids(B, voxel_size_nm, grid_z_nm, grid_xy_nm)
@@ -283,38 +285,43 @@ class SegSteps:
         mpop = evomsac.MOOPop(mtools, pop_size=pop_size)
         mpop.init_pop()
         mpop.evolve(max_iter=max_iter, tol=tol)
-        return mpop
 
-    @staticmethod
-    def match(B, O, mpop, sigma_tv, sigma_hessian, sigma_extend, mask_bound=None):
-        """ match for one divided part
-        :param B, O: 3d binary image, orientation
-        :param mpop: MOOPop from evomsac_one
-        :param sigma_tv: sigma for tv enhancement of B, so that lines gets more connected
-        :param sigma_<hessian,extend>: sigmas for hessian and tv extension of evomsac'ed image
-        :param mask_bound: 3d binary mask for bounding polygon
-        :return: Bsmooth, zyx_sorted
-            Bsmooth: resulting binary image from matching
-            zyx_sorted: coordinates sorted by tracing
-        """
         # fit surface
         indiv = mpop.select_by_hypervolume(mpop.log_front[-1])
         pts_net = mpop.mootools.get_coord_net(indiv)
         nu_eval = np.max(utils.wireframe_lengths(pts_net, axis=0))
         nv_eval = np.max(utils.wireframe_lengths(pts_net, axis=1))
-        Bfit, _ = mpop.mootools.fit_surface_eval(
+        Bsac, _ = mpop.mootools.fit_surface_eval(
             indiv,
-            u_eval=np.linspace(0, 1, 2*int(nu_eval)),
-            v_eval=np.linspace(0, 1, 2*int(nv_eval))
+            u_eval=np.linspace(0, 1, factor_eval*int(nu_eval)),
+            v_eval=np.linspace(0, 1, factor_eval*int(nv_eval))
         )
+        zyx_sac = utils.mask_to_coord(Bsac)
+        return mpop, zyx_sac
 
+    @staticmethod
+    def match(B, O, Bsac, sigma_tv, sigma_hessian, sigma_extend, mask_bound=None):
+        """ match for one divided part
+        :param B, O: 3d binary image and orientation from detected
+        :param Bsac: 3d binary image from evomsac
+        :param sigma_tv: sigma for tv enhancement of B, so that lines gets more connected; if 0 then skip tv
+        :param sigma_<hessian,extend>: sigmas for hessian and tv extension of evomsac'ed image
+        :param mask_bound: 3d binary mask for bounding polygon
+        :return: Bmatch, zyx_sorted
+            Bmatch: resulting binary image from matching
+            zyx_sorted: coordinates sorted by tracing
+        """
         # tv
-        Stv, Otv = dtvoting.stick3d(B, O, sigma=sigma_tv)
-        Btv = nonmaxsup.nms3d(Stv, Otv)
+        if sigma_tv > 0:
+            Stv, Otv = dtvoting.stick3d(B, O, sigma=sigma_tv)
+            Btv = nonmaxsup.nms3d(Stv, Otv)
+        else:
+            Btv = B
+            Otv = O
 
         # matching
         Bmatch = matching.match_spatial_orient(
-            Btv, Otv*Btv, Bfit,
+            Btv, Otv*Btv, Bsac,
             sigma_hessian=sigma_hessian,
             sigma_tv=sigma_extend
         )
@@ -352,33 +359,41 @@ class SegSteps:
         return normal
 
     @staticmethod
-    def surf_fit(B, voxel_size_nm, grid_z_nm, grid_xy_nm):
+    def surf_fit(B, voxel_size_nm, grid_z_nm, grid_xy_nm,
+                 pop_size, max_iter, tol, factor_eval):
         """ surface fitting for one divided part
         :param B: 3d binary image
         :param voxel_size_nm: voxel spacing in nm
         :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
+        :param factor_eval: factor for assigning evaluation points
         :return: Bfit, zyx_sorted
         """
-        # setup grids, mtools
-        n_uz, n_vxy = SegSteps.set_ngrids(B, voxel_size_nm, grid_z_nm, grid_xy_nm)
-        mtools = evomsac.MOOTools(
-            B, n_uz=n_uz, n_vxy=n_vxy, nz_eachu=1, r_thresh=1
-        )
+        # # setup grids, mtools
+        # n_uz, n_vxy = SegSteps.set_ngrids(B, voxel_size_nm, grid_z_nm, grid_xy_nm)
+        # mtools = evomsac.MOOTools(
+        #     B, n_uz=n_uz, n_vxy=n_vxy, nz_eachu=1, r_thresh=1
+        # )
 
-        # generate indiv
-        indiv = mtools.indiv_middle()
+        # # generate indiv
+        # indiv = mtools.indiv_middle()
         
-        # fit
-        pts_net = mtools.get_coord_net(indiv)
-        nu_eval = np.max(utils.wireframe_lengths(pts_net, axis=0))
-        nv_eval = np.max(utils.wireframe_lengths(pts_net, axis=1))
-        Bfit, _ = mtools.fit_surface_eval(
-            indiv,
-            u_eval=np.linspace(0, 1, 5*int(nu_eval)),
-            v_eval=np.linspace(0, 1, 5*int(nv_eval))
+        # # fit
+        # pts_net = mtools.get_coord_net(indiv)
+        # nu_eval = np.max(utils.wireframe_lengths(pts_net, axis=0))
+        # nv_eval = np.max(utils.wireframe_lengths(pts_net, axis=1))
+        # Bfit, _ = mtools.fit_surface_eval(
+        #     indiv,
+        #     u_eval=np.linspace(0, 1, factor_eval*int(nu_eval)),
+        #     v_eval=np.linspace(0, 1, factor_eval*int(nv_eval))
+        # )
+        
+        _, zyx_sac = SegSteps.evomsac(
+            B, voxel_size_nm, grid_z_nm, grid_xy_nm,
+            pop_size, max_iter, tol, factor_eval
         )
-
+        
         # ordering
+        Bfit = utils.coord_to_mask(zyx_sac, B.shape)
         _, Ofit = hessian.features3d(Bfit, 1)
         zyx_sorted = trace.Trace(Bfit, Ofit*Bfit).sort_coord()
 
