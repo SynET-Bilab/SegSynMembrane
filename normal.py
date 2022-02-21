@@ -27,6 +27,7 @@ def align_normal(coords, normals, coord_ref, radius=3):
 
     signs = np.ones(len(coords), dtype=int)
     unaligned = np.ones(len(coords), dtype=bool)
+    unvisited = np.ones(len(coords), dtype=bool)
     tovisit = collections.deque()
 
     # visit all points
@@ -43,6 +44,7 @@ def align_normal(coords, normals, coord_ref, radius=3):
         # iterate over connected points
         while tovisit:
             i = tovisit.popleft()
+            unvisited[i] = False
 
             # find unaligned
             neighbors_i = np.asarray(kdtree.query_ball_point(
@@ -54,7 +56,7 @@ def align_normal(coords, normals, coord_ref, radius=3):
                 dots_i = np.sum(normals[news_i] * normals[i], axis=1)
                 signs[news_i] = signs[i] * np.sign(dots_i)
                 unaligned[news_i] = False
-                tovisit.extend(list(news_i))
+                tovisit.extend(list(news_i[unvisited[news_i]]))
 
     # reorient normals
     normals[signs < 0] *= -1

@@ -315,7 +315,8 @@ class SegSteps:
         # tv
         if sigma_tv > 0:
             Stv, Otv = dtvoting.stick3d(B, O, sigma=sigma_tv)
-            Btv = nonmaxsup.nms3d(Stv, Otv)
+            mask_tv = Stv > np.exp(-1/2)
+            Btv = nonmaxsup.nms3d(Stv*mask_tv, Otv)
         else:
             Btv = B
             Otv = O
@@ -354,14 +355,13 @@ class SegSteps:
         """
         B = utils.coord_to_mask(zyx, shape)
         pos = tuple(zyx.T)
-        _, normal = normal.surface_normal(
+        _, nxyz = normal.surface_normal(
             B, sigma=d_mem, zyx_ref=zyx_ref, pos=pos
         )
-        return normal
+        return nxyz
 
     @staticmethod
-    def surf_fit(B, voxel_size_nm, grid_z_nm, grid_xy_nm,
-                 pop_size, max_iter, tol, factor_eval):
+    def surf_fit(B, voxel_size_nm, grid_z_nm, grid_xy_nm, factor_eval):
         """ surface fitting for one divided part
         :param B: 3d binary image
         :param voxel_size_nm: voxel spacing in nm
@@ -369,32 +369,32 @@ class SegSteps:
         :param factor_eval: factor for assigning evaluation points
         :return: Bfit, zyx_sorted
         """
-        # # setup grids, mtools
-        # n_uz, n_vxy = SegSteps.set_ngrids(B, voxel_size_nm, grid_z_nm, grid_xy_nm)
-        # mtools = evomsac.MOOTools(
-        #     B, n_uz=n_uz, n_vxy=n_vxy, nz_eachu=1, r_thresh=1
-        # )
+        # setup grids, mtools
+        n_uz, n_vxy = SegSteps.set_ngrids(B, voxel_size_nm, grid_z_nm, grid_xy_nm)
+        mtools = evomsac.MOOTools(
+            B, n_uz=n_uz, n_vxy=n_vxy, nz_eachu=1, r_thresh=1
+        )
 
-        # # generate indiv
-        # indiv = mtools.indiv_middle()
+        # generate indiv
+        indiv = mtools.indiv_middle()
         
-        # # fit
-        # pts_net = mtools.get_coord_net(indiv)
-        # nu_eval = np.max(utils.wireframe_lengths(pts_net, axis=0))
-        # nv_eval = np.max(utils.wireframe_lengths(pts_net, axis=1))
-        # Bfit, _ = mtools.fit_surface_eval(
-        #     indiv,
-        #     u_eval=np.linspace(0, 1, factor_eval*int(nu_eval)),
-        #     v_eval=np.linspace(0, 1, factor_eval*int(nv_eval))
-        # )
-        
-        _, zyx_sac = SegSteps.evomsac(
-            B, voxel_size_nm, grid_z_nm, grid_xy_nm,
-            pop_size, max_iter, tol, factor_eval
+        # fit
+        pts_net = mtools.get_coord_net(indiv)
+        nu_eval = np.max(utils.wireframe_lengths(pts_net, axis=0))
+        nv_eval = np.max(utils.wireframe_lengths(pts_net, axis=1))
+        Bfit, _ = mtools.fit_surface_eval(
+            indiv,
+            u_eval=np.linspace(0, 1, factor_eval*int(nu_eval)),
+            v_eval=np.linspace(0, 1, factor_eval*int(nv_eval))
         )
         
+        # _, zyx_sac = SegSteps.evomsac(
+        #     B, voxel_size_nm, grid_z_nm, grid_xy_nm,
+        #     pop_size, max_iter, tol, factor_eval
+        # )
+        # Bfit = utils.coord_to_mask(zyx_sac, B.shape)
+        
         # ordering
-        Bfit = utils.coord_to_mask(zyx_sac, B.shape)
         _, Ofit = hessian.features3d(Bfit, 1)
         zyx_sorted = trace.Trace(Bfit, Ofit*Bfit).sort_coord()
 

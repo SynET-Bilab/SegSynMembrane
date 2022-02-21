@@ -583,9 +583,7 @@ class SegPrePost(SegBase):
     # fitting
     #=========================
 
-    def surf_fit(self, grid_z_nm=10, grid_xy_nm=10,
-        pop_size=20, max_iter=100, tol=(0.01, 10), factor_eval=1
-        ):
+    def surf_fit(self, grid_z_nm=10, grid_xy_nm=10, factor_eval=1):
         
         """ surface fitting for both divided parts
         :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
@@ -604,9 +602,6 @@ class SegPrePost(SegBase):
             voxel_size_nm=self.steps["tomo"]["voxel_size_nm"],
             grid_z_nm=grid_z_nm,
             grid_xy_nm=grid_xy_nm,
-            pop_size=pop_size,
-            max_iter=max_iter,
-            tol=tol,
             factor_eval=factor_eval
         )
         B1 = mask_bound*self.coord_to_mask(zyx1)
