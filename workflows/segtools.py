@@ -4,7 +4,7 @@
 import numpy as np
 from etsynseg import io, utils, trace
 from etsynseg import hessian, dtvoting, nonmaxsup
-from etsynseg import evomsac, matching
+from etsynseg import evomsac, matching, normal
 
 __all__ = [
     "SegBase", "SegSteps"
@@ -40,6 +40,7 @@ class SegBase:
         """
         steps = np.load(filename, allow_pickle=True)
         self.steps = {key: steps[key].item() for key in steps.keys()}
+        return self
 
     def check_steps(self, steps_prev, raise_error=False):
         """ raise error if any prerequisite steps is not finished
@@ -353,7 +354,7 @@ class SegSteps:
         """
         B = utils.coord_to_mask(zyx, shape)
         pos = tuple(zyx.T)
-        _, normal = hessian.surface_normal(
+        _, normal = normal.surface_normal(
             B, sigma=d_mem, zyx_ref=zyx_ref, pos=pos
         )
         return normal
