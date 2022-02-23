@@ -288,7 +288,8 @@ class SegSteps:
         mpop.evolve(max_iter=max_iter, tol=tol)
 
         # fit surface
-        indiv = mpop.select_by_hypervolume(mpop.log_front[-1])
+        # indiv = mpop.select_by_hypervolume(mpop.log_front[-1])
+        indiv = mpop.log_front[-1][0]
         pts_net = mpop.mootools.get_coord_net(indiv)
         nu_eval = np.max(utils.wireframe_lengths(pts_net, axis=0))
         nv_eval = np.max(utils.wireframe_lengths(pts_net, axis=1))
