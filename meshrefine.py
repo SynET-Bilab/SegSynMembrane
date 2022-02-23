@@ -21,21 +21,24 @@ __all__ = [
 # create mesh
 #=========================
 
-def create_pointcloud(xyz):
+def create_pointcloud(xyz, normals=None):
     """ create open3d point cloud from points (xyz)
     :param xyz: [[x1,y1,z1],...]
+    :param normals: [[nx1,ny1,nz1],...]
     :return: pcd
         pcd: open3d pointcloud
     """
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(xyz)
+    if normals is not None:
+        pcd.normals = o3d.utility.Vector3dVector(normals)
     return pcd
 
-def normals_pointcloud(pcd, sigma, pt_ref=None):
+def normals_pointcloud(pcd, sigma, xyz_ref=None):
     """ estimate normals for point cloud
     :param pcd: open3d pointcloud
     :param sigma: neighborhood radius for normal calculation
-    :param pt_ref: reference point inside, for orienting normals
+    :param xyz_ref: reference point inside, for orienting normals
     :return: pcd
         pcd: point cloud with normals
     """
@@ -45,10 +48,10 @@ def normals_pointcloud(pcd, sigma, pt_ref=None):
     pcd.orient_normals_consistent_tangent_plane(10)
 
     # align normals using the reference point
-    if pt_ref is not None:
-        # direction from pt_ref to the closest point in pcd
+    if xyz_ref is not None:
+        # direction from xyz_ref to the closest point in pcd
         imin = np.argmin(np.linalg.norm(
-            np.asarray(pcd.points)-pt_ref, axis=1))
+            np.asarray(pcd.points)-xyz_ref, axis=1))
         # align normals with this direction
         sign = np.sign(np.dot(pcd.normals[imin], pcd.points[imin]))
         if sign < 0:
@@ -56,16 +59,16 @@ def normals_pointcloud(pcd, sigma, pt_ref=None):
                 -np.asarray(pcd.normals))
     return pcd
 
-def normals_points(xyz, sigma, pt_ref=None):
+def normals_points(xyz, sigma, xyz_ref=None):
     """ estimate normals for points
     :param xyz: [[x1,y1,z1],...]
     :param sigma: neighborhood radius for normal calculation
-    :param pt_ref: reference point inside, for orienting normals
+    :param xyz_ref: reference point inside, for orienting normals
     :return: normals
         normals: [[nx1,ny1,nz1],...]
     """
     pcd = create_pointcloud(xyz)
-    pcd = normals_pointcloud(pcd, sigma, pt_ref)
+    pcd = normals_pointcloud(pcd, sigma, xyz_ref)
     normals = np.asarray(pcd.normals)
     return normals
 
@@ -177,7 +180,9 @@ def mesh_subdivide(mesh, target_len=1):
             voxel_size=0.5,
             contraction=o3d.geometry.SimplificationContraction.Quadric
         )
-        mdiv = mdiv.remove_non_manifold_edges()
+        # sometimes still get non-manifold edges after steps below, why?
+        while len(mdiv.get_non_manifold_edges()) > 0:
+            mdiv = mdiv.remove_non_manifold_edges()
     return mdiv
 
 
@@ -185,11 +190,12 @@ def mesh_subdivide(mesh, target_len=1):
 # workflow
 #=========================
 
-def refine_surface(zyx, sigma_normals, sigma_mesh):
+def refine_surface(zyx, sigma_normal, sigma_mesh, mask_bound=None):
     """ refine surface using mesh-based methods, mainly poisson reconstruction
     :param zyx: points
-    :param sigma_normals: length scale for normal estimation
+    :param sigma_normal: length scale for normal estimation
     :param sigma_mesh: spatial resolution for poisson reconstruction
+    :param mask_bound: a mask for boundary
     :return: zyx_refine
         zyx_refine: points for the refined surface
     """
@@ -197,7 +203,7 @@ def refine_surface(zyx, sigma_normals, sigma_mesh):
     xyz = utils.reverse_coord(zyx)
     pcd = normals_pointcloud(
         pcd=create_pointcloud(xyz=xyz),
-        sigma=sigma_normals
+        sigma=sigma_normal
     )
     mesh = create_mesh_poisson(pcd, resolution=sigma_mesh)
 
@@ -217,8 +223,13 @@ def refine_surface(zyx, sigma_normals, sigma_mesh):
 
     # convert to image
     zyx_raw = utils.reverse_coord(np.asarray(mdiv.vertices))
-    shape = np.ceil(np.max(zyx, axis=0)).astype(np.int_)
+    if mask_bound is not None:
+        shape = mask_bound.shape
+    else:
+        shape = np.ceil(np.max(zyx, axis=0)).astype(np.int_)
     B_refine = utils.coord_to_mask(zyx_raw, shape)
     B_refine = next(utils.extract_connected(B_refine, connectivity=3))[1]
+    if mask_bound is not None:
+        B_refine = mask_bound*B_refine
     zyx_refine = utils.mask_to_coord(B_refine)
     return zyx_refine

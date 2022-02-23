@@ -54,12 +54,12 @@ def build_parser():
         help="float float (in nm). Step 'evomsac': spacings in z- and xy-axes of the sampling grids. Fine grids may be prone to noise; too-coarse grids may miss too much of the membrane.")
 
     # match
-    parser.add_argument("--match_extend", type=float, default=5,
+    parser.add_argument("--match_extend", type=float, default=2,
         help="float. Step 'match': factor for extension (by tensor voting, TV) of surface from evomsac. The sigma value for TV = match_extend * membrane thickness (set in --lengths). Larger value means more detected segments would be matched with evomsac surface.")
 
     # fit
-    parser.add_argument("--fit_grids", type=float, nargs=2, default=[10, 10],
-        help="float float (in nm). Step 'surf_fit': spacings in z- and xy-axes of the sampling grids. Set to a scale that could be enough to capture membranes' uneveness.")
+    parser.add_argument("--meshrefine_factors", type=float, nargs=2, default=[2, 2],
+        help="float float. Step 'meshrefine': lengthscales (=factor*membrane thickness) for normal calculation and mesh reconstruction. Larger factors remove more noises.")
     return parser
 
 class IfRunStep:
@@ -156,7 +156,7 @@ def run_seg(args):
                 "detect": ["factor_tv", "xyfilter"],
                 "evomsac": ["grid_xy_nm", "grid_z_nm"],
                 "match": ["factor_extend"],
-                "surf_fit": ["grid_xy_nm", "grid_z_nm"]
+                "meshrefine": ["factor_normal", "factor_mesh"]
             }
             log_str = "arguments:\n  " + "\n  ".join([
                 f"{k}: " + ",".join([f"{vi}={seg.steps[k][vi]}" for vi in v])
@@ -179,10 +179,9 @@ def run_seg(args):
     
     filenames = {
         "steps": f"{name}-steps.npz",
-        "match_mod": f"{name}-segs.mod",
-        "match_fig": f"{name}-segs.png",
-        "surf_fit_mod": f"{name}-fits.mod",
-        "surf_normal": f"{name}-normal.npz",
+        "meshrefine_mod": f"{name}-seg.mod",
+        "meshrefine_fig": f"{name}-seg.png",
+        "meshrefine_pts": f"{name}-seg.npz",
     }
     
     # initial save
@@ -232,32 +231,24 @@ def run_seg(args):
         seg.match(factor_tv=1, factor_extend=args.match_extend)
         # save
         seg.save_steps(filenames["steps"])
-        seg.output_model("match", filenames["match_mod"], clipped=False)
-        backup_file(filenames["match_fig"])
-        seg.output_figure("match", filenames["match_fig"], nslice=5, dpi=300, clipped=True)
 
-    # surf fit
-    if ifrun.check(seg.steps["surf_fit"],
-        {"grid_z_nm": args.fit_grids[0],
-        "grid_xy_nm": args.fit_grids[1]}
+    # meshrefine
+    if ifrun.check(seg.steps["meshrefine"],
+        {"factor_normal": args.meshrefine_factors[0],
+        "factor_mesh": args.meshrefine_factors[1]}
     ):
-        logging.info("starting surf_fit")
-        seg.surf_fit(
-            grid_z_nm=args.fit_grids[0],
-            grid_xy_nm=args.fit_grids[1]
+        logging.info("starting meshrefine")
+        seg.meshrefine(
+            factor_normal=args.meshrefine_factors[0],
+            factor_mesh=args.meshrefine_factors[1]
         )
         # save
         seg.save_steps(filenames["steps"])
-        seg.output_model("surf_fit", filenames["surf_fit_mod"], clipped=False)
-    
-    # surf normal
-    if ifrun.check(seg.steps["surf_normal"], {}):
-        logging.info("starting surf_normal")
-        seg.surf_normal()
-        # save
-        seg.save_steps(filenames["steps"])
-        backup_file(filenames["surf_normal"])
-        seg.output_normal(filenames["surf_normal"])
+        seg.output_model("meshrefine", filenames["meshrefine_mod"], clipped=False)
+        backup_file(filenames["meshrefine_fig"])
+        seg.output_figure(
+            "meshrefine", filenames["meshrefine_fig"], nslice=5, dpi=300, clipped=True)
+        seg.output_points(filenames["meshrefine_pts"])
     
     logging.info("ending etsynseg")
 

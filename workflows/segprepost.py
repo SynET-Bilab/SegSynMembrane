@@ -97,24 +97,17 @@ class SegPrePost(SegBase):
                 zyx1=None,
                 zyx2=None,
             ),
-            surf_fit=dict(
+            meshrefine=dict(
                 finished=False,
                 timing=None,
                 # parameters: input
-                grid_z_nm=None,
-                grid_xy_nm=None,
+                factor_normal=None,
+                factor_mesh=None,
                 # results
                 zyx1=None,
                 zyx2=None,
-            ),
-            surf_normal=dict(
-                finished=False,
-                timing=None,
-                # results
-                nxyz_seg1=None,
-                nxyz_seg2=None,
-                nxyz_fit1=None,
-                nxyz_fit2=None,
+                nxyz1=None,
+                nxyz2=None,
             ),
         )
 
@@ -154,26 +147,18 @@ class SegPrePost(SegBase):
         # write model
         io.write_model(zyx_arr=zyx_arr, model_file=filename)
     
-    def output_normal(self, filename):
+    def output_points(self, filename):
         """ output points and normal
         :param filename: filename(.npz) for saving
         """
-        self.check_steps(["tomo", "match", "surf_normal", "surf_fit"],
-            raise_error=True)
+        self.check_steps(["tomo", "meshrefine"], raise_error=True)
         steps = self.steps
         np.savez(
             filename,
-            xyz_shift=steps["tomo"]["zyx_shift"][::-1],
-            # segs
-            xyz_seg1=utils.reverse_coord(steps["match"]["zyx1"]),
-            xyz_seg2=utils.reverse_coord(steps["match"]["zyx2"]),
-            normal_seg1=steps["surf_normal"]["nxyz_seg1"],
-            normal_seg2=steps["surf_normal"]["nxyz_seg2"],
-            # fits
-            xyz_fit1=utils.reverse_coord(steps["surf_fit"]["zyx1"]),
-            xyz_fit2=utils.reverse_coord(steps["surf_fit"]["zyx2"]),
-            normal_fit1=steps["surf_normal"]["nxyz_fit1"],
-            normal_fit2=steps["surf_normal"]["nxyz_fit2"],
+            xyz1=utils.reverse_coord(steps["meshrefine"]["zyx1"]),
+            xyz2=utils.reverse_coord(steps["meshrefine"]["zyx2"]),
+            normal1=steps["meshrefine"]["nxyz1"],
+            normal2=steps["meshrefine"]["nxyz2"],
         )
 
     def output_figure(self, step, filename, clipped=True, nslice=5, dpi=200):
@@ -234,52 +219,61 @@ class SegPrePost(SegBase):
         :param vec_width: width for plotting normal vectors
         """
         # setup
-        self.check_steps(
-            ["tomo", "detect", "divide", "evomsac", "match", "surf_normal"],
-            raise_error=True
-        )
-        steps = self.steps
+        self.check_steps(["tomo"], raise_error=True)
 
         # image
-        I = steps["tomo"]["I"]
+        I = self.steps["tomo"]["I"]
         name_I = "clipped image"
 
         # results from steps
-        Is_overlay = [
-            self.coord_to_mask(zyx) for zyx in [
-                steps["detect"]["zyx_supp"],
-                steps["detect"]["zyx"],
-                steps["divide"]["zyx1"],
-                steps["divide"]["zyx2"],
-                steps["evomsac"]["zyx1"],
-                steps["evomsac"]["zyx2"],
-                steps["surf_fit"]["zyx1"],
-                steps["surf_fit"]["zyx2"],
-            ]
-        ]
+        Is_overlay = []
+        if self.check_steps(["detect"]):
+            Is_overlay.extend([
+                self.coord_to_mask(self.steps["detect"][f"zyx{i}"])
+                for i in ("_supp", "")
+            ])
+        for step in ["divide", "evomsac", "match", "meshrefine"]:
+            if self.check_steps([step]):
+                Is_overlay.extend([
+                    self.coord_to_mask(self.steps[step][f"zyx{i}"])
+                    for i in (1, 2)
+                ])
+            else:
+                break
+                
         name_Is = [
             "detect(not filtered)", "detect(filtered)",
             "divide(pre)", "divide(post)",
             "evomsac(pre)", "evomsac(post)",
-            "surf_fit(pre)", "surf_fit(post)",
+            "match(pre)", "match(post)",
+            "meshrefine(pre)", "meshrefine(post)",
         ]
         cmap_Is = [
             "red", "magenta",
+            "blue", "blue",
             "green", "green",
             "cyan", "cyan",
             "yellow", "yellow",
         ]
         cmap_vecs = ["yellow", "yellow"]
-        visible_Is = [True]*2 + [False]*6
+        visible_Is = [True]*2 + [False]*8
         visible_vecs = True
 
         # normals
-        vecs_zyx = [steps["surf_fit"][f"zyx{i}"] for i in (1, 2)]
-        vecs_dir = [
-            utils.reverse_coord(steps["surf_normal"][f"nxyz_fit{i}"])
-            for i in (1, 2)
-        ]
-        name_vecs = ["normal(pre)", "normal(post)"]
+        if self.check_steps(["meshrefine"]):
+            vecs_zyx = [
+                self.steps["meshrefine"][f"zyx{i}"]
+                for i in (1, 2)
+            ]
+            vecs_dir = [
+                utils.reverse_coord(self.steps["meshrefine"][f"nxyz{i}"])
+                for i in (1, 2)
+            ]
+            name_vecs = ["normal(pre)", "normal(post)"]
+        else:
+            vecs_zyx = ()
+            vecs_dir = ()
+            name_vecs = ()
 
         # imshow
         plot.imshow3d(
@@ -535,10 +529,10 @@ class SegPrePost(SegBase):
         ))
         self.steps["evomsac"]["timing"] = time.process_time()-time_start
 
+
     #=========================
     # matching
     #=========================
-
 
     def match(self, factor_tv=1, factor_extend=5):
         """ match for both divided parts
@@ -579,12 +573,12 @@ class SegPrePost(SegBase):
         ))
         self.steps["match"]["timing"] = time.process_time()-time_start
 
+
     #=========================
-    # fitting
+    # meshrefine
     #=========================
 
-    def surf_fit(self, grid_z_nm=10, grid_xy_nm=10, factor_eval=1):
-        
+    def meshrefine(self, factor_normal=2, factor_mesh=2):
         """ surface fitting for both divided parts
         :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
         :action: assign steps["surf_fit"]: zyx1,  zyx2
@@ -593,67 +587,30 @@ class SegPrePost(SegBase):
 
         # load from self
         self.check_steps(["tomo", "match"], raise_error=True)
+        d_mem = self.steps["tomo"]["d_mem"]
         zyx1 = self.steps["match"]["zyx1"]
         zyx2 = self.steps["match"]["zyx2"]
-        mask_bound = self.coord_to_mask(self.steps["tomo"]["zyx_bound"])
 
-        # fit
+        # refine
         params = dict(
-            voxel_size_nm=self.steps["tomo"]["voxel_size_nm"],
-            grid_z_nm=grid_z_nm,
-            grid_xy_nm=grid_xy_nm,
-            factor_eval=factor_eval
+            zyx_ref=self.steps["tomo"]["zyx_ref"],
+            sigma_normal=factor_normal*d_mem,
+            sigma_mesh=factor_mesh*d_mem,
+            mask_bound=self.coord_to_mask(self.steps["tomo"]["zyx_bound"])
         )
-        B1 = mask_bound*self.coord_to_mask(zyx1)
-        B2 = mask_bound*self.coord_to_mask(zyx2)
-        _, zyx_fit1 = SegSteps.surf_fit(B1, **params)
-        _, zyx_fit2 = SegSteps.surf_fit(B2, **params)
-
+        zyxref1, nxyz1 = SegSteps.meshrefine(zyx1, **params)
+        zyxref2, nxyz2 = SegSteps.meshrefine(zyx2, **params)
+        
         # save parameters and results
-        self.steps["surf_fit"].update(dict(
+        self.steps["meshrefine"].update(dict(
             finished=True,
             # parameters
-            grid_z_nm=grid_z_nm,
-            grid_xy_nm=grid_xy_nm,
+            factor_normal=factor_normal,
+            factor_mesh=factor_mesh,
             # results
-            zyx1=zyx_fit1,
-            zyx2=zyx_fit2,
+            zyx1=zyxref1,
+            zyx2=zyxref2,
+            nxyz1=nxyz1,
+            nxyz2=nxyz2,
         ))
-        self.steps["surf_fit"]["timing"] = time.process_time()-time_start
-
-    #=========================
-    # surface normal
-    #=========================
-
-    def surf_normal(self):
-        """ calculate surface normal(order is nx,ny,nz) for both divided parts
-        :action: assign steps["surf_normal"]: nxyz_seg1/2,  nxyz_fit1/2
-        """
-        time_start = time.process_time()
-
-        # load from self
-        self.check_steps(["tomo", "match", "surf_fit"], raise_error=True)
-        params = dict(
-            shape=self.steps["tomo"]["shape"],
-            zyx_ref=self.steps["tomo"]["zyx_ref"],
-            d_mem=self.steps["tomo"]["d_mem"],
-        )
-
-        # calc normal from segs
-        nxyz_seg1 = SegSteps.surf_normal(self.steps["match"]["zyx1"], **params)
-        nxyz_seg2 = -SegSteps.surf_normal(self.steps["match"]["zyx2"], **params)
-
-        # calc normal from segs from fits
-        nxyz_fit1 = SegSteps.surf_normal(self.steps["surf_fit"]["zyx1"], **params)
-        nxyz_fit2 = -SegSteps.surf_normal(self.steps["surf_fit"]["zyx2"], **params)
-
-        # save parameters and results
-        self.steps["surf_normal"].update(dict(
-            finished=True,
-            # results
-            nxyz_seg1=nxyz_seg1,
-            nxyz_seg2=nxyz_seg2,
-            nxyz_fit1=nxyz_fit1,
-            nxyz_fit2=nxyz_fit2,
-        ))
-        self.steps["surf_normal"]["timing"] = time.process_time()-time_start
+        self.steps["meshrefine"]["timing"] = time.process_time()-time_start

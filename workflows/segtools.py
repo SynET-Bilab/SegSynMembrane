@@ -4,7 +4,7 @@
 import numpy as np
 from etsynseg import io, utils, trace
 from etsynseg import hessian, dtvoting, nonmaxsup
-from etsynseg import evomsac, matching, normal
+from etsynseg import evomsac, matching, meshrefine
 
 __all__ = [
     "SegBase", "SegSteps"
@@ -344,58 +344,35 @@ class SegSteps:
         return Bmatch, zyx_sorted
 
     @staticmethod
-    def surf_normal(zyx, zyx_ref, shape, d_mem):
+    def meshrefine(zyx, zyx_ref, sigma_normal, sigma_mesh, mask_bound):
         """ calculate surface normal for one divided part
         :param zyx: coordinates
-        :param zyx_ref: reference zyx
-        :param shape: (nz,ny,nx) of 3d image
-        :param d_mem: membrane thickness in voxel
-        :return: normal
-            normal: each=(nx,ny,nz)
+        :param zyx_ref: reference zyx for insideness
+        :param sigma_normal: length scale for normal estimation
+        :param sigma_mesh: spatial resolution for poisson reconstruction
+        :param mask_bound: a mask for boundary
+        :return: zyx, nxyz
+            zyx: sorted zyx coordinates
+            nxyz: normals in xyz order
         """
-        B = utils.coord_to_mask(zyx, shape)
-        pos = tuple(zyx.T)
-        _, nxyz = normal.surface_normal(
-            B, sigma=d_mem, zyx_ref=zyx_ref, pos=pos
-        )
-        return nxyz
-
-    @staticmethod
-    def surf_fit(B, voxel_size_nm, grid_z_nm, grid_xy_nm, factor_eval):
-        """ surface fitting for one divided part
-        :param B: 3d binary image
-        :param voxel_size_nm: voxel spacing in nm
-        :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
-        :param factor_eval: factor for assigning evaluation points
-        :return: Bfit, zyx_sorted
-        """
-        # setup grids, mtools
-        n_uz, n_vxy = SegSteps.set_ngrids(B, voxel_size_nm, grid_z_nm, grid_xy_nm)
-        mtools = evomsac.MOOTools(
-            B, n_uz=n_uz, n_vxy=n_vxy, nz_eachu=1, r_thresh=1
+        # refine
+        zyx_refine = meshrefine.refine_surface(
+            zyx,
+            sigma_normal=sigma_normal,
+            sigma_mesh=sigma_mesh,
+            mask_bound=mask_bound
         )
 
-        # generate indiv
-        indiv = mtools.indiv_middle()
-        
-        # fit
-        pts_net = mtools.get_coord_net(indiv)
-        nu_eval = np.max(utils.wireframe_lengths(pts_net, axis=0))
-        nv_eval = np.max(utils.wireframe_lengths(pts_net, axis=1))
-        Bfit, _ = mtools.fit_surface_eval(
-            indiv,
-            u_eval=np.linspace(0, 1, factor_eval*int(nu_eval)),
-            v_eval=np.linspace(0, 1, factor_eval*int(nv_eval))
-        )
-        
-        # _, zyx_sac = SegSteps.evomsac(
-        #     B, voxel_size_nm, grid_z_nm, grid_xy_nm,
-        #     pop_size, max_iter, tol, factor_eval
-        # )
-        # Bfit = utils.coord_to_mask(zyx_sac, B.shape)
-        
-        # ordering
-        _, Ofit = hessian.features3d(Bfit, 1)
-        zyx_sorted = trace.Trace(Bfit, Ofit*Bfit).sort_coord()
+        # sort
+        shape = np.ceil(np.max(zyx, axis=0)).astype(np.int_)
+        Bsort = utils.coord_to_mask(zyx_refine, shape)
+        _, Osort = hessian.features3d(Bsort, 1)
+        zyx_sort = trace.Trace(Bsort, Osort*Bsort).sort_coord()
 
-        return Bfit, zyx_sorted
+        # calculate normal
+        nxyz = meshrefine.normals_points(
+            xyz=utils.reverse_coord(zyx_sort),
+            sigma=sigma_normal,
+            xyz_ref=zyx_ref[::-1]
+        )
+        return zyx_sort, nxyz
