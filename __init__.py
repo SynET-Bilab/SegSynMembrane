@@ -9,7 +9,8 @@ __version__ = "0.1"
 # "matplotlib", "napari",
 # "mrcfile",
 # pypi
-# "splipy"
+# splipy
+# open3d
 # ]
 
 # auxiliary functions
@@ -17,6 +18,6 @@ from etsynseg import utils, io, plot, trace, bspline
 # membrane detection
 from etsynseg import hessian, dtvoting, nonmaxsup
 # membrane extraction
-from etsynseg import division, evomsac, matching, normal
+from etsynseg import division, evomsac, matching, meshrefine
 # workflows
 from etsynseg import workflows
