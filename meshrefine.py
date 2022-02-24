@@ -215,12 +215,12 @@ def refine_surface(zyx, sigma_normal, sigma_mesh, mask_bound=None):
 
     # subdivide to pixel scale
     mdiv = mesh_subdivide(mesh, target_size=1)
-    mdiv_hull = mdiv.select_by_index(
+    mdiv = mdiv.select_by_index(
         points_in_hull(mdiv.vertices, hull)
     )
 
     # convert to image
-    zyx_raw = utils.reverse_coord(np.asarray(mdiv_hull.vertices))
+    zyx_raw = utils.reverse_coord(np.asarray(mdiv.vertices))
     if mask_bound is not None:
         shape = mask_bound.shape
     else:
