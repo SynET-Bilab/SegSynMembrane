@@ -250,7 +250,7 @@ class SegPrePost(SegBase):
         ]
         cmap_Is = [
             "red", "magenta",
-            "blue", "blue",
+            "bop blue", "bop blue",
             "green", "green",
             "cyan", "cyan",
             "yellow", "yellow",

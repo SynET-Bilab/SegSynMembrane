@@ -148,22 +148,21 @@ def points_surround(mesh, iv_center):
         [iv_center, tri[itri_bound].ravel()]))
     return iv_surround
 
-def length_edges(mesh):
-    """ calculate the length of edges in the mesh
-    :param mesh: open3d mesh
-    :return: lengths
-        lengths: array of lengths for each edge
+def nn_distance(pts, p_norm=1):
+    """ distance to nearest neighbor
+    :param pts: points
+    :return: dists
+        dists: array of distances to nearest neighbor
     """
-    lineset = o3d.geometry.LineSet.create_from_triangle_mesh(mesh)
-    vs = np.asarray(lineset.points)
-    es = np.asarray(lineset.lines)
-    lengths = np.max(np.abs(vs[es[:, 0]] - vs[es[:, 1]]), axis=1)
-    return lengths
+    pts = np.asarray(pts)
+    tree = spatial.KDTree(pts)
+    dists = tree.query(pts, k=2, p=p_norm)[0][:, 1]
+    return dists
 
-def mesh_subdivide(mesh, target_len=1):
-    """ subdivide-simplify mesh till the max length of edges <= target_len
+def mesh_subdivide(mesh, target_size=1):
+    """ subdivide-simplify mesh till the max distance between nearest neighbors <= target_size
     :param mesh: open3d mesh
-    :param target_len: target edge length
+    :param target_size: target size
     :return: mdiv
         mdiv: subdivided open3d mesh
     """
@@ -172,17 +171,16 @@ def mesh_subdivide(mesh, target_len=1):
     mdiv.vertices = mesh.vertices
     mdiv.triangles = mesh.triangles
 
-    # cycle: subdivide - simplify
-    # cleanup: removed non-manifold edges, but unreferenced vertices are kept
-    while np.max(length_edges(mdiv)) > target_len:
+    # 1st-round subdivision
+    # niter: determined according to max 1nn distance
+    dist = np.max(nn_distance(mdiv.vertices))
+    niter = int(np.ceil(np.log2(dist/target_size)))
+    mdiv = mdiv.subdivide_loop(number_of_iterations=niter)
+
+    # refined subdivision
+    # iterate until target_size is reached
+    while np.max(nn_distance(mdiv.vertices)) > target_size:
         mdiv = mdiv.subdivide_loop()
-        mdiv = mdiv.simplify_vertex_clustering(
-            voxel_size=0.5,
-            contraction=o3d.geometry.SimplificationContraction.Quadric
-        )
-        # sometimes still get non-manifold edges after steps below, why?
-        while len(mdiv.get_non_manifold_edges()) > 0:
-            mdiv = mdiv.remove_non_manifold_edges()
     return mdiv
 
 
@@ -216,17 +214,17 @@ def refine_surface(zyx, sigma_normal, sigma_mesh, mask_bound=None):
     mesh = mesh.select_by_index(iv_surround)
 
     # subdivide to pixel scale
-    mdiv = mesh_subdivide(mesh, target_len=1)
-    mdiv = mdiv.select_by_index(
+    mdiv = mesh_subdivide(mesh, target_size=1)
+    mdiv_hull = mdiv.select_by_index(
         points_in_hull(mdiv.vertices, hull)
     )
 
     # convert to image
-    zyx_raw = utils.reverse_coord(np.asarray(mdiv.vertices))
+    zyx_raw = utils.reverse_coord(np.asarray(mdiv_hull.vertices))
     if mask_bound is not None:
         shape = mask_bound.shape
     else:
-        shape = np.ceil(np.max(zyx, axis=0)).astype(np.int_)
+        shape = np.ceil(np.max(zyx, axis=0)).astype(np.int_) + 1
     B_refine = utils.coord_to_mask(zyx_raw, shape)
     B_refine = next(utils.extract_connected(B_refine, connectivity=3))[1]
     if mask_bound is not None:
