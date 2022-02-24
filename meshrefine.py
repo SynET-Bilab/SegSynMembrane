@@ -53,7 +53,9 @@ def normals_pointcloud(pcd, sigma, xyz_ref=None):
         imin = np.argmin(np.linalg.norm(
             np.asarray(pcd.points)-xyz_ref, axis=1))
         # align normals with this direction
-        sign = np.sign(np.dot(pcd.normals[imin], pcd.points[imin]))
+        sign = np.sign(np.dot(
+            pcd.normals[imin], pcd.points[imin]-xyz_ref
+        ))
         if sign < 0:
             pcd.normals = o3d.utility.Vector3dVector(
                 -np.asarray(pcd.normals))

@@ -214,9 +214,10 @@ class SegPrePost(SegBase):
         fig, axes = plot.imoverlay(im_dict)
         return fig, axes
     
-    def imshow3d_steps(self, vec_width=0.25):
+    def imshow3d_steps(self, vec_width=0.25, vec_length=2):
         """ imshow important intermediate results
         :param vec_width: width for plotting normal vectors
+        :param vec_length: length for plotting normal vectors
         """
         # setup
         self.check_steps(["tomo"], raise_error=True)
@@ -266,7 +267,7 @@ class SegPrePost(SegBase):
                 for i in (1, 2)
             ]
             vecs_dir = [
-                utils.reverse_coord(self.steps["meshrefine"][f"nxyz{i}"])
+                vec_length*utils.reverse_coord(self.steps["meshrefine"][f"nxyz{i}"])
                 for i in (1, 2)
             ]
             name_vecs = ["normal(pre)", "normal(post)"]
@@ -598,8 +599,11 @@ class SegPrePost(SegBase):
             sigma_mesh=factor_mesh*d_mem,
             mask_bound=self.coord_to_mask(self.steps["tomo"]["zyx_bound"])
         )
+
+        # normal directions: towards cleft
         zyxref1, nxyz1 = SegSteps.meshrefine(zyx1, **params)
         zyxref2, nxyz2 = SegSteps.meshrefine(zyx2, **params)
+        nxyz2 = -nxyz2
         
         # save parameters and results
         self.steps["meshrefine"].update(dict(
