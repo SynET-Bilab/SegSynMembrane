@@ -365,7 +365,10 @@ class SegSteps:
         )
 
         # sort
-        shape = np.ceil(np.max(zyx, axis=0)).astype(np.int_)
+        if mask_bound is not None:
+            shape = mask_bound.shape
+        else:
+            shape = np.ceil(np.max(zyx, axis=0)).astype(np.int_) + 1
         Bsort = utils.coord_to_mask(zyx_refine, shape)
         _, Osort = hessian.features3d(Bsort, 1)
         zyx_sort = trace.Trace(Bsort, Osort*Bsort).sort_coord()

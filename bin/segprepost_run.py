@@ -106,7 +106,8 @@ def run_seg(args):
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(message)s",
-        datefmt="%Y-%m-%d %H:%M"
+        datefmt="%Y-%m-%d %H:%M:%S",
+        force=True
     )
     logging.info("starting etsynseg")
 
