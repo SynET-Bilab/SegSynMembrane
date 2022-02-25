@@ -13,7 +13,7 @@ def build_parser():
     """
     # parser
     parser = argparse.ArgumentParser(
-        prog="segprepost.py",
+        prog="segprepost_run.py",
         description="Segmentation of synaptic membranes. Outputs: record of steps (-steps.npz), segmentation model (-segs.mod), its quickview image (-segs.png), smoothed fittings (-fits.mod), and surface normal (-normal.npz).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
