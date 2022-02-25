@@ -147,8 +147,8 @@ class SegPrePost(SegBase):
         # write model
         io.write_model(zyx_arr=zyx_arr, model_file=filename)
     
-    def output_points(self, filename, clipped=False):
-        """ output points and normal
+    def output_seg(self, filename, clipped=False):
+        """ output final seg, including points and normals
         :param filename: filename(.npz) for saving
         :param clipped: if coordinates are for the clipped data
         """
@@ -161,6 +161,8 @@ class SegPrePost(SegBase):
             zyx_shift = np.zeros(3)
         np.savez(
             filename,
+            tomo_file=steps["tomo"]["tomo_file"],
+            voxel_size_nm=steps["tomo"]["voxel_size_nm"],
             xyz1=utils.reverse_coord(steps["meshrefine"]["zyx1"]+zyx_shift),
             xyz2=utils.reverse_coord(steps["meshrefine"]["zyx2"]+zyx_shift),
             normal1=steps["meshrefine"]["nxyz1"],

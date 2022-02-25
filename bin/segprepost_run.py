@@ -14,7 +14,7 @@ def build_parser():
     # parser
     parser = argparse.ArgumentParser(
         prog="segprepost_run.py",
-        description="Segmentation of synaptic membranes. Outputs: record of steps (-steps.npz), segmentation model (-segs.mod), its quickview image (-segs.png), smoothed fittings (-fits.mod), and surface normal (-normal.npz).",
+        description="Segmentation of synaptic membranes. Inputs: tomo and boundary model. Outputs: record of steps (-steps.npz), segmentation result (-seg.npz), model (-seg.mod), quickview image (-seg.png).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
@@ -249,7 +249,7 @@ def run_seg(args):
         backup_file(filenames["meshrefine_fig"])
         seg.output_figure(
             "meshrefine", filenames["meshrefine_fig"], nslice=5, dpi=300, clipped=True)
-        seg.output_points(filenames["meshrefine_pts"])
+        seg.output_seg(filenames["meshrefine_pts"])
     
     logging.info("ending etsynseg")
 
