@@ -147,21 +147,27 @@ class SegPrePost(SegBase):
         # write model
         io.write_model(zyx_arr=zyx_arr, model_file=filename)
     
-    def output_points(self, filename):
+    def output_points(self, filename, clipped=False):
         """ output points and normal
         :param filename: filename(.npz) for saving
+        :param clipped: if coordinates are for the clipped data
         """
         self.check_steps(["tomo", "meshrefine"], raise_error=True)
         steps = self.steps
+
+        if not clipped:
+            zyx_shift = self.steps["tomo"]["zyx_shift"]
+        else:
+            zyx_shift = np.zeros(3)
         np.savez(
             filename,
-            xyz1=utils.reverse_coord(steps["meshrefine"]["zyx1"]),
-            xyz2=utils.reverse_coord(steps["meshrefine"]["zyx2"]),
+            xyz1=utils.reverse_coord(steps["meshrefine"]["zyx1"]+zyx_shift),
+            xyz2=utils.reverse_coord(steps["meshrefine"]["zyx2"]+zyx_shift),
             normal1=steps["meshrefine"]["nxyz1"],
             normal2=steps["meshrefine"]["nxyz2"],
         )
 
-    def output_figure(self, step, filename, clipped=True, nslice=5, dpi=200):
+    def output_figure(self, step, filename, clipped=True, nslice=5, dpi=300):
         """ output results to a figure
         :param step: step name, one of {match, surf_fit}
         :param filename: filename(.png) for saving
