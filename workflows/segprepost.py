@@ -5,7 +5,7 @@ import time
 import numpy as np
 import mrcfile
 from etsynseg import io, utils, plot
-from etsynseg import division
+from etsynseg import division, meshrefine
 from etsynseg.workflows import SegBase, SegSteps
 
 
@@ -108,6 +108,8 @@ class SegPrePost(SegBase):
                 zyx2=None,
                 nxyz1=None,
                 nxyz2=None,
+                dist1=None,
+                dist2=None
             ),
         )
 
@@ -167,6 +169,8 @@ class SegPrePost(SegBase):
             xyz2=utils.reverse_coord(steps["meshrefine"]["zyx2"]+zyx_shift),
             normal1=steps["meshrefine"]["nxyz1"],
             normal2=steps["meshrefine"]["nxyz2"],
+            dist1=steps["meshrefine"]["dist1"],
+            dist2=steps["meshrefine"]["dist2"]
         )
 
     def output_figure(self, step, filename, clipped=True, nslice=5, dpi=300):
@@ -612,6 +616,12 @@ class SegPrePost(SegBase):
         zyxref1, nxyz1 = SegSteps.meshrefine(zyx1, **params)
         zyxref2, nxyz2 = SegSteps.meshrefine(zyx2, **params)
         nxyz2 = -nxyz2
+
+        # distance to the other membrane
+        pcdref1 = meshrefine.create_pointcloud(zyxref1)
+        pcdref2 = meshrefine.create_pointcloud(zyxref2)
+        dist1 = np.asarray(pcdref1.compute_point_cloud_distance(pcdref2))
+        dist2 = np.asarray(pcdref2.compute_point_cloud_distance(pcdref1))
         
         # save parameters and results
         self.steps["meshrefine"].update(dict(
@@ -624,5 +634,7 @@ class SegPrePost(SegBase):
             zyx2=zyxref2,
             nxyz1=nxyz1,
             nxyz2=nxyz2,
+            dist1=dist1,
+            dist2=dist2
         ))
         self.steps["meshrefine"]["timing"] = time.process_time()-time_start
