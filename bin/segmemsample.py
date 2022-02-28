@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
+import os
 import pathlib
 import numpy as np
 import pandas as pd
@@ -13,8 +14,8 @@ def normal_to_euler(normal):
         euler: ()
     """
     nx, ny, nz = normal
-    theta = np.rad2deg(np.arccos(nz))  # np outputs [0,pi]
-    phi = np.mod(np.rad2deg(np.arctan2(ny, nx)), 360)  # np outputs [-pi,pi]
+    theta = np.mod(-np.rad2deg(np.arccos(nz)), 360)  # np outputs [0,pi]
+    phi = np.mod(-np.rad2deg(np.arctan2(ny, nx)), 360)  # np outputs [-pi,pi]
     euler = (180., theta, phi)
     return euler
 
@@ -51,11 +52,13 @@ def get_tomo_path(seg_file, tomo_file=None):
     if tomo_file is None:
         tomo_file = np.load(seg_file, allow_pickle=True)["tomo_file"].item()
 
+    # get absolute path to tomo
     # combine path/to/seg with path/tomo/relative/to/seg
+    # use os.path.abspath to not expand symlink (pathlib.Path().resolve does)
     seg_dir = pathlib.Path(seg_file).parent
-    tomo_abs = (seg_dir/tomo_file).resolve()
-    # relative to current dir
-    pwd = pathlib.Path(".").resolve()
+    tomo_abs = pathlib.Path(os.path.abspath(seg_dir/tomo_file))
+    # get relative path to tomo w.r.t. current dir
+    pwd = pathlib.Path(os.path.abspath("."))
     tomo_rel = str(tomo_abs.relative_to(pwd))
     return tomo_rel
 
