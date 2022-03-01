@@ -2,7 +2,7 @@
 """
 
 import numpy as np
-from etsynseg import io, utils, trace
+from etsynseg import io, utils, tracing
 from etsynseg import hessian, dtvoting, nonmaxsup
 from etsynseg import evomsac, matching, meshrefine
 
@@ -370,7 +370,7 @@ class SegSteps:
             Bmatch = Bmatch * mask_bound
 
         # ordering
-        zyx_sorted = trace.Trace(Bmatch, O*Bmatch).sort_coord()
+        zyx_sorted = tracing.Trace(Bmatch, O*Bmatch).sort_coord()
         
         return Bmatch, zyx_sorted
 
@@ -401,7 +401,7 @@ class SegSteps:
             shape = np.ceil(np.max(zyx, axis=0)).astype(np.int_) + 1
         Bsort = utils.coord_to_mask(zyx_refine, shape)
         _, Osort = hessian.features3d(Bsort, 1)
-        zyx_sort = trace.Trace(Bsort, Osort*Bsort).sort_coord()
+        zyx_sort = tracing.Trace(Bsort, Osort*Bsort).sort_coord()
 
         # calculate normal
         nxyz = meshrefine.normals_points(

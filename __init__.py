@@ -14,7 +14,7 @@ __version__ = "0.1"
 # ]
 
 # auxiliary functions
-from etsynseg import utils, io, plot, trace, bspline
+from etsynseg import utils, io, plot, tracing, bspline
 # membrane detection
 from etsynseg import hessian, dtvoting, nonmaxsup
 # membrane extraction

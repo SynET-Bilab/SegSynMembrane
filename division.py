@@ -1,5 +1,3 @@
-""" trace
-"""
 
 import multiprocessing.dummy
 import numpy as np
@@ -8,7 +6,7 @@ import pandas as pd
 import sklearn.decomposition
 import sklearn.cluster
 import skimage
-from etsynseg import utils, trace
+from etsynseg import utils, tracing
 
 __all__ = [
     "Segmentalize",
@@ -25,7 +23,7 @@ class Segmentalize:
         self.nz = B.shape[0]
         
         # setup trace
-        self.tracing = trace.Trace(B, O, max_size=max_size)
+        self.tr = tracing.Trace(B, O, max_size=max_size)
 
         # prep disk for dilation
         self.r_thresh = r_thresh
@@ -41,7 +39,7 @@ class Segmentalize:
         # segmentalize into segments
         yxd = []
         for iz in range(self.nz):
-            yx_iz, d_iz = self.tracing.bfs2d(iz)
+            yx_iz, d_iz = self.tr.bfs2d(iz)
             for yx_i, d_i in zip(yx_iz, d_iz):
                 yxd.append((iz, yx_i, np.mean(d_i)))
 

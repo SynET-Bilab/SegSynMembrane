@@ -13,11 +13,11 @@ __all__ = [
 class Trace:
     """ trace in 2d planes
     usage:
-        tracing = etsynseg.trace.Trace(B, O)
-        yx_traces_iz, d_traces_iz = tracing.bfs2d(iz)
-        traces = tracing.bfs3d()
-        yx_traces_iz, d_traces_iz = tracing.dfs2d(iz)
-        traces = tracing.dfs3d()
+        tr = etsynseg.tracing.Trace(B, O)
+        yx_trs_iz, d_trs_iz = tr.bfs2d(iz)
+        trs = tr.bfs3d()
+        yx_trs_iz, d_trs_iz = tr.dfs2d(iz)
+        trs = tr.dfs3d()
     """
     def __init__(self, B, O, n_next=2, max_size=np.inf):
         # save variables
@@ -127,12 +127,12 @@ class Trace:
         """ trace segment from current (y,x) in one direction
         :param yx_start: current (y,x)
         :param map_yxd: {(y,x): direction}
-        :return: yx_trace, d_trace
-            yx_trace: [(y,x)_1,(y,x)_2,...]
-            d_trace: [d_1,d_2,...]
+        :return: yx_tr, d_tr
+            yx_tr: [(y,x)_1,(y,x)_2,...]
+            d_tr: [d_1,d_2,...]
         """
-        yx_trace = []
-        d_trace = []
+        yx_tr = []
+        d_tr = []
 
         # BFS
         yx_tovisit = [yx_start]
@@ -146,12 +146,12 @@ class Trace:
 
             # visit yx_curr, flag with None
             d_curr = map_yxd[yx_curr]
-            yx_trace.append(yx_curr)
-            d_trace.append(d_curr)
+            yx_tr.append(yx_curr)
+            d_tr.append(d_curr)
             map_yxd[yx_curr] = None
             
             # break: if max_size is reached
-            if len(yx_trace) >= self.max_size:
+            if len(yx_tr) >= self.max_size:
                 break
 
             # update yx_tovisit
@@ -163,14 +163,14 @@ class Trace:
                     map_yxd[yx_next] = d_next
                     yx_tovisit.append(yx_next)
 
-        return yx_trace, d_trace
+        return yx_tr, d_tr
 
     def bfs2d(self, iz):
         """ trace a slice
         :param iz: z index of slice
-        :return: yx_traces, d_traces
-            yx_traces: [yx_trace_0, yx_trace_1, ...]
-            d_traces: [d_trace_0, d_trace_1, ...]
+        :return: yx_trs, d_trs
+            yx_trs: [yx_tr_0, yx_tr_1, ...]
+            d_trs: [d_tr_0, d_tr_1, ...]
         """
         B_iz = self.B[iz]
         O_iz = self.O[iz]
@@ -184,31 +184,31 @@ class Trace:
         map_yxd = dict(zip(yx_sort, d_sort))
 
         # trace until all yx's are exhausted
-        yx_traces = []
-        d_traces = []
+        yx_trs = []
+        d_trs = []
         while len(yx_sort) > 0:
             # trace
-            yx_trace_i, d_trace_i = self.bfs2d_from_point(yx_sort[0], map_yxd)
+            yx_tr_i, d_tr_i = self.bfs2d_from_point(yx_sort[0], map_yxd)
             # record
-            yx_traces.append(yx_trace_i)
-            d_traces.append(d_trace_i)
+            yx_trs.append(yx_tr_i)
+            d_trs.append(d_tr_i)
             # remove traced yx's
-            for yx in yx_trace_i:
+            for yx in yx_tr_i:
                 yx_sort.remove(yx)
         
-        return yx_traces, d_traces
+        return yx_trs, d_trs
 
     def bfs3d(self):
         """ trace 3d binary image self.B
-        :return: traces
-            traces: [(iz_1, yx_traces_1, d_traces_1),...]
+        :return: trs
+            trs: [(iz_1, yx_trs_1, d_trs_1),...]
         """
         # flatten array
-        traces = []
+        trs = []
         for iz in range(self.nz):
             yx_iz, d_iz = self.bfs2d(iz)
-            traces.append((iz, yx_iz, d_iz))
-        return traces
+            trs.append((iz, yx_iz, d_iz))
+        return trs
 
     #=========================
     # depth-first-scan
@@ -251,9 +251,9 @@ class Trace:
     def dfs2d(self, iz):
         """ trace a slice
         :param iz: z index of slice
-        :return: yx_traces, d_traces
-            yx_traces: [yx_trace_0, yx_trace_1, ...]
-            d_traces: [d_trace_0, d_trace_1, ...]
+        :return: yx_trs, d_trs
+            yx_trs: [yx_trace_0, yx_trace_1, ...]
+            d_trs: [d_trace_0, d_trace_1, ...]
         """
         B_iz = self.B[iz]
         O_iz = self.O[iz]
@@ -267,33 +267,33 @@ class Trace:
         map_yxd = dict(zip(yx_sort, d_sort))
 
         # trace until all yx's are exhausted
-        yx_traces = []
-        d_traces = []
+        yx_trs = []
+        d_trs = []
         while len(yx_sort) > 0:
             # trace
-            yx_trace_i = []
-            d_trace_i = []
-            self.dfs2d_from_point(yx_sort[0], map_yxd, yx_trace_i, d_trace_i)
+            yx_tr_i = []
+            d_tr_i = []
+            self.dfs2d_from_point(yx_sort[0], map_yxd, yx_tr_i, d_tr_i)
             # record
-            yx_traces.append(yx_trace_i)
-            d_traces.append(d_trace_i)
+            yx_trs.append(yx_tr_i)
+            d_trs.append(d_tr_i)
             # remove traced yx's
-            for yx in yx_trace_i:
+            for yx in yx_tr_i:
                 yx_sort.remove(yx)
         
-        return yx_traces, d_traces
+        return yx_trs, d_trs
 
     def dfs3d(self):
         """ trace 3d binary image self.B
-        :return: traces
-            traces: [(iz_1, yx_traces_1, d_traces_1),...]
+        :return: trs
+            trs: [(iz_1, yx_trs_1, d_trs_1),...]
         """
         # flatten array
-        traces = []
+        trs = []
         for iz in range(self.nz):
             yx_iz, d_iz = self.dfs2d(iz)
-            traces.append((iz, yx_iz, d_iz))
-        return traces
+            trs.append((iz, yx_iz, d_iz))
+        return trs
 
     #=========================
     # sort coordinates
@@ -308,8 +308,8 @@ class Trace:
         # sort for each slice
         for iz in range(self.B.shape[0]):
             # get yx by bfs, directly concat
-            yx_traces, _ = self.bfs2d(iz)
-            yx_iz = np.concatenate(yx_traces, axis=0)
+            yx_trs, _ = self.bfs2d(iz)
+            yx_iz = np.concatenate(yx_trs, axis=0)
             # prepend z
             z_iz = iz*np.ones((len(yx_iz), 1), dtype=np.int_)
             zyx_iz = np.concatenate([z_iz, yx_iz], axis=1)

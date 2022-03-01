@@ -1,6 +1,6 @@
 import numpy as np
 import skimage
-from etsynseg import hessian, dtvoting, utils, trace
+from etsynseg import hessian, dtvoting, utils, tracing
 
 __all__ = [
     "GMMFixed", "fill_matched", "match_spatial_orient"
@@ -101,17 +101,17 @@ def fill_matched(B_seg, O_seg, B_match):
         B_fill: filled matched image
     """
     # setup
-    tracing = trace.Trace(B_seg, O_seg)
+    tr = tracing.Trace(B_seg, O_seg)
     # shape_yx = B_seg[0].shape
     B_fill = np.zeros(B_seg.shape, dtype=np.int_)
 
     # fix one slice
     def calc_one(iz):
         # get traces using depth-first scan
-        yx_traces, _ = tracing.dfs2d(iz)
-        for yx_tr in yx_traces:
+        yx_trs, _ = tr.dfs2d(iz)
+        for yx_tr_i in yx_trs:
             # positions of pixels in the trace
-            pos = tuple(np.transpose(yx_tr))
+            pos = tuple(np.transpose(yx_tr_i))
             # corresponding pixels in matched image
             b_match = B_match[iz][pos]
             i_match = np.nonzero(b_match)[0]
