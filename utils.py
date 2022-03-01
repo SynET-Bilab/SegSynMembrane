@@ -12,7 +12,7 @@ __all__ = [
     # orientation
     "rotate_orient", "absdiff_orient",
     # points, image
-    "mask_to_coord", "coord_to_mask", "reverse_coord", "mask_to_contour", "points_to_pointcloud",
+    "voxels_to_points", "points_to_voxels", "reverse_coord", "mask_to_contour", "points_to_pointcloud",
     # sparse
     "sparsify3d", "densify3d",
     # segments
@@ -86,41 +86,41 @@ def absdiff_orient(O1, O2):
 # coordinates tools
 #=========================
 
-def mask_to_coord(mask):
-    """ convert mask[y,x] to coordinates (y,x) of points>0
-    :param mask: binary image
+def voxels_to_points(B):
+    """ convert B[z,y,x] to coordinates (z,y,x) of points>0
+    :param B: binary image
     :return: coord
-        coord: shape=(npts, mask.ndim)
+        coord: shape=(npts, B.ndim)
     """
-    coord = np.argwhere(mask)
-    return coord
+    pts = np.argwhere(B)
+    return pts
 
-def coord_to_mask(coord, shape):
-    """ convert coordinates (y,x) to mask[y,x] with 1's on points
-    :param coord: yx or zyx
+def points_to_voxels(pts, shape):
+    """ convert coordinates (y,x) to B[y,x] with 1's on points
+    :param pts: yx or zyx
     :param shape: (ny,nx) or (nz,ny,nx)
-    :return: mask
+    :return: B
     """
-    coord = np.asarray(coord)
-    mask = np.zeros(shape, dtype=np.int_)
-    ndim = coord.shape[1]
+    pts = np.asarray(pts)
+    B = np.zeros(shape, dtype=np.int_)
+    ndim = pts.shape[1]
     index = tuple(
         np.clip(
-            np.round(coord[:, i]).astype(np.int_),
+            np.round(pts[:, i]).astype(np.int_),
             0, shape[i]-1
         ) for i in range(ndim)
     )
-    mask[index] = 1
-    return mask
+    B[index] = 1
+    return B
 
-def reverse_coord(coord):
+def reverse_coord(pts):
     """ convert (y,x) to (x,y)
-    :param coord: yx or zyx
-    :return: reversed coord
+    :param pts: yx or zyx
+    :return: reversed pts
     """
-    coord = np.asarray(coord)
-    index_rev = np.arange(coord.shape[1])[::-1]
-    return coord[:, index_rev]
+    pts = np.asarray(pts)
+    index_rev = np.arange(pts.shape[1])[::-1]
+    return pts[:, index_rev]
 
 def mask_to_contour(mask, erode=True):
     """ convert a (connected) binary mask to contour (largest one in each plane)
@@ -315,7 +315,7 @@ def spans_xy(B):
     nz = B.shape[0]
     dydx = np.zeros((nz, 2))
     for iz in range(nz):
-        yx = mask_to_coord(B[iz])
+        yx = voxels_to_points(B[iz])
         dydx[iz] = np.ptp(yx, axis=0)
     return dydx
 

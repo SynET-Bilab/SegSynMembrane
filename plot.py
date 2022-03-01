@@ -224,7 +224,7 @@ def imoverlay(im_dict, shape=None,
         # overlaying images
         # yx to im, set zero pixels to alpha=0
         for i, yx in enumerate(item["yxs"]):
-            im_i = utils.coord_to_mask(yx, item["I"].shape)
+            im_i = utils.points_to_voxels(yx, item["I"].shape)
             axes[idx2d].imshow(
                 # set vmax=2 so that midpoint of cmap is shown
                 im_i, vmin=0, vmax=2,

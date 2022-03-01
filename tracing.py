@@ -42,7 +42,7 @@ class Trace:
         """ set pca for projected yx; align O to pc axis
         """
         # calc pca
-        zyx = utils.mask_to_coord(self.B)
+        zyx = utils.voxels_to_points(self.B)
         self.pca = sklearn.decomposition.PCA(n_components=1)
         self.pca.fit(zyx[:, 1:])
         
@@ -344,7 +344,7 @@ class Trace:
     # sort coordinates
     #=========================
     
-    def sort_coord(self):
+    def sort_points(self):
         """ sort voxels of image by bfs
         :return: zyx
             zyx: 2d np.ndarray, [[z1,y1,x1],...]

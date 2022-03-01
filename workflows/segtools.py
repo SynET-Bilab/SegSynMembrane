@@ -12,7 +12,7 @@ __all__ = [
 class SegBase:
     """ workflow for segmentation
     attribute formats:
-        binary images: save coordinates (utils.mask_to_coord, self.coord_to_binary)
+        binary images: save coordinates (utils.voxels_to_points, self.coord_to_binary)
         sparse images (O): save as sparse (utils.sparsify3d, utils.densify3d)
         MOOPop: save state (MOOPop().dump_state, MOOPop(state=state))
     """
@@ -62,7 +62,7 @@ class SegBase:
 
 class SegSteps:
     # @staticmethod
-    # def sort_coord(zyx):
+    # def sort_points(zyx):
     #     """ sort coordinates by pc
     #     :param zyx: zyx
     #     :return: zyx_sorted
@@ -156,7 +156,7 @@ class SegSteps:
             model=model,
             clip_range=clip_range,
             zyx_shift=zyx_shift,
-            zyx_bound=utils.mask_to_coord(mask_bound),
+            zyx_bound=utils.voxels_to_points(mask_bound),
             contour_bound=contour_bound,
             contour_len_bound=contour_len_bound,
             d_mem=d_mem_nm/voxel_size_nm,
@@ -231,8 +231,8 @@ class SegSteps:
             xyfilter=xyfilter,
             dzfilter=dzfilter,
             # results
-            zyx_supp=utils.mask_to_coord(Bsupp),
-            zyx=utils.mask_to_coord(Bdetect),
+            zyx_supp=utils.voxels_to_points(Bsupp),
+            zyx=utils.voxels_to_points(Bdetect),
             Oz=utils.sparsify3d(Odetect)
         )
         return results
@@ -360,7 +360,7 @@ class SegSteps:
             Bmatch = Bmatch * mask_bound
 
         # ordering
-        zyx_sorted = tracing.Trace(Bmatch, O*Bmatch).sort_coord()
+        zyx_sorted = tracing.Trace(Bmatch, O*Bmatch).sort_points()
         
         return Bmatch, zyx_sorted
 
@@ -389,9 +389,9 @@ class SegSteps:
             shape = mask_bound.shape
         else:
             shape = np.ceil(np.max(zyx, axis=0)).astype(np.int_) + 1
-        Bsort = utils.coord_to_mask(zyx_refine, shape)
+        Bsort = utils.points_to_voxels(zyx_refine, shape)
         _, Osort = hessian.features3d(Bsort, 1)
-        zyx_sort = tracing.Trace(Bsort, Osort*Bsort).sort_coord()
+        zyx_sort = tracing.Trace(Bsort, Osort*Bsort).sort_points()
 
         # calculate normal
         nxyz = meshrefine.normals_points(

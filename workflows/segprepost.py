@@ -13,7 +13,7 @@ from etsynseg.workflows import SegBase, SegSteps
 class SegPrePost(SegBase):
     """ workflow for segmentation
     attribute formats:
-        binary images: save coordinates (utils.mask_to_coord, utils.coord_to_mask)
+        binary images: save coordinates (utils.voxels_to_points, utils.points_to_voxels)
         sparse images (O): save as sparse (utils.sparsify3d, utils.densify3d)
         MOOPop: save state (MOOPop().dump_state, MOOPop(state=state))
     
@@ -249,13 +249,13 @@ class SegPrePost(SegBase):
         Is_overlay = []
         if self.check_steps(["detect"]):
             Is_overlay.extend([
-                self.coord_to_mask(self.steps["detect"][f"zyx{i}"])
+                self.points_to_voxels(self.steps["detect"][f"zyx{i}"])
                 for i in ("_supp", "")
             ])
         for step in ["divide", "evomsac", "match", "meshrefine"]:
             if self.check_steps([step]):
                 Is_overlay.extend([
-                    self.coord_to_mask(self.steps[step][f"zyx{i}"])
+                    self.points_to_voxels(self.steps[step][f"zyx{i}"])
                     for i in (1, 2)
                 ])
             else:
@@ -309,12 +309,12 @@ class SegPrePost(SegBase):
     # utils
     #=========================
     
-    def coord_to_mask(self, coord):
+    def points_to_voxels(self, coord):
         """ coord to mask, use default shape
         """
         self.check_steps(["tomo"], raise_error=True)
         shape = self.steps["tomo"]["shape"]
-        return utils.coord_to_mask(coord, shape)
+        return utils.points_to_voxels(coord, shape)
 
     #=========================
     # read tomo
@@ -390,7 +390,7 @@ class SegPrePost(SegBase):
         # load from self
         self.check_steps(["tomo"], raise_error=True)
         I = self.steps["tomo"]["I"]
-        mask_bound = self.coord_to_mask(self.steps["tomo"]["zyx_bound"])
+        mask_bound = self.points_to_voxels(self.steps["tomo"]["zyx_bound"])
         d_mem = self.steps["tomo"]["d_mem"]
         
         # sets sigma_supp, dzfilter
@@ -438,7 +438,7 @@ class SegPrePost(SegBase):
         d_mem = self.steps["tomo"]["d_mem"]
         d_cleft = self.steps["tomo"]["d_cleft"]
         zyx_ref = self.steps["tomo"]["zyx_ref"]
-        B = self.coord_to_mask(self.steps["detect"]["zyx"])
+        B = self.points_to_voxels(self.steps["detect"]["zyx"])
         O = utils.densify3d(self.steps["detect"]["Oz"])
 
         # extract two largest components
@@ -452,7 +452,7 @@ class SegPrePost(SegBase):
             if len(comps) == 1:
                 return True
             else:
-                zyx1, zyx2 = [utils.mask_to_coord(comp) for comp in comps[:2]]
+                zyx1, zyx2 = [utils.voxels_to_points(comp) for comp in comps[:2]]
                 # size of component-2 too small: True
                 if len(zyx2)/len(zyx1) < size_ratio_thresh:
                     return True
@@ -477,8 +477,8 @@ class SegPrePost(SegBase):
         
         # compare components' distance to ref
         iz_ref = int(zyx_ref[0])
-        yx1 = utils.mask_to_coord(comp1[iz_ref])
-        yx2 = utils.mask_to_coord(comp2[iz_ref])
+        yx1 = utils.voxels_to_points(comp1[iz_ref])
+        yx2 = utils.voxels_to_points(comp2[iz_ref])
         dist1 = np.sum((yx1 - zyx_ref[1:])**2, axis=1).min()
         dist2 = np.sum((yx2 - zyx_ref[1:])**2, axis=1).min()
 
@@ -499,8 +499,8 @@ class SegPrePost(SegBase):
             # parameters: inferred
             dzfilter=dzfilter,
             # results
-            zyx1=utils.mask_to_coord(Bdiv1),
-            zyx2=utils.mask_to_coord(Bdiv2),
+            zyx1=utils.voxels_to_points(Bdiv1),
+            zyx2=utils.voxels_to_points(Bdiv2),
         ))
         self.steps["divide"]["timing"] = time.process_time()-time_start
     
@@ -540,7 +540,7 @@ class SegPrePost(SegBase):
         )
         zyx1, mpopz1 = SegSteps.evomsac(self.steps["divide"]["zyx1"],
             voxel_size_nm=voxel_size_nm, **params)
-        zyx2, mpopz2 = SegSteps.evomsac(self.steps["divide"]["zyx1"],
+        zyx2, mpopz2 = SegSteps.evomsac(self.steps["divide"]["zyx2"],
             voxel_size_nm=voxel_size_nm, **params)
 
         # save parameters and results
@@ -574,17 +574,17 @@ class SegPrePost(SegBase):
         self.check_steps(["tomo", "detect", "divide", "evomsac"], raise_error=True)
         d_mem = self.steps["tomo"]["d_mem"]
         O = utils.densify3d(self.steps["detect"]["Oz"])
-        Bdiv1 = self.coord_to_mask(self.steps["divide"]["zyx1"])
-        Bdiv2 = self.coord_to_mask(self.steps["divide"]["zyx2"])
-        Bsac1 = self.coord_to_mask(self.steps["evomsac"]["zyx1"])
-        Bsac2 = self.coord_to_mask(self.steps["evomsac"]["zyx2"])
+        Bdiv1 = self.points_to_voxels(self.steps["divide"]["zyx1"])
+        Bdiv2 = self.points_to_voxels(self.steps["divide"]["zyx2"])
+        Bsac1 = self.points_to_voxels(self.steps["evomsac"]["zyx1"])
+        Bsac2 = self.points_to_voxels(self.steps["evomsac"]["zyx2"])
 
         # match
         params = dict(
             sigma_tv=d_mem*factor_tv,
             sigma_hessian=d_mem,
             sigma_extend=d_mem*factor_extend,
-            mask_bound=self.coord_to_mask(self.steps["tomo"]["zyx_bound"])
+            mask_bound=self.points_to_voxels(self.steps["tomo"]["zyx_bound"])
         )
         _, zyx1 = SegSteps.match(Bdiv1, O*Bdiv1, Bsac1, **params)
         _, zyx2 = SegSteps.match(Bdiv2, O*Bdiv2, Bsac2, **params)
@@ -624,7 +624,7 @@ class SegPrePost(SegBase):
             zyx_ref=self.steps["tomo"]["zyx_ref"],
             sigma_normal=factor_normal*d_mem,
             sigma_mesh=factor_mesh*d_mem,
-            mask_bound=self.coord_to_mask(self.steps["tomo"]["zyx_bound"])
+            mask_bound=self.points_to_voxels(self.steps["tomo"]["zyx_bound"])
         )
 
         # normal directions: towards cleft

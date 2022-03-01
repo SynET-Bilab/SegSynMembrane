@@ -9,7 +9,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 import deap, deap.base, deap.tools
 
-from etsynseg.utils import coord_to_mask
 from etsynseg.evomsac import MOOTools
 
 class MOOPop:

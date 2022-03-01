@@ -189,7 +189,7 @@ def refine_surface(zyx, sigma_normal, sigma_mesh, mask_bound=None):
     # create mesh
     xyz = utils.reverse_coord(zyx)
     pcd = normals_pointcloud(
-        pcd=utils.points_to_pointcloud(xyz=xyz),
+        pcd=utils.points_to_pointcloud(xyz),
         sigma=sigma_normal
     )
     mesh = create_mesh_poisson(pcd, resolution=sigma_mesh)
@@ -214,9 +214,9 @@ def refine_surface(zyx, sigma_normal, sigma_mesh, mask_bound=None):
         shape = mask_bound.shape
     else:
         shape = np.ceil(np.max(zyx, axis=0)).astype(np.int_) + 1
-    B_refine = utils.coord_to_mask(zyx_raw, shape)
+    B_refine = utils.points_to_voxels(zyx_raw, shape)
     B_refine = next(utils.extract_connected(B_refine, connectivity=3))[1]
     if mask_bound is not None:
         B_refine = mask_bound*B_refine
-    zyx_refine = utils.mask_to_coord(B_refine)
+    zyx_refine = utils.voxels_to_points(B_refine)
     return zyx_refine
