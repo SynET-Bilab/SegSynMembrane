@@ -61,31 +61,6 @@ class SegBase:
 #=========================
 
 class SegSteps:
-    @staticmethod
-    def set_ngrids(B, voxel_size_nm, grid_z_nm, grid_xy_nm):
-        """ setting number of grids for evomsac and fitting
-        :param B: binary image
-        :param voxel_size_nm: voxel spacing in nm
-        :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
-        :return: n_uz, n_vxy
-        """
-        # auxiliary
-        def set_one(span_vx, grid_nm, n_min):
-            span_nm = span_vx * voxel_size_nm
-            n_grid = int(np.round(span_nm/grid_nm)+1)
-            return max(n_min, n_grid)
-
-        # grids in z
-        nz = B.shape[0]
-        n_uz = set_one(nz, grid_z_nm, 3)
-
-        # grids in xy
-        dydx = utils.spans_xy(B)
-        l_xy = np.median(np.linalg.norm(dydx, axis=1))
-        n_vxy = set_one(l_xy, grid_xy_nm, 3)
-        
-        return n_uz, n_vxy
-    
     # @staticmethod
     # def sort_coord(zyx):
     #     """ sort coordinates by pc
@@ -263,29 +238,45 @@ class SegSteps:
         return results
 
     @staticmethod
-    def evomsac(B, voxel_size_nm, grid_z_nm, grid_xy_nm,
-            pop_size, max_iter, tol, factor_eval
-        ):
+    def evomsac(
+        zyx, voxel_size_nm, grid_z_nm, grid_xy_nm,
+        shrink_sidegrid, dist_thresh,
+        pop_size, max_iter, tol, factor_eval):
         """ evomsac for one divided part
-        :param B: 3d binary image
+        :param zyx: 3d binary image
         :param voxel_size_nm: voxel spacing in nm
         :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
+        :param shrink_sidegrid: grids close to the side in xy are shrinked to this ratio
+        :param dist_thresh: distance threshold for fitness evaluation, r_outliers >= dist_thresh
         :param pop_size: size of population
         :param tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
         :param max_iter: max number of generations
         :param factor_eval: factor for assigning evaluation points
         :return: zyx_sac, mpopz
             zyx_sac: zyx after evomsac
-            mpopz: mpop state, load by mpop=SegSteps.evomsac_mpop_load(mpopz, utils.mask_to_coord(B))
+            mpopz: mpop state, load by mpop=SegSteps.evomsac_mpop_load(mpopz, zyx)
         """
-        # setup grid and mootools
-        n_uz, n_vxy = SegSteps.set_ngrids(B, voxel_size_nm, grid_z_nm, grid_xy_nm)
-        mtools = evomsac.MOOTools(
-            B, n_vxy=n_vxy, n_uz=n_uz, nz_eachu=1, r_thresh=1
+        # setup grids
+        zs = np.unique(zyx[:, 0])
+        yxs = {z: zyx[zyx[:, 0] == z][:, 1:] for z in zs}
+        # grids in z
+        n_uz = len(zs)*voxel_size_nm/grid_z_nm
+        n_uz = max(3, int(np.round(n_uz)+1))
+        # grids in xy
+        l_xy = np.median(
+            [np.linalg.norm(np.ptp(yxs[z], axis=0)) for z in zs]
         )
+        n_vxy = l_xy*voxel_size_nm/grid_xy_nm + 2*(1-shrink_sidegrid)
+        n_vxy = max(3, int(np.round(n_vxy)+1))
 
-        # setup pop, evolve
+        # setup mootools, moopop
+        mtools = evomsac.MOOTools(
+            zyx, n_vxy=n_vxy, n_uz=n_uz, nz_eachu=1,
+            dist_thresh=dist_thresh, shrink_sidegrid=shrink_sidegrid
+        )
         mpop = evomsac.MOOPop(mtools, pop_size=pop_size)
+
+        # evolve
         mpop.init_pop()
         mpop.evolve(max_iter=max_iter, tol=tol)
 
@@ -295,12 +286,11 @@ class SegSteps:
         pts_net = mpop.mootools.get_coord_net(indiv)
         nu_eval = np.max(utils.wireframe_lengths(pts_net, axis=0))
         nv_eval = np.max(utils.wireframe_lengths(pts_net, axis=1))
-        Bsac, _ = mpop.mootools.fit_surface_eval(
+        zyx_sac, _ = mpop.mootools.fit_surface_eval(
             indiv,
             u_eval=np.linspace(0, 1, factor_eval*int(nu_eval)),
             v_eval=np.linspace(0, 1, factor_eval*int(nv_eval))
         )
-        zyx_sac = utils.mask_to_coord(Bsac)
 
         # save mpop state
         mpopz = SegSteps.evomsac_mpop_save(mpop, save_zyx=False)

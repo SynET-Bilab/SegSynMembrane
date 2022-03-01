@@ -3,9 +3,10 @@
 
 import time
 import numpy as np
+from sympy import factor
 import mrcfile
 from etsynseg import io, utils, plot
-from etsynseg import division, meshrefine
+from etsynseg import division
 from etsynseg.workflows import SegBase, SegSteps
 
 
@@ -80,9 +81,13 @@ class SegPrePost(SegBase):
                 # parameters: input
                 grid_z_nm=None,
                 grid_xy_nm=None,
+                shrink_sidegrid=None,
+                factor_dist_thresh=None,
                 pop_size=None,
                 max_iter=None,
                 tol=None,
+                # parameters: inferred
+                dist_thresh=None,
                 # results
                 mpopz1=None,
                 mpopz2=None,
@@ -504,7 +509,8 @@ class SegPrePost(SegBase):
     #=========================
 
     def evomsac(self, grid_z_nm=50, grid_xy_nm=150,
-            pop_size=40, max_iter=500, tol=(0.01, 10), factor_eval=1
+            shrink_sidegrid=0.2, factor_dist_thresh=1,
+            pop_size=40, max_iter=200, tol=(0.01, 10), factor_eval=1
         ):
         """ evomsac for both divided parts
         :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
@@ -512,32 +518,37 @@ class SegPrePost(SegBase):
         :param tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
         :param max_iter: max number of generations
         :param factor_eval: factor for assigning evaluation points
-        :action: assign steps["evomsac"]: mpop1, mpop2
+        :action: assign steps["evomsac"]
         """
         time_start = time.process_time()
 
         # load from self
         self.check_steps(["tomo", "divide"], raise_error=True)
+        d_mem = self.steps["tomo"]["d_mem"]
         voxel_size_nm = self.steps["tomo"]["voxel_size_nm"]
-        Bdiv1 = self.coord_to_mask(self.steps["divide"]["zyx1"])
-        Bdiv2 = self.coord_to_mask(self.steps["divide"]["zyx2"])
 
         # do for each divided part
         params = dict(
             grid_z_nm=grid_z_nm,
             grid_xy_nm=grid_xy_nm,
+            shrink_sidegrid=shrink_sidegrid,
+            dist_thresh=factor_dist_thresh*d_mem,
             pop_size=pop_size,
             max_iter=max_iter,
             tol=tol,
             factor_eval=factor_eval
         )
-        zyx1, mpopz1 = SegSteps.evomsac(Bdiv1, voxel_size_nm=voxel_size_nm, **params)
-        zyx2, mpopz2 = SegSteps.evomsac(Bdiv2, voxel_size_nm=voxel_size_nm, **params)
+        zyx1, mpopz1 = SegSteps.evomsac(self.steps["divide"]["zyx1"],
+            voxel_size_nm=voxel_size_nm, **params)
+        zyx2, mpopz2 = SegSteps.evomsac(self.steps["divide"]["zyx1"],
+            voxel_size_nm=voxel_size_nm, **params)
 
         # save parameters and results
         self.steps["evomsac"].update(params)
         self.steps["evomsac"].update(dict(
             finished=True,
+            # parameters
+            factor_dist_thresh=factor_dist_thresh,
             # results
             mpopz1=mpopz1,
             mpopz2=mpopz2,
@@ -551,7 +562,7 @@ class SegPrePost(SegBase):
     # matching
     #=========================
 
-    def match(self, factor_tv=1, factor_extend=5):
+    def match(self, factor_tv=1, factor_extend=1):
         """ match for both divided parts
         :param factor_tv: sigma for tv on detected = factor_tv*d_mem
         :param factor_extend: sigma for tv extension on evomsac surface = factor_extend*d_mem
@@ -622,8 +633,8 @@ class SegPrePost(SegBase):
         nxyz2 = -nxyz2
 
         # distance to the other membrane
-        pcdref1 = meshrefine.create_pointcloud(zyxref1)
-        pcdref2 = meshrefine.create_pointcloud(zyxref2)
+        pcdref1 = utils.points_to_pointcloud(zyxref1)
+        pcdref2 = utils.points_to_pointcloud(zyxref2)
         dist1 = np.asarray(pcdref1.compute_point_cloud_distance(pcdref2))
         dist2 = np.asarray(pcdref2.compute_point_cloud_distance(pcdref1))
         

@@ -1,43 +1,42 @@
 import numpy as np
 import sklearn.decomposition
 
-from etsynseg.utils import mask_to_coord
-
 
 class Grid:
     """ Assigning points into grids
     Usage:
-        grid = Grid(B, n_vxy, n_uz, nz_eachu)
+        grid = Grid(zyx, n_vxy, n_uz, nz_eachu)
         grid.uv_size, grid.uv_zyx
     Attributes:
         uv_size: uv_size[iu][iv] is the number of elements in the grid
         uv_zyx: uv_zyx[iu][iv] is the list of [z,y,x] of points in the grid
     """
-    def __init__(self, B, n_vxy, n_uz, nz_eachu):
+    def __init__(self, zyx, n_vxy, n_uz, nz_eachu, shrink_sidegrid):
         """ init and generate grids
-        :param B: binary image, shape=(nz,ny,nx)
+        :param zyx: points, shape=(npts, 3)
         :param n_vxy, n_uz: number of sampling grids in v(xy) and u(z) directions
         :param nz_eachu: number of z-direction slices contained in each grid
+        :param shrink_sidegrid: grids close to the side in xy are shrinked to this ratio
         """
         # record of inputs
-        self.B = B
-        self.nz = self.B.shape[0]
+        self.zyx = zyx
+        self.zs = np.unique(self.zyx[:, 0])
+        self.yxs = {z: self.zyx[self.zyx[:, 0]==z][:, 1:] for z in self.zs}
+        self.nz = len(self.zs)
         self.nz_eachu = nz_eachu
+        self.shrink_sidegrid = shrink_sidegrid
 
-        # slices with nonzero points
-        npts_iz = np.sum(self.B, axis=(1, 2))
-        self.iz_non0 = np.arange(self.nz)[npts_iz>0]
-        self.nz_non0 = len(self.iz_non0)
-
-        # nu, nv: try to avoid empty grids
-        self.n_uz = min(n_uz, int(self.nz_non0/self.nz_eachu))
-        self.n_vxy = min(n_vxy, npts_iz[npts_iz>0].min())
-
-        # # info of each bin[iu]: indexes of z, coordinates
+        # info of each bin[iu]: indexes of z, coordinates
+        self.n_uz = min(n_uz, int(self.nz/self.nz_eachu))
         self.ubin_iz = self.get_ubin_iz()
         self.ubin_zyx = self.get_ubin_zyx()
 
-        # # info of each grid[iu][iv]: size, coordinates
+        # info of each grid[iu][iv]: size, coordinates
+        npts_iu = [len(self.ubin_zyx[iu][i])
+            for i in range(self.nz_eachu)
+            for iu in range(self.n_uz)
+        ]
+        self.n_vxy = min(n_vxy, np.min(npts_iu))
         self.uv_size, self.uv_zyx = self.get_grid_zyx()
 
     def get_ubin_iz(self):
@@ -45,12 +44,12 @@ class Grid:
         :return: ubin_iz
             ubin_iz: shape=(n_uz, nz_eachu), ubin_iz[iu]=(z1,z2,z3,...)
         """
-        # split iz_non0 into n_uz parts
+        # split iz into n_uz parts
         iz_split = np.array_split(
-            self.iz_non0[:-self.nz_eachu], self.n_uz-1
+            self.zs[:-self.nz_eachu], self.n_uz-1
         )
         # last part = last nz_eachu elements
-        iz_split.append(self.iz_non0[-self.nz_eachu:])
+        iz_split.append(self.zs[-self.nz_eachu:])
 
         # take the first nz_eachu elements from each part
         ubin_iz = tuple(
@@ -64,9 +63,8 @@ class Grid:
             ubin_zyx: shape=(n_uz, nz_eachu, n_points, 3), ubin_zyx[iu][i]=((z1,y1,x1),...)
         """
         # pca of all points
-        zyx_all = mask_to_coord(self.B)
         pca = sklearn.decomposition.PCA()
-        pca.fit(zyx_all[:, 1:])
+        pca.fit(self.zyx[:, 1:])
 
         # collect zyx in each u-bin
         ubin_zyx = []
@@ -75,12 +73,11 @@ class Grid:
             # sort zyx for each iz
             for iz in self.ubin_iz[iu]:
                 # project yx to pc
-                yx_iz = mask_to_coord(self.B[iz])
-                pc1 = pca.transform(yx_iz)[:, 0]
+                pc1 = pca.transform(self.yxs[iz])[:, 0]
                 # sort by pc1, get zyx
                 idx_sorted = np.argsort(pc1)
                 zyx_iz = tuple(
-                    tuple([iz, *yx_iz[i]]) for i in idx_sorted
+                    tuple([iz, *self.yxs[iz][i]]) for i in idx_sorted
                 )
                 zyx_iu.append(zyx_iz)
             ubin_zyx.append(tuple(zyx_iu))
@@ -105,8 +102,14 @@ class Grid:
             # distribute points in each z-slice into grids in v-direction
             for zyx_iz in self.ubin_zyx[iu]:
                 idx_iz = np.arange(len(zyx_iz))
+                # set the number of points on the side
+                n_side = max(1, int(len(idx_iz)/self.n_vxy*self.shrink_sidegrid))
                 # use array split to deal with uneven splits
-                idx_split = np.array_split(idx_iz, self.n_vxy)
+                idx_split = ([
+                    idx_iz[:n_side]]
+                    + np.array_split(idx_iz[n_side:-n_side], self.n_vxy-2)
+                    + [idx_iz[-n_side:]
+                ])
                 for iv in range(self.n_vxy):
                     zyx_iz_iv = [zyx_iz[i] for i in idx_split[iv]]
                     uv_zyx[(iu, iv)].extend(zyx_iz_iv)

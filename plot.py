@@ -254,9 +254,10 @@ def imshow3d(
     :param Is_overlay: array of overlaying images
     :param vecs_zyx: array of vector positions, each shape = (npts, 3)
     :param vecs_dir: array of vector directions, each shape = (npts, 3)
+    :param vec_width: width of vectors
+    :param name_I, name_Is, name_vecs: names for I, Is, vecs
     :param cmap_Is, cmap_vecs: default=["green", "yellow", "cyan", "magenta",
         "bop blue", "bop orange", "bop purple", "red", "blue"]
-    :param vec_width: width of vectors
     :param visible_Is, visible_vecs: if visible, True/False, or array of bools
     :return: viewer
     """

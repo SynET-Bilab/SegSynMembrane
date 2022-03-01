@@ -4,14 +4,15 @@ import numpy as np
 import pandas as pd
 import scipy as sp
 import skimage
+import open3d as o3d
 
 __all__ = [
     # basics
     "zscore_image", "minmax_image", "negate_image", "gaussian",
     # orientation
     "rotate_orient", "absdiff_orient",
-    # coordinates
-    "mask_to_coord", "coord_to_mask", "reverse_coord", "mask_to_contour",
+    # points, image
+    "mask_to_coord", "coord_to_mask", "reverse_coord", "mask_to_contour", "points_to_pointcloud",
     # sparse
     "sparsify3d", "densify3d",
     # segments
@@ -153,6 +154,18 @@ def mask_to_contour(mask, erode=True):
         contour = np.concatenate(contour, axis=0)
     return contour
 
+def points_to_pointcloud(pts, normals=None):
+    """ create open3d point cloud from points
+    :param pts: shape=(npts, ndim) 
+    :param normals: shape=(npts, ndim)
+    :return: pcd
+        pcd: open3d pointcloud
+    """
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(pts)
+    if normals is not None:
+        pcd.normals = o3d.utility.Vector3dVector(normals)
+    return pcd
 
 #=========================
 # sparse tools

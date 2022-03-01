@@ -185,25 +185,32 @@ class MOOPop:
         return indiv
 
     def logging_pop(self, n_back=None):
-        """ log front and hypervolume
-        :param n_back: number of previous steps for calculation hypervolume changes
+        """ log front and indicator
+        :param n_back: number of previous steps for calculation indicator changes
         :action: update self.log_front, self.log_indicator
         """
         # pareto front
         front = self.toolbox.sort_fronts(self.pop, self.pop_size, first_front_only=True)[0]
-        front = sorted(front, key=lambda indiv: indiv.fitness.values[0])  # sort by overlap
+        front = sorted(front, key=lambda indiv: indiv.fitness.values[0])  # sort by coverage
         
         # log front
         self.log_front.append([self.toolbox.clone(indiv) for indiv in front])
         
-        # log indicator
-        hypervolume = self.calc_hypervolume(front)
+        # log indicators
+        coverage = front[0].fitness.values[0]
+        # fit_extra = np.min([indiv.fitness.values[1] for indiv in front])
+        # hypervolume = self.calc_hypervolume(front)
         if (n_back is None) or (len(self.log_indicator) < n_back):
             change_ratio = np.nan
         else:
-            hv_nback = [ind["hypervolume"] for ind in self.log_indicator[-n_back:]]
-            change_ratio = 1 - np.mean(hv_nback) / np.max(hv_nback)
-        self.log_indicator.append({"hypervolume": hypervolume, "change_ratio": change_ratio})
+            ind_nback = [ind["coverage"] for ind in self.log_indicator[-n_back:]]
+            if np.max(ind_nback) <= 0:
+                change_ratio = 0
+            else:
+                change_ratio = 1 - np.mean(ind_nback) / np.max(ind_nback)
+        
+        indicator = {"coverage": coverage, "change_ratio": change_ratio}
+        self.log_indicator.append(indicator)
 
     def evaluate_pop(self, pop):
         """ evaluate population
@@ -291,7 +298,7 @@ class MOOPop:
         pool.close()
     
     def plot_logs(self, log_front=None, log_indicator=None,
-            moo_labels=("overlap", "fit extra"), save=None):
+            moo_labels=("coverage", "fit extra"), save=None):
         """ plot pareto fronts
         :param log_front: log of fronts, use self.log_front if None
         :return: fig, ax
@@ -317,9 +324,9 @@ class MOOPop:
         axes[0].set(xlabel=f"fitness: {moo_labels[0]}", ylabel=f"fitness: {moo_labels[1]}")
 
         # plot indicators
-        # hypervolume
-        axes[1].plot([ind["hypervolume"] for ind in log_indicator], c="C0")
-        axes[1].set(xlabel="generation", ylabel="hypervolume")
+        # indicator
+        axes[1].plot([ind["coverage"] for ind in log_indicator], c="C0")
+        axes[1].set(xlabel="generation", ylabel="coverage")
         axes[1].tick_params(axis='y', labelcolor="C0")
         # change ratio
         axes1_twin = axes[1].twinx()
@@ -336,16 +343,14 @@ class MOOPop:
         """ fit surfaces from individuals, evaluate at net
         :param pop: array of individuals
         :param u_eval, v_eval: arrays of evaluation points along u, v
-        :return: B_arr
-            B_arr: [B_sample_0, B_surf_0, B_sample_1, B_surf_1, ...]
+        :return: zyx_arr
+            zyx_arr: [zyx_sample_0, zyx_surf_0, zyx_sample_1, zyx_surf_1, ...]
         """
-        B_arr = []
+        zyx_arr = []
         for indiv in pop:
-            B_surf, _ = self.mootools.fit_surface_eval(
+            zyx_surf, _ = self.mootools.fit_surface_eval(
                 indiv, u_eval=u_eval, v_eval=v_eval
             )
-            B_sample = coord_to_mask(
-                self.mootools.flatten_net(self.mootools.get_coord_net(indiv)),
-                self.mootools.shape)
-            B_arr.extend([B_sample, B_surf])
-        return B_arr
+            zyx_sample = self.mootools.flatten_net(self.mootools.get_coord_net(indiv))
+            zyx_arr.extend([zyx_sample, zyx_surf])
+        return zyx_arr

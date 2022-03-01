@@ -12,7 +12,7 @@ from etsynseg.evomsac import Grid
 class MOOFitness(deap.base.Fitness):
     """ DEAP fitness for individuals
     """
-    # (overlap penalty, non-membrane penalty)
+    # (coverage penalty, non-membrane penalty)
     weights = (-1, -1)
 
 
@@ -30,7 +30,7 @@ class MOOTools:
     """ info and tools for individuals
     Usage:
         # setup
-        mootools = MOOTools(B, n_vxy, n_uz, nz_eachu, degree, r_thresh)
+        mootools = MOOTools(zyx, n_vxy, n_uz, nz_eachu, degree, dist_thresh)
         indiv = mootools.indiv_random()
         # evolution
         mootools.mutate(indiv)
@@ -45,39 +45,41 @@ class MOOTools:
         indiv = mootools.from_list_fitness(sample_list, fitness)
     """
 
-    def __init__(self, B=None, n_uz=3, n_vxy=3, nz_eachu=1, r_thresh=1, config=None):
+    def __init__(self, zyx=None, n_uz=3, n_vxy=3, nz_eachu=1, shrink_sidegrid=1, dist_thresh=1, config=None):
         """ init, setups
-        :param B: binary image for sampling
+        :param zyx: points
         :param n_vxy, n_uz: number of sampling grids in v(xy) and u(z) directions
         :param nz_eachu: number of z-direction slices contained in each grid
-        :param r_thresh: distance threshold for fitness evaluation, r_outliers >= r_thresh+1
+        :param shrink_sidegrid: grids close to the side in xy are shrinked to this ratio
+        :param dist_thresh: distance threshold for fitness evaluation, r_outliers >= dist_thresh
         :param config: results from self.get_config()
         """
         # read config
         # if provided as args
-        if B is not None:
-            self.B = B
+        if zyx is not None:
+            self.zyx = zyx
             self.n_vxy = n_vxy
             self.n_uz = n_uz
             self.nz_eachu = nz_eachu
-            self.r_thresh = int(r_thresh)
+            self.shrink_sidegrid = shrink_sidegrid
+            self.dist_thresh = dist_thresh
         # if provided as a dict
         elif config is not None:
-            self.B = utils.coord_to_mask(config["zyx"], config["shape"])
+            self.zyx = config["zyx"]
             self.n_vxy = config["n_vxy"]
             self.n_uz = config["n_uz"]
             self.nz_eachu = config["nz_eachu"]
-            self.r_thresh = int(config["r_thresh"])
+            self.shrink_sidegrid = config["shrink_sidegrid"]
+            self.dist_thresh = config["dist_thresh"]
         else:
             raise ValueError("Should provide either B or config")
 
         # image shape, grid
-        self.shape = self.B.shape
-        self.nz = self.B.shape[0]
         self.grid = Grid(
-            self.B,
+            self.zyx,
             n_vxy=self.n_vxy, n_uz=self.n_uz,
-            nz_eachu=self.nz_eachu
+            nz_eachu=self.nz_eachu,
+            shrink_sidegrid=self.shrink_sidegrid
         )
         # update nv, nu from grid: where there are additional checks
         self.n_vxy = self.grid.n_vxy
@@ -88,27 +90,20 @@ class MOOTools:
         self.surf_meta = bspline.Surface(
             uv_size=(self.n_uz, self.n_vxy), degree=2
         )
-        # no. points in the reference image
-        self.npts_B = np.sum(self.B)
-        # reference image dilated at r's: in sparse format
-        self.dilated_pos = {0: np.nonzero(self.B)}
-        for r in range(1, self.r_thresh+1):
-            dilated_B_r = skimage.morphology.binary_dilation(
-                self.B, skimage.morphology.ball(r)
-            ).astype(int)
-            self.dilated_pos[r] = np.nonzero(dilated_B_r)
+        # pointcloud
+        self.pcd = utils.points_to_pointcloud(self.zyx)
     
     def get_config(self):
         """ save config to dict, convenient for dump and load
         :return: config={zyx,shape,n_vxy,n_uz,nz_eachu}
         """
         config = dict(
-            zyx=utils.mask_to_coord(self.B),
-            shape=self.shape,
+            zyx=self.zyx,
             n_vxy=self.n_vxy,
             n_uz=self.n_uz,
             nz_eachu=self.nz_eachu,
-            r_thresh=self.r_thresh
+            shrink_sidegrid=self.shrink_sidegrid,
+            dist_thresh=self.dist_thresh
         )
         return config
 
@@ -208,13 +203,13 @@ class MOOTools:
         """ fit surface from individual, evaluate at net
         :param indiv: individual
         :param u_eval, v_eval: 1d arrays, u(z) and v(xy) to evaluate at
-        :return: Bfit, fit
-            Bfit: rough voxelization of fitted surface
-            fit: splipy surface
+        :return: zyx_fit, surf_fit
+            zyx_fit: evaluated points on the fitted surface
+            surf_fit: splipy surface
         """
         # fit
         sample_net = self.get_coord_net(indiv)
-        fit = self.surf_meta.interpolate(sample_net)
+        surf_fit = self.surf_meta.interpolate(sample_net)
 
         # set eval points
         # default: max wireframe length
@@ -227,33 +222,25 @@ class MOOTools:
 
         # convert fitted surface to binary image
         # evaluate at dense points
-        pts_fit = self.flatten_net(fit(u_eval, v_eval))
-        Bfit = utils.coord_to_mask(pts_fit, self.shape)
-        return Bfit, fit
+        zyx_fit = self.flatten_net(surf_fit(u_eval, v_eval))
+        return zyx_fit, surf_fit
 
-    def calc_fitness(self, Bfit):
+    def calc_fitness(self, zyx_fit):
         """ calculate fitness
         :param Bfit: binary image generated from fitted surface
         """
-        # overlaps between fit and membrane
-        fitness_overlap = 0
-        # no. overlaps accumulated
-        n_accum_prev = np.sum(Bfit[self.dilated_pos[0]])
-        # iterate over layers of r's
-        for r in range(1, self.r_thresh+1):
-            n_accum_curr = np.sum(Bfit[self.dilated_pos[r]])
-            n_r = n_accum_curr - n_accum_prev  # no. overlaps at r
-            fitness_overlap += n_r * r**2
-            n_accum_prev = n_accum_curr
-        # counting points >= r_thresh
-        n_rest = self.npts_B - n_accum_prev
-        fitness_overlap += n_rest * (self.r_thresh+1)**2
+        pcd_fit = utils.points_to_pointcloud(zyx_fit)
+        
+        # coverage of zyx by fit
+        dist = np.asarray(self.pcd.compute_point_cloud_distance(pcd_fit))
+        fitness_coverage = np.sum(np.clip(dist, 0, self.dist_thresh)**2)
 
-        # extra pixels of fit compared with membrane
-        fitness_extra = np.sum(Bfit) - n_accum_prev
+        # extra pixels of fit compared with zyx
+        dist_fit = np.asarray(pcd_fit.compute_point_cloud_distance(self.pcd))
+        fitness_extra = np.sum(dist_fit>self.dist_thresh)
 
         # moo fitness
-        fitness = (fitness_overlap, fitness_extra)
+        fitness = (fitness_coverage, fitness_extra)
         return fitness
 
     def evaluate(self, indiv):

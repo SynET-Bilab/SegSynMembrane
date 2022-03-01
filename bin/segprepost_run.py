@@ -46,16 +46,16 @@ def build_parser():
     # detect
     parser.add_argument("--detect_tv", type=float, default=5,
         help="float. Step 'detect': sigma for tensor voting = membrane thickness * detect_tv. The larger the smoother and more connected.")
-    parser.add_argument("--detect_xyfilter", type=float, default=2.5,
+    parser.add_argument("--detect_xyfilter", type=float, default=3,
         help="float (>1). Step 'detect': after tensor voting and normal suppression, filter out voxels with Ssupp below quantile threshold, the threshold = 1-xyfilter*fraction_mems.Smaller values filter out more voxels.")
     
     # evomsac
     parser.add_argument("--evomsac_grids", type=float, nargs=2, default=[50, 150],
         help="float float (in nm). Step 'evomsac': spacings in z- and xy-axes of the sampling grids. Fine grids may be prone to noise; too-coarse grids may miss too much of the membrane.")
-
-    # match
-    parser.add_argument("--match_extend", type=float, default=2,
-        help="float. Step 'match': factor for extension (by tensor voting, TV) of surface from evomsac. The sigma value for TV = match_extend * membrane thickness (set in --lengths). Larger value means more detected segments would be matched with evomsac surface.")
+    parser.add_argument("--evomsac_shrinkside", type=float, default=0.2,
+        help="float. Step 'evomsac': grids on the side in xy are shrinked to this ratio. Smaller ratio makes evomsac more likely to cover the range from 'detect'.")
+    parser.add_argument("--evomsac_fthresh", type=float, default=1,
+        help="float. Step 'evomsac': threshold in MSAC calculation = this value * membrane thickness. Larger value potentially fits the surface better.")
 
     # fit
     parser.add_argument("--meshrefine_factors", type=float, nargs=2, default=[2, 2],
@@ -155,8 +155,7 @@ def run_seg(args):
             log_args = {
                 "tomo": ["voxel_size_nm"],
                 "detect": ["factor_tv", "xyfilter"],
-                "evomsac": ["grid_xy_nm", "grid_z_nm"],
-                "match": ["factor_extend"],
+                "evomsac": ["grid_xy_nm", "grid_z_nm", "shrink_sidegrid", "factor_dist_thresh"],
                 "meshrefine": ["factor_normal", "factor_mesh"]
             }
             log_str = "arguments:\n  " + "\n  ".join([
@@ -214,22 +213,28 @@ def run_seg(args):
     # evomsac
     if ifrun.check(seg.steps["evomsac"],
         {"grid_z_nm": args.evomsac_grids[0],
-        "grid_xy_nm": args.evomsac_grids[1]}
+        "grid_xy_nm": args.evomsac_grids[1],
+        "shrink_sidegrid": args.evomsac_shrinkside,
+        "factor_dist_thresh": args.evomsac_fthresh,
+        }
     ):
         logging.info("starting evomsac")
         seg.evomsac(
             grid_z_nm=args.evomsac_grids[0],
-            grid_xy_nm=args.evomsac_grids[1]
+            grid_xy_nm=args.evomsac_grids[1],
+            shrink_sidegrid=args.evomsac_shrinkside,
+            factor_dist_thresh=args.evomsac_fthresh
         )
         # save
         seg.save_steps(filenames["steps"])
 
     # match
-    if ifrun.check(seg.steps["match"],
-        {"factor_extend": args.match_extend}
-    ):
+    if ifrun.check(seg.steps["match"], {}):
         logging.info("starting match")
-        seg.match(factor_tv=1, factor_extend=args.match_extend)
+        seg.match(
+            factor_tv=1,
+            factor_extend=args.evomsac_fthresh
+        )
         # save
         seg.save_steps(filenames["steps"])
 

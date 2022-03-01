@@ -13,26 +13,13 @@ __all__ = [
     # common external uses
     "normals_points", "refine_surface",
     # specific external uses
-    "create_pointcloud", "create_mesh_poisson",
+    "create_mesh_poisson",
     "convex_hull", "points_in_hull", "mesh_subdivide",
 ]
 
 #=========================
 # create mesh
 #=========================
-
-def create_pointcloud(xyz, normals=None):
-    """ create open3d point cloud from points (xyz)
-    :param xyz: [[x1,y1,z1],...]
-    :param normals: [[nx1,ny1,nz1],...]
-    :return: pcd
-        pcd: open3d pointcloud
-    """
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(xyz)
-    if normals is not None:
-        pcd.normals = o3d.utility.Vector3dVector(normals)
-    return pcd
 
 def normals_pointcloud(pcd, sigma, xyz_ref=None):
     """ estimate normals for point cloud
@@ -69,7 +56,7 @@ def normals_points(xyz, sigma, xyz_ref=None):
     :return: normals
         normals: [[nx1,ny1,nz1],...]
     """
-    pcd = create_pointcloud(xyz)
+    pcd = utils.points_to_pointcloud(xyz)
     pcd = normals_pointcloud(pcd, sigma, xyz_ref)
     normals = np.asarray(pcd.normals)
     return normals
@@ -202,7 +189,7 @@ def refine_surface(zyx, sigma_normal, sigma_mesh, mask_bound=None):
     # create mesh
     xyz = utils.reverse_coord(zyx)
     pcd = normals_pointcloud(
-        pcd=create_pointcloud(xyz=xyz),
+        pcd=utils.points_to_pointcloud(xyz=xyz),
         sigma=sigma_normal
     )
     mesh = create_mesh_poisson(pcd, resolution=sigma_mesh)
