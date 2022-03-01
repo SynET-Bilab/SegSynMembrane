@@ -3,7 +3,6 @@
 
 import time
 import numpy as np
-from sympy import factor
 import mrcfile
 from etsynseg import io, utils, plot
 from etsynseg import division
