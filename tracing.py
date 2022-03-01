@@ -1,6 +1,7 @@
 """ trace
 """
 
+import collections
 import numpy as np
 import sklearn.decomposition
 from etsynseg import utils
@@ -124,7 +125,7 @@ class Trace:
     #=========================
     
     def bfs2d_from_point(self, yx_start, map_yxd):
-        """ trace segment from current (y,x) in one direction
+        """ trace segment from current (y,x) in one direction, breadth-first
         :param yx_start: current (y,x)
         :param map_yxd: {(y,x): direction}
         :return: yx_tr, d_tr
@@ -135,10 +136,10 @@ class Trace:
         d_tr = []
 
         # BFS
-        yx_tovisit = [yx_start]
-        while len(yx_tovisit) > 0:
-            yx_curr = yx_tovisit[0]
-            yx_tovisit = yx_tovisit[1:]
+        yx_tovisit = collections.deque()
+        yx_tovisit.append(yx_start)
+        while yx_tovisit:
+            yx_curr = yx_tovisit.popleft()
 
             # continue: if yx_curr is not in image, or visited
             if (yx_curr not in map_yxd) or (map_yxd[yx_curr] is None):
@@ -166,7 +167,7 @@ class Trace:
         return yx_tr, d_tr
 
     def bfs2d(self, iz):
-        """ trace a slice
+        """ trace a slice, breadth-first
         :param iz: z index of slice
         :return: yx_trs, d_trs
             yx_trs: [yx_tr_0, yx_tr_1, ...]
@@ -199,7 +200,7 @@ class Trace:
         return yx_trs, d_trs
 
     def bfs3d(self):
-        """ trace 3d binary image self.B
+        """ trace 3d binary image self.B, breadth-first
         :return: trs
             trs: [(iz_1, yx_trs_1, d_trs_1),...]
         """
@@ -214,42 +215,85 @@ class Trace:
     # depth-first-scan
     #=========================
     
-    def dfs2d_from_point(self, yx_curr, map_yxd, yx_trace, d_trace):
-        """ trace segment from current (y,x) in one direction
-        :param yx_curr: current (y,x)
+    # def dfs2d_from_point(self, yx_curr, map_yxd, yx_trace, d_trace):
+    #     """ trace segment from current (y,x) in one direction, depth-first (recursive)
+    #     :param yx_curr: current (y,x)
+    #     :param map_yxd: {(y,x): direction}
+    #     :param yx_trace, d_trace: list of (y,x)'s, d's in the trace
+    #     :return: yx_trace, d_trace
+    #         yx_trace: [(y,x)_1,(y,x)_2,...]
+    #         d_trace: [d_1,d_2,...]
+    #     """
+    #     # return: if yx_curr is not in image, or visited
+    #     if (yx_curr not in map_yxd) or (map_yxd[yx_curr] is None):
+    #         return
+
+    #     # visit yx_curr, flag with None
+    #     d_curr = map_yxd[yx_curr]
+    #     yx_trace.append(yx_curr)
+    #     d_trace.append(d_curr)
+    #     map_yxd[yx_curr] = None
+
+    #     # return: if max_size is reached
+    #     if len(yx_trace) >= self.max_size:
+    #         return
+
+    #     # visit next
+    #     for dydx in self.find_next_yx(d_curr):
+    #         yx_next = (yx_curr[0]+dydx[0], yx_curr[1]+dydx[1])
+    #         # align next orientation, update dict
+    #         if (yx_next in map_yxd) and (map_yxd[yx_next] is not None):
+    #             d_next = self.find_next_direction(d_curr, map_yxd[yx_next])
+    #             map_yxd[yx_next] = d_next
+    #             self.dfs2d_from_point(yx_next, map_yxd, yx_trace, d_trace)
+    #             break
+    #     return
+
+    def dfs2d_from_point(self, yx_start, map_yxd):
+        """ trace segment from current (y,x) in one direction, depth-first (iterative)
+        :param yx_start: current (y,x)
         :param map_yxd: {(y,x): direction}
-        :param yx_trace, d_trace: list of (y,x)'s, d's in the trace
-        :return: yx_trace, d_trace
-            yx_trace: [(y,x)_1,(y,x)_2,...]
-            d_trace: [d_1,d_2,...]
+        :return: yx_tr, d_tr
+            yx_tr: [(y,x)_1,(y,x)_2,...]
+            d_tr: [d_1,d_2,...]
         """
-        # return: if yx_curr is not in image, or visited
-        if (yx_curr not in map_yxd) or (map_yxd[yx_curr] is None):
-            return
+        yx_tr = []
+        d_tr = []
 
-        # visit yx_curr, flag with None
-        d_curr = map_yxd[yx_curr]
-        yx_trace.append(yx_curr)
-        d_trace.append(d_curr)
-        map_yxd[yx_curr] = None
+        # DFS
+        yx_tovisit = collections.deque()
+        yx_tovisit.append(yx_start)
+        while yx_tovisit:
+            yx_curr = yx_tovisit.pop()
 
-        # return: if max_size is reached
-        if len(yx_trace) >= self.max_size:
-            return
+            # continue: if yx_curr is not in image, or visited
+            if (yx_curr not in map_yxd) or (map_yxd[yx_curr] is None):
+                continue
 
-        # visit next
-        for dydx in self.find_next_yx(d_curr):
-            yx_next = (yx_curr[0]+dydx[0], yx_curr[1]+dydx[1])
-            # align next orientation, update dict
-            if (yx_next in map_yxd) and (map_yxd[yx_next] is not None):
-                d_next = self.find_next_direction(d_curr, map_yxd[yx_next])
-                map_yxd[yx_next] = d_next
-                self.dfs2d_from_point(yx_next, map_yxd, yx_trace, d_trace)
+            # visit yx_curr, flag with None
+            d_curr = map_yxd[yx_curr]
+            yx_tr.append(yx_curr)
+            d_tr.append(d_curr)
+            map_yxd[yx_curr] = None
+
+            # break: if max_size is reached
+            if len(yx_tr) >= self.max_size:
                 break
-        return
+
+            # update yx_tovisit
+            for dydx in self.find_next_yx(d_curr):
+                yx_next = (yx_curr[0]+dydx[0], yx_curr[1]+dydx[1])
+                # align next orientation, update dict
+                if (yx_next in map_yxd) and (map_yxd[yx_next] is not None):
+                    d_next = self.find_next_direction(d_curr, map_yxd[yx_next])
+                    map_yxd[yx_next] = d_next
+                    yx_tovisit.append(yx_next)
+                    break
+
+        return yx_tr, d_tr
 
     def dfs2d(self, iz):
-        """ trace a slice
+        """ trace a slice, depth-first
         :param iz: z index of slice
         :return: yx_trs, d_trs
             yx_trs: [yx_trace_0, yx_trace_1, ...]
@@ -271,9 +315,10 @@ class Trace:
         d_trs = []
         while len(yx_sort) > 0:
             # trace
-            yx_tr_i = []
-            d_tr_i = []
-            self.dfs2d_from_point(yx_sort[0], map_yxd, yx_tr_i, d_tr_i)
+            # yx_tr_i = []
+            # d_tr_i = []
+            # self.dfs2d_from_point(yx_sort[0], map_yxd, yx_tr_i, d_tr_i)
+            yx_tr_i, d_tr_i = self.dfs2d_from_point(yx_sort[0], map_yxd)
             # record
             yx_trs.append(yx_tr_i)
             d_trs.append(d_tr_i)
@@ -284,7 +329,7 @@ class Trace:
         return yx_trs, d_trs
 
     def dfs3d(self):
-        """ trace 3d binary image self.B
+        """ trace 3d binary image self.B, depth-first
         :return: trs
             trs: [(iz_1, yx_trs_1, d_trs_1),...]
         """
