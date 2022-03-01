@@ -84,6 +84,8 @@ class SegPrePost(SegBase):
                 max_iter=None,
                 tol=None,
                 # results
+                mpopz1=None,
+                mpopz2=None,
                 zyx1=None,
                 zyx2=None
             ),
@@ -529,14 +531,16 @@ class SegPrePost(SegBase):
             tol=tol,
             factor_eval=factor_eval
         )
-        _, zyx1 = SegSteps.evomsac(Bdiv1, voxel_size_nm=voxel_size_nm, **params)
-        _, zyx2 = SegSteps.evomsac(Bdiv2, voxel_size_nm=voxel_size_nm, **params)
+        zyx1, mpopz1 = SegSteps.evomsac(Bdiv1, voxel_size_nm=voxel_size_nm, **params)
+        zyx2, mpopz2 = SegSteps.evomsac(Bdiv2, voxel_size_nm=voxel_size_nm, **params)
 
         # save parameters and results
         self.steps["evomsac"].update(params)
         self.steps["evomsac"].update(dict(
             finished=True,
             # results
+            mpopz1=mpopz1,
+            mpopz2=mpopz2,
             zyx1=zyx1,
             zyx2=zyx2
         ))

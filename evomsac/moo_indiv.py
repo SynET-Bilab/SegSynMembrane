@@ -152,8 +152,6 @@ class MOOTools:
                 indiv_u.append(indiv_uv)
             indiv.append(indiv_u)
         return indiv
-
-
     
     def from_list_fitness(self, sample_list, fitness=None):
         """ generate individual from sample list, fitness

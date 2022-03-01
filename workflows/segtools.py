@@ -274,7 +274,9 @@ class SegSteps:
         :param tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
         :param max_iter: max number of generations
         :param factor_eval: factor for assigning evaluation points
-        :return: mpop, zyx_sac
+        :return: zyx_sac, mpopz
+            zyx_sac: zyx after evomsac
+            mpopz: mpop state, load by mpop=SegSteps.evomsac_mpop_load(mpopz, utils.mask_to_coord(B))
         """
         # setup grid and mootools
         n_uz, n_vxy = SegSteps.set_ngrids(B, voxel_size_nm, grid_z_nm, grid_xy_nm)
@@ -299,7 +301,35 @@ class SegSteps:
             v_eval=np.linspace(0, 1, factor_eval*int(nv_eval))
         )
         zyx_sac = utils.mask_to_coord(Bsac)
-        return mpop, zyx_sac
+
+        # save mpop state
+        mpopz = SegSteps.evomsac_mpop_save(mpop, save_zyx=False)
+        return zyx_sac, mpopz
+
+    @staticmethod
+    def evomsac_mpop_save(mpop, save_zyx=False):
+        """ save moopop
+        :param mpop: MOOPop
+        :param save_zyx: whether to save zyx
+        :return: mpopz
+            mpopz: state of mpop
+        """
+        mpopz = mpop.dump_state()
+        if not save_zyx:
+            mpopz["mootools_config"]["zyx"] = None
+        return mpopz
+    
+    @staticmethod
+    def evomsac_mpop_load(mpopz, zyx=None):
+        """ load moopop
+        :param mpopz: MOOPop state
+        :param zyx: coordinates
+        :return: mpop
+        """
+        if zyx is not None:
+            mpopz["mootools_config"]["zyx"] = zyx
+        mpop = evomsac.MOOPop(state=mpopz)
+        return mpop
 
     @staticmethod
     def match(B, O, Bsac, sigma_tv, sigma_hessian, sigma_extend, mask_bound=None):
