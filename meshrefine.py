@@ -166,10 +166,10 @@ def mesh_subdivide(mesh, target_size=1):
     niter = int(np.ceil(np.log2(dist/target_size)))
     mdiv = mdiv.subdivide_loop(number_of_iterations=niter)
 
-    # refined subdivision
-    # iterate until target_size is reached
-    while np.max(nn_distance(mdiv.vertices)) > target_size:
-        mdiv = mdiv.subdivide_loop()
+    # # refined subdivision (skipped, too time-consuming, and not very necessary)
+    # # iterate until target_size is reached
+    # while np.max(nn_distance(mdiv.vertices)) > target_size:
+    #     mdiv = mdiv.subdivide_loop()
     return mdiv
 
 
@@ -220,6 +220,6 @@ def refine_surface(zyx, sigma_normal, sigma_mesh, mask_bound=None):
         shape = mask_bound.shape
         zyx_raw = utils.reverse_coord(np.asarray(mdiv.vertices))
         B_refine = utils.points_to_voxels(zyx_raw, shape)
-        B_refine = next(utils.extract_connected(B_refine, connectivity=3))[1]
+        # B_refine = next(utils.extract_connected(B_refine, connectivity=3))[1]
         zyx_refine = utils.voxels_to_points(B_refine)
     return zyx_refine

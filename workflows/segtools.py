@@ -348,7 +348,7 @@ class SegSteps:
             sigma_hessian=sigma_hessian,
             sigma_tv=sigma_extend
         )
-        Bmatch = next(iter(utils.extract_connected(Bmatch)))[1]
+        # Bmatch = next(iter(utils.extract_connected(Bmatch)))[1]
 
         # # smoothing
         # _, Osmooth = hessian.features3d(Bmatch, sigma_hessian)

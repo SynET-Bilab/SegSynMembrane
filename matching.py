@@ -93,17 +93,17 @@ class GMMFixed:
 # match by orientation
 #=========================
 
-def fill_matched(B_seg, O_seg, B_match):
+def fill_matched(Bseg, Oseg, B_match):
     """ fill holes of matched image
-    :param B_seg, O_seg: binary image and orientation from previous segmentation
+    :param Bseg, Oseg: binary image and orientation from previous segmentation
     :param B_match: matched segmented and fitted images
     :return: B_fill
         B_fill: filled matched image
     """
     # setup
-    tr = tracing.Trace(B_seg, O_seg)
-    # shape_yx = B_seg[0].shape
-    B_fill = np.zeros(B_seg.shape, dtype=np.int_)
+    tr = tracing.Trace(Bseg, Oseg)
+    # shape_yx = Bseg[0].shape
+    B_fill = np.zeros(Bseg.shape, dtype=np.int_)
 
     # fix one slice
     def calc_one(iz):
@@ -122,31 +122,31 @@ def fill_matched(B_seg, O_seg, B_match):
                 B_fill[iz][pos] = tr_filled
 
     # fix all slices
-    for iz in range(B_seg.shape[0]):
+    for iz in range(Bseg.shape[0]):
         calc_one(iz)
 
     return B_fill
 
-def match_spatial_orient(B_seg, O_seg, B_fit, sigma_hessian, sigma_tv):
+def match_spatial_orient(Bseg, Oseg, Bfit, sigma_hessian, sigma_tv):
     """ filter segmented image by dO, and fill holes
-    :param B_seg, O_seg: binary image and orientation from previous segmentation
-    :param B_fit: binary image from moo fitting
+    :param Bseg, Oseg: binary image and orientation from previous segmentation
+    :param Bfit: binary image from moo fitting
     :param sigma_<hessian,tv>: sigma's for calculating orientation, tv on fitted surface
-    :return: B_match
-        B_match: matched image
+    :return: Bmatch
+        Bmatch: matched image
     """
     # spatial closeness: TV for fit
-    _, O_fit = hessian.features3d(B_fit, sigma=sigma_hessian)
-    S_fit_tv, O_fit_tv = dtvoting.stick3d(B_fit, O_fit*B_fit, sigma=sigma_tv)
+    _, Ofit = hessian.features3d(Bfit, sigma=sigma_hessian)
+    Sfit_tv, Ofit_tv = dtvoting.stick3d(Bfit, Ofit*Bfit, sigma=sigma_tv)
 
     # mask: belongs to B and close to Bfit
     # e^(-1/2) = e^(-r^2/(2*sigma_tv^2)) at r=sigma_tv, close to fill holes
-    mask_fit = S_fit_tv > np.exp(-1/2)
+    mask_fit = Sfit_tv > np.exp(-1/2)
     mask_fit = skimage.morphology.binary_closing(mask_fit)
-    mask = (mask_fit*B_seg).astype(bool)
+    mask = (mask_fit*Bseg).astype(bool)
 
     # difference in orientation
-    dO = utils.absdiff_orient(O_seg, O_fit_tv)
+    dO = utils.absdiff_orient(Oseg, Ofit_tv)
 
     # estimate dO threshold using GMM
     gmm = GMMFixed(means_fixed=(0, np.pi/2))
@@ -154,13 +154,15 @@ def match_spatial_orient(B_seg, O_seg, B_fit, sigma_hessian, sigma_tv):
 
     # match
     # by threshold
-    B_match_raw = B_seg * (dO < dO_thresh) * mask
-    # find connected
-    B_match_connect = next(iter(
-        utils.extract_connected(B_match_raw, n_keep=1, connectivity=3)
-    ))[1]
-    # fill holes
-    B_match = fill_matched(B_seg, O_seg, B_match_connect)
+    Bmatch = Bseg * (dO < dO_thresh) * mask
 
-    return B_match
+    # find connected
+    # Bmatch_connect = next(iter(
+    #     utils.extract_connected(Bmatch_raw, n_keep=1, connectivity=3)
+    # ))[1]
+
+    # fill holes
+    Bmatch = fill_matched(Bseg, Oseg, Bmatch)
+
+    return Bmatch
 

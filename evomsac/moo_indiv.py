@@ -227,7 +227,7 @@ class MOOTools:
 
     def calc_fitness(self, zyx_fit):
         """ calculate fitness
-        :param Bfit: binary image generated from fitted surface
+        :param zyx_fit: evaluated points on the fitted surface
         """
         pcd_fit = utils.points_to_pointcloud(zyx_fit)
         
@@ -246,9 +246,9 @@ class MOOTools:
     def evaluate(self, indiv):
         """ evaluate fitness of individual
         :param indiv: individual
-        :return: (fitness,)
+        :return: fitness
         """
-        Bfit, _ = self.fit_surface_eval(indiv)
-        fitness = self.calc_fitness(Bfit)
+        zyx_fit, _ = self.fit_surface_eval(indiv)
+        fitness = self.calc_fitness(zyx_fit)
         return fitness
 
