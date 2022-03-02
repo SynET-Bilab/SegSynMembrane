@@ -608,6 +608,7 @@ class SegPrePost(SegBase):
     def meshrefine(self, factor_normal=2, factor_mesh=2):
         """ surface fitting for both divided parts
         :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
+        :param factor_<normal,mesh>: sigma for normal,mesh,hull calculations = d_mem*factor
         :action: assign steps["surf_fit"]: zyx1,  zyx2
         """
         time_start = time.process_time()
@@ -618,11 +619,16 @@ class SegPrePost(SegBase):
         zyx1 = self.steps["match"]["zyx1"]
         zyx2 = self.steps["match"]["zyx2"]
 
-        # refine
+        # parameters
+        # sigma_mesh: should be smaller than z_span
+        z_span = np.min([np.ptp(zyx_i[:, 0]) for zyx_i in (zyx1, zyx2)])
+        sigma_mesh = min(factor_mesh*d_mem, z_span/3)
+        # other parameters
         params = dict(
             zyx_ref=self.steps["tomo"]["zyx_ref"],
             sigma_normal=factor_normal*d_mem,
-            sigma_mesh=factor_mesh*d_mem,
+            sigma_mesh=sigma_mesh,
+            sigma_hull=d_mem,
             mask_bound=self.points_to_voxels(self.steps["tomo"]["zyx_bound"])
         )
 

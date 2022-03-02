@@ -365,12 +365,13 @@ class SegSteps:
         return Bmatch, zyx_sorted
 
     @staticmethod
-    def meshrefine(zyx, zyx_ref, sigma_normal, sigma_mesh, mask_bound):
+    def meshrefine(zyx, zyx_ref, sigma_normal, sigma_mesh, sigma_hull, mask_bound):
         """ calculate surface normal for one divided part
         :param zyx: coordinates
         :param zyx_ref: reference zyx for insideness
         :param sigma_normal: length scale for normal estimation
         :param sigma_mesh: spatial resolution for poisson reconstruction
+        :param sigma_hull: length to expand in the normal direction when computing hull
         :param mask_bound: a mask for boundary
         :return: zyx, nxyz
             zyx: sorted zyx coordinates
@@ -381,6 +382,7 @@ class SegSteps:
             zyx,
             sigma_normal=sigma_normal,
             sigma_mesh=sigma_mesh,
+            sigma_hull=sigma_hull,
             mask_bound=mask_bound
         )
 

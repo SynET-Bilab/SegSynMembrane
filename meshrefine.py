@@ -79,16 +79,18 @@ def create_mesh_poisson(pcd, resolution):
 # refine mesh
 #=========================
 
-def convex_hull(pts, normals=None, factor_extend=1):
+def convex_hull(pts, normals=None, sigma=1):
     """ compute convex hull
     :param pts: points
-    :param normals, factor_extend: extend region by shifting points along normals by the factor
+    :param normals: normals
+    :param sigma: extend region by shifting points along normals by sigma
     :return: hull
         hull: scipy.spatial.ConvexHull object
     """
     pts = np.asarray(pts)
-    if (factor_extend > 0) and (normals is not None):
-        fnormals = factor_extend * np.asarray(normals)
+    if (sigma > 0) and (normals is not None):
+        normals = np.asarray(normals)
+        fnormals = sigma * normals
         pts_ext = np.concatenate([pts, pts+fnormals, pts-fnormals])
     else:
         pts_ext = pts
@@ -177,11 +179,12 @@ def mesh_subdivide(mesh, target_size=1):
 # workflow
 #=========================
 
-def refine_surface(zyx, sigma_normal, sigma_mesh, mask_bound=None):
+def refine_surface(zyx, sigma_normal, sigma_mesh, sigma_hull, mask_bound=None):
     """ refine surface using mesh-based methods, mainly poisson reconstruction
     :param zyx: points
     :param sigma_normal: length scale for normal estimation
     :param sigma_mesh: spatial resolution for poisson reconstruction
+    :param sigma_hull: length to expand in the normal direction when computing hull
     :param mask_bound: a mask for boundary
     :return: zyx_refine
         zyx_refine: points for the refined surface
@@ -195,7 +198,7 @@ def refine_surface(zyx, sigma_normal, sigma_mesh, mask_bound=None):
     mesh = create_mesh_poisson(pcd, resolution=sigma_mesh)
 
     # convex hull
-    hull = convex_hull(pts=pcd.points, normals=pcd.normals)
+    hull = convex_hull(pts=pcd.points, normals=pcd.normals, sigma=sigma_hull)
 
     # select center+surround region of the mesh
     iv_center = points_in_hull(mesh.vertices, hull)
@@ -211,15 +214,12 @@ def refine_surface(zyx, sigma_normal, sigma_mesh, mask_bound=None):
 
     # constrain in convex hull
     pts = pts[points_in_hull(pts, hull)]
+    zyx_refine = utils.reverse_coord(pts)
 
     # constrain in mask_bound if provided
-    if mask_bound is None:
-        zyx_refine = utils.reverse_coord(pts)
-    else:
-        # extract connected, mask by bound
+    if mask_bound is not None:
         shape = mask_bound.shape
-        zyx_raw = utils.reverse_coord(np.asarray(mdiv.vertices))
-        B_refine = utils.points_to_voxels(zyx_raw, shape)
+        B_refine = mask_bound * utils.points_to_voxels(zyx_refine, shape)
         # B_refine = next(utils.extract_connected(B_refine, connectivity=3))[1]
         zyx_refine = utils.voxels_to_points(B_refine)
     return zyx_refine
