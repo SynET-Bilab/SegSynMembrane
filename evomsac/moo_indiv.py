@@ -30,7 +30,7 @@ class MOOTools:
     """ info and tools for individuals
     Usage:
         # setup
-        mootools = MOOTools(zyx, n_vxy, n_uz, nz_eachu, degree, dist_thresh)
+        mootools = MOOTools(zyx, n_vxy, n_uz, nz_eachu, degree, fitness_rthresh)
         indiv = mootools.indiv_random()
         # evolution
         mootools.mutate(indiv)
@@ -45,13 +45,13 @@ class MOOTools:
         indiv = mootools.from_list_fitness(sample_list, fitness)
     """
 
-    def __init__(self, zyx=None, n_uz=3, n_vxy=3, nz_eachu=1, shrink_sidegrid=1, dist_thresh=1, config=None):
+    def __init__(self, zyx=None, n_uz=3, n_vxy=3, nz_eachu=1, shrink_sidegrid=1, fitness_rthresh=1, config=None):
         """ init, setups
         :param zyx: points
         :param n_vxy, n_uz: number of sampling grids in v(xy) and u(z) directions
         :param nz_eachu: number of z-direction slices contained in each grid
         :param shrink_sidegrid: grids close to the side in xy are shrinked to this ratio
-        :param dist_thresh: distance threshold for fitness evaluation, r_outliers >= dist_thresh
+        :param fitness_rthresh: distance threshold for fitness evaluation, r_outliers >= fitness_rthresh
         :param config: results from self.get_config()
         """
         # read config
@@ -62,7 +62,7 @@ class MOOTools:
             self.n_uz = n_uz
             self.nz_eachu = nz_eachu
             self.shrink_sidegrid = shrink_sidegrid
-            self.dist_thresh = dist_thresh
+            self.fitness_rthresh = fitness_rthresh
         # if provided as a dict
         elif config is not None:
             self.zyx = config["zyx"]
@@ -70,7 +70,7 @@ class MOOTools:
             self.n_uz = config["n_uz"]
             self.nz_eachu = config["nz_eachu"]
             self.shrink_sidegrid = config["shrink_sidegrid"]
-            self.dist_thresh = config["dist_thresh"]
+            self.fitness_rthresh = config["fitness_rthresh"]
         else:
             raise ValueError("Should provide either B or config")
 
@@ -103,7 +103,7 @@ class MOOTools:
             n_uz=self.n_uz,
             nz_eachu=self.nz_eachu,
             shrink_sidegrid=self.shrink_sidegrid,
-            dist_thresh=self.dist_thresh
+            fitness_rthresh=self.fitness_rthresh
         )
         return config
 
@@ -233,11 +233,11 @@ class MOOTools:
         
         # coverage of zyx by fit
         dist = np.asarray(self.pcd.compute_point_cloud_distance(pcd_fit))
-        fitness_coverage = np.sum(np.clip(dist, 0, self.dist_thresh)**2)
+        fitness_coverage = np.sum(np.clip(dist, 0, self.fitness_rthresh)**2)
 
         # extra pixels of fit compared with zyx
         dist_fit = np.asarray(pcd_fit.compute_point_cloud_distance(self.pcd))
-        fitness_extra = np.sum(dist_fit>self.dist_thresh)
+        fitness_extra = np.sum(dist_fit>self.fitness_rthresh)
 
         # moo fitness
         fitness = (fitness_coverage, fitness_extra)

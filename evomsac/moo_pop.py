@@ -18,7 +18,7 @@ class MOOPop:
         mootools = MOOTools(B, n_vxy, n_uz, nz_eachu, r_thresh)
         moopop = MOOPop(mootools, pop_size)
         moopop.init_pop()
-        moopop.evolve(maxiter, (tol, n_back), dump_step, state_pkl, n_proc)
+        moopop.evolve(max_iter, (tol, n_back), dump_step, state_pkl, n_proc)
         # dump, load
         state = moopop.dump_state(file_pkl)
         moopop = MOOPop(state=file_pkl)

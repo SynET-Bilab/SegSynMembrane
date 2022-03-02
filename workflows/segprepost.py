@@ -53,12 +53,8 @@ class SegPrePost(SegBase):
                 factor_supp=None,
                 xyfilter=None,
                 zfilter=None,
-                # parameters: inferred
-                sigma_tv=None,
-                sigma_supp=None,
-                dzfilter=None,
-                zyx_supp=None,
                 # results
+                zyx_supp=None,
                 zyx=None,
                 Oz=None
             ),
@@ -79,12 +75,10 @@ class SegPrePost(SegBase):
                 grid_z_nm=None,
                 grid_xy_nm=None,
                 shrink_sidegrid=None,
-                factor_dist_thresh=None,
+                fitness_fthresh=None,
                 pop_size=None,
                 max_iter=None,
                 tol=None,
-                # parameters: inferred
-                dist_thresh=None,
                 # results
                 mpopz1=None,
                 mpopz2=None,
@@ -395,7 +389,7 @@ class SegPrePost(SegBase):
         dzfilter = self.set_dzfilter(zfilter, nz=I.shape[0])
 
         # detect
-        results = SegSteps.detect(
+        zyx, Oz, zyx_supp = SegSteps.detect(
             I, mask_bound,
             contour_len_bound=self.steps["tomo"]["contour_len_bound"],
             sigma_hessian=d_mem,
@@ -412,9 +406,13 @@ class SegPrePost(SegBase):
             # parameters
             factor_tv=factor_tv,
             factor_supp=factor_supp,
-            zfilter=zfilter
+            xyfilter=xyfilter,
+            zfilter=zfilter,
+            # results
+            zyx_supp=zyx_supp,
+            zyx=zyx,
+            Oz=Oz
         ))
-        self.steps["detect"].update(results)
         self.steps["detect"]["timing"] = time.process_time()-time_start
     
     #=========================
@@ -442,7 +440,7 @@ class SegPrePost(SegBase):
             group_rthresh=d_mem,
             group_size=int(d_cleft),
             ratio_comps=ratio_comps,
-            maxiter=10,
+            max_iter=10,
             zfilter=zfilter
         )
         zyx_comp1, zyx_comp2 = zyx_comps[:2]
@@ -476,7 +474,7 @@ class SegPrePost(SegBase):
     #=========================
 
     def evomsac(self, grid_z_nm=50, grid_xy_nm=150,
-            shrink_sidegrid=0.2, factor_dist_thresh=1,
+            shrink_sidegrid=0.2, fitness_fthresh=1,
             pop_size=40, max_iter=200, tol=(0.01, 10), factor_eval=1
         ):
         """ evomsac for both divided parts
@@ -499,23 +497,27 @@ class SegPrePost(SegBase):
             grid_z_nm=grid_z_nm,
             grid_xy_nm=grid_xy_nm,
             shrink_sidegrid=shrink_sidegrid,
-            dist_thresh=factor_dist_thresh*d_mem,
             pop_size=pop_size,
             max_iter=max_iter,
             tol=tol,
-            factor_eval=factor_eval
         )
-        zyx1, mpopz1 = SegSteps.evomsac(self.steps["divide"]["zyx1"],
-            voxel_size_nm=voxel_size_nm, **params)
-        zyx2, mpopz2 = SegSteps.evomsac(self.steps["divide"]["zyx2"],
-            voxel_size_nm=voxel_size_nm, **params)
+        params_extend = dict(
+            params,
+            **dict(
+                fitness_rthresh=fitness_fthresh*d_mem,
+                factor_eval=factor_eval,
+                voxel_size_nm=voxel_size_nm
+            )
+        )
+        zyx1, mpopz1 = SegSteps.evomsac(self.steps["divide"]["zyx1"], **params_extend)
+        zyx2, mpopz2 = SegSteps.evomsac(self.steps["divide"]["zyx2"], **params_extend)
 
         # save parameters and results
         self.steps["evomsac"].update(params)
         self.steps["evomsac"].update(dict(
             finished=True,
             # parameters
-            factor_dist_thresh=factor_dist_thresh,
+            fitness_fthresh=fitness_fthresh,
             # results
             mpopz1=mpopz1,
             mpopz2=mpopz2,

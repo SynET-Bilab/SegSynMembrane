@@ -172,8 +172,10 @@ class SegSteps:
         :param sigma_<hessian,tv,supp>: sigma in voxel for hessian, tv, normal suppression
         :param xyfilter: for each xy plane, filter out pixels with Ssupp below quantile threshold; the threshold = 1-xyfilter*fraction_mems, fraction_mems is estimated by the ratio between contour length of boundary and the number of points. the smaller xyfilter, more will be filtered out.
         :param dzfilter: a component will be filtered out if its z-range < dzfilter
-        :return: results
-            results: {qfilter,zyx_supp,zyx,Oz}
+        :return: zyx_supp, zyx, Oz
+            zyx_supp: points after normal suppression
+            zyx: points after filtering
+            Oz: orientation sparsified
         """
         # negate, hessian
         Ineg = utils.negate_image(I)
@@ -223,31 +225,23 @@ class SegSteps:
         Bdetect = Bfilt_dz
         Odetect = Oref*Bdetect
 
-        # save parameters and results
-        results = dict(
-            # parameters
-            sigma_tv=sigma_tv,
-            sigma_supp=sigma_supp,
-            xyfilter=xyfilter,
-            dzfilter=dzfilter,
-            # results
-            zyx_supp=utils.voxels_to_points(Bsupp),
-            zyx=utils.voxels_to_points(Bdetect),
-            Oz=utils.sparsify3d(Odetect)
-        )
-        return results
+        # retuls
+        zyx_supp=utils.voxels_to_points(Bsupp)
+        zyx=utils.voxels_to_points(Bdetect)
+        Oz=utils.sparsify3d(Odetect)
+        return zyx_supp, zyx, Oz
 
     @staticmethod
     def evomsac(
         zyx, voxel_size_nm, grid_z_nm, grid_xy_nm,
-        shrink_sidegrid, dist_thresh,
+        shrink_sidegrid, fitness_rthresh,
         pop_size, max_iter, tol, factor_eval):
         """ evomsac for one divided part
         :param zyx: 3d binary image
         :param voxel_size_nm: voxel spacing in nm
         :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
         :param shrink_sidegrid: grids close to the side in xy are shrinked to this ratio
-        :param dist_thresh: distance threshold for fitness evaluation, r_outliers >= dist_thresh
+        :param fitness_rthresh: distance threshold for fitness evaluation, r_outliers >= fitness_rthresh
         :param pop_size: size of population
         :param tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
         :param max_iter: max number of generations
@@ -272,7 +266,8 @@ class SegSteps:
         # setup mootools, moopop
         mtools = evomsac.MOOTools(
             zyx, n_vxy=n_vxy, n_uz=n_uz, nz_eachu=1,
-            dist_thresh=dist_thresh, shrink_sidegrid=shrink_sidegrid
+            fitness_rthresh=fitness_rthresh,
+            shrink_sidegrid=shrink_sidegrid
         )
         mpop = evomsac.MOOPop(mtools, pop_size=pop_size)
 

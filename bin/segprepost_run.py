@@ -155,7 +155,7 @@ def run_seg(args):
             log_args = {
                 "tomo": ["voxel_size_nm"],
                 "detect": ["factor_tv", "xyfilter"],
-                "evomsac": ["grid_xy_nm", "grid_z_nm", "shrink_sidegrid", "factor_dist_thresh"],
+                "evomsac": ["grid_xy_nm", "grid_z_nm", "shrink_sidegrid", "fitness_fthresh"],
                 "meshrefine": ["factor_normal", "factor_mesh"]
             }
             log_str = "arguments:\n  " + "\n  ".join([
@@ -215,7 +215,7 @@ def run_seg(args):
         {"grid_z_nm": args.evomsac_grids[0],
         "grid_xy_nm": args.evomsac_grids[1],
         "shrink_sidegrid": args.evomsac_shrinkside,
-        "factor_dist_thresh": args.evomsac_fthresh,
+        "fitness_fthresh": args.evomsac_fthresh,
         }
     ):
         logging.info("starting evomsac")
@@ -223,7 +223,7 @@ def run_seg(args):
             grid_z_nm=args.evomsac_grids[0],
             grid_xy_nm=args.evomsac_grids[1],
             shrink_sidegrid=args.evomsac_shrinkside,
-            factor_dist_thresh=args.evomsac_fthresh
+            fitness_fthresh=args.evomsac_fthresh
         )
         # save
         seg.save_steps(filenames["steps"])

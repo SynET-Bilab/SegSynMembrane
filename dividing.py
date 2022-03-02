@@ -64,13 +64,13 @@ def divide_spectral(zyx, group_rthresh, group_size, n_clusters=2):
 
     return zyx_clusts
 
-def divide_to_two(zyx, group_rthresh, group_size, ratio_comps=0.5, maxiter=10, zfilter=-1):
+def divide_to_two(zyx, group_rthresh, group_size, ratio_comps=0.5, max_iter=10, zfilter=-1):
     """ divide into two parts, until size ratio > ratio_comps
     :param zyx: points
     :param group_rthresh: radius for building nn-graph for points
     :param group_size: max size of groups, < cleft width
     :param ratio_comps: divide the largest component if size2/size1<ratio_comps
-    :param maxiter: max iteration for division
+    :param max_iter: max iteration for division
     :param zfilter: sets min dz for components, dzmin=dzspan*zfilter
     :return: zyx_comps
         zyx_comps: [zyx1, zyx2]
@@ -117,9 +117,9 @@ def divide_to_two(zyx, group_rthresh, group_size, ratio_comps=0.5, maxiter=10, z
     zyx_comps = extract_connected(zyx, 2)
 
     # if two membranes seem connected, divide
-    iiter = 0
-    while need_to_divide(zyx_comps) or (iiter >= maxiter):
-        iiter += 1
+    i_iter = 0
+    while need_to_divide(zyx_comps) or (i_iter >= max_iter):
+        i_iter += 1
         zyx_comps_raw = divide_spectral(
             zyx_comps[0], group_rthresh, group_size, n_clusters=2
         )
