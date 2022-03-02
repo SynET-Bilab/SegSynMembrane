@@ -66,10 +66,8 @@ class SegPrePost(SegBase):
                 finished=False,
                 timing=None,
                 # parameters: input
-                size_ratio_thresh=None,
+                ratio_comps=None,
                 zfilter=None,
-                # parameters: inferred
-                dzfilter=None,
                 # results
                 zyx1=None,
                 zyx2=None,
@@ -423,9 +421,9 @@ class SegPrePost(SegBase):
     # divide
     #=========================
 
-    def divide(self, size_ratio_thresh=0.5, zfilter=-1):
+    def divide(self, ratio_comps=0.5, zfilter=-1):
         """ divide detected image into pre-post candidates
-        :param size_ratio_thresh: divide the largest component if size2/size1<size_ratio_thresh
+        :param ratio_comps: divide the largest component if size2/size1<ratio_comps
         :param zfilter: consider a component as candidate if its z-span >= dzfilter. see self.detect for relations between zfilter and dzfilter.
         :action: assign steps["divide"]: zyx1, zyx2
         """
@@ -433,73 +431,43 @@ class SegPrePost(SegBase):
 
         # load from self
         self.check_steps(["tomo", "detect"], raise_error=True)
-        shape = self.steps["tomo"]["shape"]
         d_mem = self.steps["tomo"]["d_mem"]
         d_cleft = self.steps["tomo"]["d_cleft"]
         zyx_ref = self.steps["tomo"]["zyx_ref"]
-        B = self.points_to_voxels(self.steps["detect"]["zyx"])
-        O = utils.densify3d(self.steps["detect"]["Oz"])
+        zyx = self.steps["detect"]["zyx"]
 
         # extract two largest components
-        # could get only one component
-        comps = [comp[1] for comp in utils.extract_connected(B, n_keep=2, connectivity=3)]
-
-        # check if components need to be divided
-        dzfilter = self.set_dzfilter(zfilter, nz=shape[0])
-        def need_to_divide(comps):
-            # only one component: True
-            if len(comps) == 1:
-                return True
-            else:
-                zyx1, zyx2 = [utils.voxels_to_points(comp) for comp in comps[:2]]
-                # size of component-2 too small: True
-                if len(zyx2)/len(zyx1) < size_ratio_thresh:
-                    return True
-                # z-span of component-2 too small: True
-                # loophole here: z-span of component-1 too small?
-                elif np.ptp(zyx2[:, 0]) < dzfilter:
-                    return True
-                else:
-                    return False
-
-        # if two membranes seem connected, divide
-        while need_to_divide(comps):
-            comps = dividing.divide_connected(
-                comps[0], O*comps[0],
-                seg_max_size=max(1, int(d_cleft)),
-                seg_neigh_thresh=max(1, int(d_mem)),
-                n_clusters=2
-            )
-
-        # set two components
-        comp1, comp2 = comps[:2]
+        zyx_comps = dividing.divide_to_two(
+            zyx,
+            group_rthresh=d_mem,
+            group_size=int(d_cleft),
+            ratio_comps=ratio_comps,
+            maxiter=10,
+            zfilter=zfilter
+        )
+        zyx_comp1, zyx_comp2 = zyx_comps[:2]
         
         # compare components' distance to ref
-        iz_ref = int(zyx_ref[0])
-        yx1 = utils.voxels_to_points(comp1[iz_ref])
-        yx2 = utils.voxels_to_points(comp2[iz_ref])
-        dist1 = np.sum((yx1 - zyx_ref[1:])**2, axis=1).min()
-        dist2 = np.sum((yx2 - zyx_ref[1:])**2, axis=1).min()
+        dist1 = np.sum((zyx_comp1 - zyx_ref)**2, axis=1).min()
+        dist2 = np.sum((zyx_comp2 - zyx_ref)**2, axis=1).min()
 
         # identify pre and post membranes
         if dist1 < dist2:
-            Bdiv1 = comp1
-            Bdiv2 = comp2
+            zyx1 = zyx_comp1
+            zyx2 = zyx_comp2
         else:
-            Bdiv1 = comp2
-            Bdiv2 = comp1
+            zyx1 = zyx_comp2
+            zyx2 = zyx_comp1
 
         # save parameters and results
         self.steps["divide"].update(dict(
             finished=True,
             # parameters: input
-            size_ratio_thresh=size_ratio_thresh,
+            ratio_comps=ratio_comps,
             zfilter=zfilter,
-            # parameters: inferred
-            dzfilter=dzfilter,
             # results
-            zyx1=utils.voxels_to_points(Bdiv1),
-            zyx2=utils.voxels_to_points(Bdiv2),
+            zyx1=zyx1,
+            zyx2=zyx2,
         ))
         self.steps["divide"]["timing"] = time.process_time()-time_start
     

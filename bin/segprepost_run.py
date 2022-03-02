@@ -206,7 +206,7 @@ def run_seg(args):
     # divide
     if ifrun.check(seg.steps["divide"], {}):
         logging.info("starting divide")
-        seg.divide(size_ratio_thresh=0.5, zfilter=-1)
+        seg.divide(ratio_comps=0.5, zfilter=-1)
         # save
         seg.save_steps(filenames["steps"])
 
