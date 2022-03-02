@@ -5,7 +5,7 @@ import time
 import numpy as np
 import mrcfile
 from etsynseg import io, utils, plot
-from etsynseg import division
+from etsynseg import dividing
 from etsynseg.workflows import SegBase, SegSteps
 
 
@@ -464,7 +464,7 @@ class SegPrePost(SegBase):
 
         # if two membranes seem connected, divide
         while need_to_divide(comps):
-            comps = division.divide_connected(
+            comps = dividing.divide_connected(
                 comps[0], O*comps[0],
                 seg_max_size=max(1, int(d_cleft)),
                 seg_neigh_thresh=max(1, int(d_mem)),

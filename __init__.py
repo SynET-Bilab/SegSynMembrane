@@ -18,6 +18,6 @@ from etsynseg import utils, io, plot, tracing, bspline
 # membrane detection
 from etsynseg import hessian, dtvoting, nonmaxsup
 # membrane extraction
-from etsynseg import division, evomsac, matching, meshrefine
+from etsynseg import dividing, evomsac, matching, meshrefine
 # workflows
 from etsynseg import workflows
