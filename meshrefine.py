@@ -204,19 +204,22 @@ def refine_surface(zyx, sigma_normal, sigma_mesh, mask_bound=None):
 
     # subdivide to pixel scale
     mdiv = mesh_subdivide(mesh, target_size=1)
-    mdiv = mdiv.select_by_index(
-        points_in_hull(mdiv.vertices, hull)
-    )
 
-    # convert to image
-    zyx_raw = utils.reverse_coord(np.asarray(mdiv.vertices))
-    if mask_bound is not None:
-        shape = mask_bound.shape
+    # remove duplicates
+    pts = np.round(np.asarray(mdiv.vertices)).astype(np.int_)
+    pts = np.unique(pts, axis=0)
+
+    # constrain in convex hull
+    pts = pts[points_in_hull(pts, hull)]
+
+    # constrain in mask_bound if provided
+    if mask_bound is None:
+        zyx_refine = utils.reverse_coord(pts)
     else:
-        shape = np.ceil(np.max(zyx, axis=0)).astype(np.int_) + 1
-    B_refine = utils.points_to_voxels(zyx_raw, shape)
-    B_refine = next(utils.extract_connected(B_refine, connectivity=3))[1]
-    if mask_bound is not None:
-        B_refine = mask_bound*B_refine
-    zyx_refine = utils.voxels_to_points(B_refine)
+        # extract connected, mask by bound
+        shape = mask_bound.shape
+        zyx_raw = utils.reverse_coord(np.asarray(mdiv.vertices))
+        B_refine = utils.points_to_voxels(zyx_raw, shape)
+        B_refine = next(utils.extract_connected(B_refine, connectivity=3))[1]
+        zyx_refine = utils.voxels_to_points(B_refine)
     return zyx_refine
