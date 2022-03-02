@@ -80,12 +80,13 @@ def star_optics(cs, voltage, apix, box_size):
         ))
     return df_optics
 
-def star_samples(seg_files, key_xyz, key_normal, step_xy=1, step_z=1, factor_offset=0.5):
+def star_samples(seg_files, key_xyz, key_normal, key_dist=None, step_xy=1, step_z=1, factor_offset=0.5, dist_threshs_nm=(None, None)):
     """ generate star file sections: micrographs, particles
     :param seg_files: list of seg.npz
-    :param key_xyz, key_normal: keys in seg.npz for xyz and normal
+    :param key_<xyz,normal,dist>: keys in seg.npz for xyz, normal, distance
     :param step_xy, step_z: int, step in xy and z
     :param factor_offset: index of the first sample = int(factor_offset*step)
+    :param dist_threshs_nm: lower and upper thresholds of distance in nm
     :return: df_micrographs, df_particles, apix
     """
     col_micrographs = ("rlnMicrographName", "rlnOpticsGroup")
@@ -111,10 +112,21 @@ def star_samples(seg_files, key_xyz, key_normal, step_xy=1, step_z=1, factor_off
         voxel_sizes_nm.append(seg["voxel_size_nm"].item())
 
         # get particles
+        # set dist thresh mask
+        if (dist_threshs_nm[0] is None) or (key_dist is None):
+            mask = np.ones(len(seg[key_xyz]), dtype=bool)
+        else:
+            vx = voxel_sizes_nm[-1]
+            mask = (
+                (seg[key_dist] >= (dist_threshs_nm[0]/vx)) 
+                & (seg[key_dist] <= (dist_threshs_nm[1]/vx))
+            )
+        # downsample
         xyz, normal = downsample(
-            seg[key_xyz], seg[key_normal],
+            seg[key_xyz][mask], seg[key_normal][mask],
             step_xy, step_z, factor_offset
         )
+        # assample particle info
         for xyz_i, normal_i in zip(xyz, normal):
             euler_i = normal_to_euler(normal_i)
             data_i = [*xyz_i, *euler_i, 0., 0., 0., tomo_file, 1]
@@ -148,14 +160,17 @@ def build_parser():
     )
 
     # sampling
-    parser.add_argument("--keys_seg", type=str, nargs=2, default=("xyz2", "normal2"),
-        help="str str. Keys in seg_files for xyz and normal."
+    parser.add_argument("-k", "--keys_seg", type=str, nargs="+", default=("xyz2", "normal2", "dist2"),
+        help="str str. Keys in seg_files for xyz, normal and optional distance."
     )
     parser.add_argument("-s", "--step_xy_z", type=int, nargs='+', default=(8, 8),
         help="int or int int. Downsampling stepsize in xy and z. If given only one number, then set both steps to this number."
     )
     parser.add_argument("-b", "--box_size", type=int, default=64,
         help="int. Box size in voxels in starfile."
+    )
+    parser.add_argument("-d", "--dist_threshs", type=float, nargs=2, default=(None, None),
+        help="float float (in nm). Threshold in membrane distance. Only include points whose distance to the other membrane is between these two values."
     )
 
     # optics
@@ -171,14 +186,20 @@ def build_parser():
 def memsample(args):
     """ sample on membrane and output to star files
     """
-    # generate starfile sections
+    # setup args
     step_xy = args.step_xy_z[0]
     step_z = args.step_xy_z[1] if len(args.step_xy_z)>1 else step_xy
+    key_dist = args.keys_seg[2] if len(args.keys_seg)>2 else None
+
+    # generate starfile sections
     df_micrographs, df_particles, apix = star_samples(
         seg_files=args.seg_files,
-        key_xyz=args.keys_seg[0], key_normal=args.keys_seg[1],
+        key_xyz=args.keys_seg[0],
+        key_normal=args.keys_seg[1],
+        key_dist=key_dist,
         step_xy=step_xy, step_z=step_z,
-        factor_offset=0.5
+        factor_offset=0.5,
+        dist_threshs_nm=args.dist_threshs
     )
     df_optics = star_optics(
         cs=args.cs, voltage=args.voltage,

@@ -2,13 +2,14 @@ __author__ = "Zhenghan Liao"
 __version__ = "0.1"
 
 # dependencies = [
-# conda-forge
+## conda-forge
 # "numpy", "scipy", "pandas",
 # "scikit-learn", "scikit-image",
 # "deap",
 # "matplotlib", "napari",
-# "mrcfile",
-# pypi
+# "igraph", "leidenalg",
+# "mrcfile", "starfile",
+## pypi
 # splipy
 # open3d
 # ]
