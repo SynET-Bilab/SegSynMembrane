@@ -159,7 +159,7 @@ def run_seg(args):
                 "meshrefine": ["factor_normal", "factor_mesh"]
             }
             log_str = "arguments:\n  " + "\n  ".join([
-                f"{k}: " + ",".join([f"{vi}={seg.steps[k][vi]}" for vi in v])
+                f"{k}: " + ", ".join([f"{vi}={seg.steps[k][vi]}" for vi in v])
                 for k, v in log_args.items()
             ])
             logging.info(log_str)
@@ -189,16 +189,16 @@ def run_seg(args):
     seg.save_steps(filenames["steps"])
 
     # detect
-    if ifrun.check(seg.steps["detect"],
-        {"factor_tv": args.detect_tv,
-        "xyfilter": args.detect_xyfilter}
-    ):
+    params = {
+        "factor_tv": args.detect_tv,
+        "xyfilter": args.detect_xyfilter
+    }
+    if ifrun.check(seg.steps["detect"], params):
         logging.info("starting detect")
         seg.detect(
-            factor_tv=args.detect_tv,
             factor_supp=0.25,
-            xyfilter=args.detect_xyfilter,
             zfilter=-1,
+            **params
         )
         # save
         seg.save_steps(filenames["steps"])
@@ -211,19 +211,16 @@ def run_seg(args):
         seg.save_steps(filenames["steps"])
 
     # evomsac
-    if ifrun.check(seg.steps["evomsac"],
-        {"grid_z_nm": args.evomsac_grids[0],
+    params = {
+        "grid_z_nm": args.evomsac_grids[0],
         "grid_xy_nm": args.evomsac_grids[1],
         "shrink_sidegrid": args.evomsac_shrinkside,
         "fitness_fthresh": args.evomsac_fthresh,
-        }
-    ):
+    }
+    if ifrun.check(seg.steps["evomsac"], params):
         logging.info("starting evomsac")
         seg.evomsac(
-            grid_z_nm=args.evomsac_grids[0],
-            grid_xy_nm=args.evomsac_grids[1],
-            shrink_sidegrid=args.evomsac_shrinkside,
-            fitness_fthresh=args.evomsac_fthresh
+            **params
         )
         # save
         seg.save_steps(filenames["steps"])
@@ -239,14 +236,14 @@ def run_seg(args):
         seg.save_steps(filenames["steps"])
 
     # meshrefine
-    if ifrun.check(seg.steps["meshrefine"],
-        {"factor_normal": args.meshrefine_factors[0],
-        "factor_mesh": args.meshrefine_factors[1]}
-    ):
+    params = {
+        "factor_normal": args.meshrefine_factors[0],
+        "factor_mesh": args.meshrefine_factors[1]
+    }
+    if ifrun.check(seg.steps["meshrefine"], params):
         logging.info("starting meshrefine")
         seg.meshrefine(
-            factor_normal=args.meshrefine_factors[0],
-            factor_mesh=args.meshrefine_factors[1]
+            **params
         )
         # save
         seg.save_steps(filenames["steps"])
@@ -256,7 +253,7 @@ def run_seg(args):
             "meshrefine", filenames["meshrefine_fig"], nslice=5, dpi=300, clipped=True)
         seg.output_seg(filenames["meshrefine_pts"])
     
-    logging.info("ending etsynseg")
+    logging.info("finished")
 
 if __name__ == "__main__":
     parser = build_parser()
