@@ -323,6 +323,13 @@ class SegPrePost(SegBase):
         """
         time_start = time.process_time()
 
+        # check model file
+        model = io.read_model(model_file)
+        if obj_bound not in model["object"].values:
+            raise ValueError(f"object bound (index={obj_bound}) not found in the model")
+        if obj_ref not in model["object"].values:
+            raise ValueError(f"object presynaptic reference (index={obj_ref}) not found in the model")
+
         # read tomo and model, clip
         results = SegSteps.read_tomo(
             tomo_file, model_file,
