@@ -232,7 +232,7 @@ def run_seg(args):
     if ifrun.check(seg.steps["match"], {}):
         logging.info("starting match")
         seg.match(
-            factor_tv=1,
+            factor_tv=0,
             factor_extend=args.evomsac_fthresh
         )
         # save

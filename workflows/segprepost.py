@@ -260,8 +260,8 @@ class SegPrePost(SegBase):
             "meshrefine(pre)", "meshrefine(post)",
         ]
         cmap_Is = [
-            "red", "magenta",
-            "bop blue", "bop blue",
+            "red", "bop orange",
+            "magenta", "magenta",
             "green", "green",
             "cyan", "cyan",
             "yellow", "yellow",
@@ -389,7 +389,7 @@ class SegPrePost(SegBase):
         dzfilter = self.set_dzfilter(zfilter, nz=I.shape[0])
 
         # detect
-        zyx, Oz, zyx_supp = SegSteps.detect(
+        zyx_supp, zyx, Oz = SegSteps.detect(
             I, mask_bound,
             contour_len_bound=self.steps["tomo"]["contour_len_bound"],
             sigma_hessian=d_mem,
@@ -531,7 +531,7 @@ class SegPrePost(SegBase):
     # matching
     #=========================
 
-    def match(self, factor_tv=1, factor_extend=1):
+    def match(self, factor_tv=0, factor_extend=1):
         """ match for both divided parts
         :param factor_tv: sigma for tv on detected = factor_tv*d_mem
         :param factor_extend: sigma for tv extension on evomsac surface = factor_extend*d_mem

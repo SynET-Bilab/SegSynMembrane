@@ -226,9 +226,9 @@ class SegSteps:
         Odetect = Oref*Bdetect
 
         # retuls
-        zyx_supp=utils.voxels_to_points(Bsupp)
-        zyx=utils.voxels_to_points(Bdetect)
-        Oz=utils.sparsify3d(Odetect)
+        zyx_supp = utils.voxels_to_points(Bsupp)
+        zyx = utils.voxels_to_points(Bdetect)
+        Oz = utils.sparsify3d(Odetect)
         return zyx_supp, zyx, Oz
 
     @staticmethod
@@ -333,6 +333,7 @@ class SegSteps:
             Stv, Otv = dtvoting.stick3d(B, O, sigma=sigma_tv)
             mask_tv = Stv > np.exp(-1/2)
             Btv = nonmaxsup.nms3d(Stv*mask_tv, Otv)
+            Btv = next(iter(utils.extract_connected(Btv)))[1]
         else:
             Btv = B
             Otv = O
