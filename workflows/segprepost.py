@@ -120,7 +120,7 @@ class SegPrePost(SegBase):
         :param filename: filename(.mrc) for saving
         """
         self.check_steps(["tomo"], raise_error=True)
-        io.write_mrc(
+        io.write_tomo(
             data=self.steps["tomo"]["I"],
             mrcname=filename,
             voxel_size=self.steps["tomo"]["voxel_size_nm"]*10

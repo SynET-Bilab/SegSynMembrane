@@ -4,10 +4,9 @@ __version__ = "0.1"
 # dependencies = [
 ## conda-forge
 # "numpy", "scipy", "pandas",
-# "scikit-learn", "scikit-image",
-# "deap",
+# "scikit-learn", "scikit-image", "tslearn",
+# "deap", "igraph", "leidenalg",
 # "matplotlib", "napari",
-# "igraph", "leidenalg",
 # "mrcfile", "starfile",
 ## pypi
 # splipy

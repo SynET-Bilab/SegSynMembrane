@@ -110,7 +110,7 @@ class SegSteps:
         zyx_shift = np.array([clip_range[i][0] for i in ['z', 'y', 'x']])
 
         # read tomo, clip to bound
-        I, voxel_size_A = io.read_clip_tomo(
+        I, voxel_size_A = io.read_tomo_clip(
             tomo_file, clip_range
         )
         I = np.asarray(I)
@@ -126,8 +126,8 @@ class SegSteps:
 
         # generate mask for bound (after clipping)
         mask_bound = io.model_to_mask(
-            model=model[model["object"] == obj_bound],
-            yx_shape=I[0].shape
+            zyx_mod=model[model["object"] == obj_bound][["z","y","x"]].values,
+            shape=I.shape, closed=True
         )
 
         # calculate bound contours and lengths
