@@ -54,7 +54,7 @@ class SegPrePost(SegBase):
                 xyfilter=None,
                 zfilter=None,
                 # results
-                zyx_supp=None,
+                zyx_nofilt=None,
                 zyx=None,
                 Oz=None
             ),
@@ -241,7 +241,7 @@ class SegPrePost(SegBase):
         if self.check_steps(["detect"]):
             Is_overlay.extend([
                 self.points_to_voxels(self.steps["detect"][f"zyx{i}"])
-                for i in ("_supp", "")
+                for i in ("_nofilt", "")
             ])
         for step in ["divide", "evomsac", "match", "meshrefine"]:
             if self.check_steps([step]):
@@ -396,7 +396,7 @@ class SegPrePost(SegBase):
         dzfilter = self.set_dzfilter(zfilter, nz=I.shape[0])
 
         # detect
-        zyx_supp, zyx, Oz = SegSteps.detect(
+        zyx_nofilt, zyx, Oz = SegSteps.detect(
             I, mask_bound,
             contour_len_bound=self.steps["tomo"]["contour_len_bound"],
             sigma_hessian=d_mem,
@@ -416,7 +416,7 @@ class SegPrePost(SegBase):
             xyfilter=xyfilter,
             zfilter=zfilter,
             # results
-            zyx_supp=zyx_supp,
+            zyx_nofilt=zyx_nofilt,
             zyx=zyx,
             Oz=Oz
         ))

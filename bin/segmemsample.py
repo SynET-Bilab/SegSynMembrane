@@ -64,8 +64,8 @@ def get_tomo_path(seg_file, tomo_file=None):
 
 def star_optics(cs, voltage, apix, box_size):
     """ generate star file sections: optics
-    :param cs: spherical aberration
-    :param voltage: voltage
+    :param cs: spherical aberration in mm
+    :param voltage: voltage in kV
     :param apix: pixel in angstrom
     :param box_size: output box size in pixel
     :return: df_optics
@@ -113,14 +113,18 @@ def star_samples(seg_files, key_xyz, key_normal, key_dist=None, step_xy=1, step_
 
         # get particles
         # set dist thresh mask
-        if (dist_threshs_nm[0] is None) or (key_dist is None):
+        if key_dist is None:
             mask = np.ones(len(seg[key_xyz]), dtype=bool)
         else:
             vx = voxel_sizes_nm[-1]
-            mask = (
-                (seg[key_dist] >= (dist_threshs_nm[0]/vx)) 
-                & (seg[key_dist] <= (dist_threshs_nm[1]/vx))
-            )
+            mask = np.ones(len(seg[key_xyz]), dtype=bool)
+            if dist_threshs_nm[0] is not None:
+                mask = mask & (seg[key_dist] >= (dist_threshs_nm[0]/vx))
+            if dist_threshs_nm[1] is not None:
+                mask = mask & (seg[key_dist] <= (dist_threshs_nm[1]/vx))
+            if np.sum(mask) == 0:
+                raise RuntimeError(f"No points found between {dist_threshs_nm} (nm).")
+            
         # downsample
         xyz, normal = downsample(
             seg[key_xyz][mask], seg[key_normal][mask],
@@ -175,10 +179,10 @@ def build_parser():
 
     # optics
     parser.add_argument("--cs", type=float, default=2.7,
-        help="float. Spherical aberration."
+        help="float (in mm). Spherical aberration."
     )
     parser.add_argument("--voltage", type=float, default=300,
-        help="float. Voltage in kV."
+        help="float (in kV). Voltage."
     )
 
     return parser

@@ -152,17 +152,23 @@ def run_seg(args):
         # show diagnostics and quit
         if args.diagnose:
             logging.info("showing diagnostics")
-            log_args = {
+            log_params = {
                 "tomo": ["voxel_size_nm"],
                 "detect": ["factor_tv", "xyfilter"],
                 "evomsac": ["grid_xy_nm", "grid_z_nm", "shrink_sidegrid", "fitness_fthresh"],
                 "meshrefine": ["factor_normal", "factor_mesh"]
             }
-            log_str = "arguments:\n  " + "\n  ".join([
+            log_status = seg.view_status()
+            log_str = (
+                "\nparameters:\n  " + "\n  ".join([
                 f"{k}: " + ", ".join([f"{vi}={seg.steps[k][vi]}" for vi in v])
-                for k, v in log_args.items()
-            ])
+                for k, v in log_params.items()])
+                + "\nstatus:\n  " + "\n  ".join([
+                f"{k}: " + ", ".join([f"{ki}={vi}" for ki, vi in v.items()])
+                for k, v in log_status.items()])
+            )
             logging.info(log_str)
+            
             seg.imshow3d_steps()
             napari.run()
             return

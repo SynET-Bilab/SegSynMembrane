@@ -172,8 +172,8 @@ class SegSteps:
         :param sigma_<hessian,tv,supp>: sigma in voxel for hessian, tv, normal suppression
         :param xyfilter: for each xy plane, filter out pixels with Ssupp below quantile threshold; the threshold = 1-xyfilter*fraction_mems, fraction_mems is estimated by the ratio between contour length of boundary and the number of points. the smaller xyfilter, more will be filtered out.
         :param dzfilter: a component will be filtered out if its z-range < dzfilter
-        :return: zyx_supp, zyx, Oz
-            zyx_supp: points after normal suppression
+        :return: zyx_nofilt, zyx, Oz
+            zyx_nofilt: points before filtering (normal suppression and other filters)
             zyx: points after filtering
             Oz: orientation sparsified
         """
@@ -226,10 +226,10 @@ class SegSteps:
         Odetect = Oref*Bdetect
 
         # retuls
-        zyx_supp = utils.voxels_to_points(Bsupp)
+        zyx_nofilt = utils.voxels_to_points(Bref)
         zyx = utils.voxels_to_points(Bdetect)
         Oz = utils.sparsify3d(Odetect)
-        return zyx_supp, zyx, Oz
+        return zyx_nofilt, zyx, Oz
 
     @staticmethod
     def evomsac(
