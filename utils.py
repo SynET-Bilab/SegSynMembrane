@@ -101,15 +101,20 @@ def points_to_voxels(pts, shape):
     :param shape: (ny,nx) or (nz,ny,nx)
     :return: B
     """
-    pts = np.asarray(pts)
-    B = np.zeros(shape, dtype=np.int_)
+    # round to int
+    pts = np.round(np.asarray(pts)).astype(int)
+
+    # remove out-of-bound points
     ndim = pts.shape[1]
-    index = tuple(
-        np.clip(
-            np.round(pts[:, i]).astype(np.int_),
-            0, shape[i]-1
-        ) for i in range(ndim)
-    )
+    mask = np.ones(len(pts), dtype=bool)
+    for i in range(ndim):
+        mask_i = (pts[:, i]>=0) & (pts[:, i]<=shape[i]-1)
+        mask = mask & mask_i
+    pts = pts[mask]
+
+    # assign to voxels
+    B = np.zeros(shape, dtype=int)
+    index = tuple(pts.T)
     B[index] = 1
     return B
 
