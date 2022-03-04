@@ -266,6 +266,61 @@ def interpolate_contours(zyx, closed=True):
 
     return zyx_interp
 
+def extend_contours(zyx, shape):
+    """ extend open contours to the boundary
+    :param zyx: points
+    :param shape: shape of mask, (nz,ny,nx)
+    :return: zyx_ext
+        zyx_ext: extended points added to zyx, not clipped
+    """
+    ymin, ymax = 0, shape[1] - 1
+    xmin, xmax = 0, shape[2] - 1
+
+    def extend_one(zyx1, zyx2):
+        """ extend from yx1 to yx2
+        :param yx1, yx2: point 1, 2
+        :return: yxe
+        """
+        # get direction
+        yx1 = zyx1[1:]
+        yx2 = zyx2[1:]
+        dyx = yx2 - yx1
+        dyx = dyx / np.linalg.norm(dyx)
+
+        # test intersection with y
+        y1, x1 = yx1
+        dy, dx = dyx
+        intersect_x = False
+        if dy == 0:
+            intersect_x = True
+        else:
+            ye = ymin if dy < 0 else ymax
+            xe = x1 + dx/dy*(ye-y1)
+            xe = int(np.round(xe))
+            if xe < xmin or xe > xmax:
+                intersect_x = True
+
+        # test intersection with x
+        if intersect_x:
+            xe = xmin if dx < 0 else xmax
+            ye = y1 + dy/dx*(xe-x1)
+            ye = int(np.round(ye))
+
+        zyxe = np.array([zyx1[0], ye, xe])
+        return zyxe
+
+    # extend for each z
+    z_arr = zyx[:, 0]
+    zyx_ext = []
+    for z in sorted(np.unique(z_arr)):
+        zyx_z = zyx[z_arr == z]
+        zyx1 = extend_one(zyx_z[1], zyx_z[0])
+        zyx2 = extend_one(zyx_z[-2], zyx_z[-1])
+        zyx_ext.extend([[zyx1], zyx_z, [zyx2]])
+
+    zyx_ext = np.concatenate(zyx_ext, axis=0)
+    return zyx_ext
+
 def contours_to_mask_closed(zyx, shape):
     """ convert closed contours to mask (0,1's)
     :param zyx: points
@@ -296,6 +351,7 @@ def contours_to_mask_open(zyx, shape):
     for z in sorted(np.unique(zyx[:, 0])):
         if (z < 0) or (z > shape[0]-1):
             continue
+        
         # connect lines piecewise
         yx = zyx[zyx[:, 0] == z][:, 1:]
         pos_y = []
@@ -304,32 +360,51 @@ def contours_to_mask_open(zyx, shape):
             pos_yi, pos_xi = skimage.draw.line(*yx0, *yx1)
             pos_y.extend(list(pos_yi))
             pos_x.extend(list(pos_xi))
-        pos_y = tuple(np.clip(pos_y, 0, shape[1]-1))
-        pos_x = tuple(np.clip(pos_x, 0, shape[2]-1))
+
+        # remove out-of-bound points
+        pos_y = np.array(pos_y)
+        pos_x = np.array(pos_x)
+        pos_mask = (
+            (pos_y >= 0) & (pos_y <= shape[1]-1)
+            & (pos_x >= 0) & (pos_x <= shape[2]-1)
+        )
+        pos_y = tuple(pos_y[pos_mask])
+        pos_x = tuple(pos_x[pos_mask])
+
+        # assign mask
         mask[z, pos_y, pos_x] = 1
     return mask
 
-def model_to_mask(zyx_mod, shape, closed=True, amend=True):
+def model_to_mask(zyx_mod, shape, interpolate=True, closed=True, extend=False, amend=True):
     """ convert model to mask, dtw-interpolate for missing z's
     :param zyx_mod: model points, ordered in each z
     :param shape: shape of mask, (nz,ny,nx)
+    :param interpolate: if interpolate between missing z's
     :param closed: if the contour is treated as closed
-    :param amend: if amend, i.e. set model intersections to 1
+    :param extend: if extend open contours to the boundary
+    :param amend: if amend interpolations by setting model intersections to 1
     :return: mask
     """
+    # convert to int
     zyx_mod = np.round(zyx_mod).astype(int)
+    zyx = np.copy(zyx_mod)
 
+    # extend
+    if (not closed) and extend:
+        zyx = extend_contours(zyx, shape)
+    
     # interpolate
-    zyx_interp = interpolate_contours(zyx_mod, closed=closed)
+    if interpolate:
+        zyx = interpolate_contours(zyx, closed=closed)
 
     # convert to mask
     if closed:
-        mask = contours_to_mask_closed(zyx_interp, shape)
+        mask = contours_to_mask_closed(zyx, shape)
     else:
-        mask = contours_to_mask_open(zyx_interp, shape)
+        mask = contours_to_mask_open(zyx, shape)
     
     # amend
-    if amend:
+    if interpolate and amend:
         z_mod = sorted(np.unique(zyx_mod[:, 0]))
         for z1, z2 in zip(z_mod[:-1], z_mod[1:]):
             z_intersect = (mask[z1]*mask[z2]).astype(bool)
