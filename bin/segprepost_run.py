@@ -150,12 +150,19 @@ def run_seg(args):
             d_cleft_nm=args.lengths[1]
         )
 
+        # setup namings
+        if args.output_base is not None:
+            name = args.output_base
+        else:
+            name = args.output_prefix + pathlib.Path(tomo_file).stem
+
+
     # case: steps npz
     else:
         step_file = args.input_files[0]
         logging.info("reading steps: %s", step_file)
         seg.load_steps(step_file)
-        tomo_file = seg.steps["tomo"]["tomo_file"]
+        name = step_file.split("-steps.npz")[0]
         
         # show diagnostics and quit
         if args.diagnose:
@@ -181,11 +188,7 @@ def run_seg(args):
             napari.run()
             return
 
-    # setup namings
-    if args.output_base is not None:
-        name = args.output_base
-    else:
-        name = args.output_prefix + pathlib.Path(tomo_file).stem
+
 
     #=========================
     # run steps, save
