@@ -5,10 +5,11 @@ import igraph
 import leidenalg
 import sklearn.cluster
 import pandas as pd
-from etsynseg import utils
+import skimage
+from etsynseg import utils, io
 
 __all__ = [
-    "divide_spectral"
+    "divide_spectral", "divide_two_auto", "divide_two_mask"
 ]
 
 def divide_spectral(zyx, group_rthresh, group_size, n_clusters=2):
@@ -64,7 +65,7 @@ def divide_spectral(zyx, group_rthresh, group_size, n_clusters=2):
 
     return zyx_clusts
 
-def divide_to_two(zyx, group_rthresh, group_size, ratio_comps=0.5, max_iter=10, zfilter=-1):
+def divide_two_auto(zyx, group_rthresh, group_size, ratio_comps=0.5, max_iter=10, zfilter=-1):
     """ divide into two parts, until size ratio > ratio_comps
     :param zyx: points
     :param group_rthresh: radius for building nn-graph for points
@@ -131,3 +132,41 @@ def divide_to_two(zyx, group_rthresh, group_size, ratio_comps=0.5, max_iter=10, 
     
     return zyx_comps
 
+def divide_two_mask(zyx, zyx_mod_divide, zyx_bound, shape, r_dilate=1):
+    """ divide into two parts using masks
+    :param zyx: points to be divided
+    :param zyx_mod_divide: zyx of the model for dividing
+    :param zyx_bound: points for boundary
+    :param shape: (nz,ny,nx)
+    :param r_dilate: radius for dilation of mask for dividing
+    :return: zyx_comps
+        zyx_comps: [zyx1, zyx2]
+    """
+    # construct mask for division
+    mask_divide = io.model_to_mask(
+        zyx_mod_divide, shape=shape,
+        closed=False, extend=True, amend=False
+    )
+    mask_divide = skimage.morphology.binary_dilation(
+        mask_divide,
+        skimage.morphology.ball(r_dilate)
+    )
+
+    # construct mask for boundary
+    mask_bound = utils.points_to_voxels(zyx_bound, shape)
+
+    # divide mask_bound into two parts
+    mask_comps = [
+        comp[1] for comp in
+        utils.extract_connected(
+            mask_bound*(1-mask_divide),
+            n_keep=2, connectivity=1)
+    ]
+
+    # mask points in the two parts
+    B = utils.points_to_voxels(zyx, shape)
+    zyx_comps = [
+        utils.voxels_to_points(B*mask)
+        for mask in mask_comps
+    ]
+    return zyx_comps

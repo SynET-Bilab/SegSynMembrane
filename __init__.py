@@ -7,7 +7,7 @@ __version__ = "0.1"
 # "scikit-learn", "scikit-image", "tslearn",
 # "deap", "igraph", "leidenalg",
 # "matplotlib", "napari",
-# "mrcfile", "starfile",
+# "mrcfile", "starfile", "h5py"
 ## pypi
 # splipy
 # open3d

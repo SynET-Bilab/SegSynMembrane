@@ -29,6 +29,7 @@ class SegPrePost(SegBase):
                 model_file=None,
                 obj_bound=None,
                 obj_ref=None,
+                obj_divide=None,
                 d_mem_nm=None,
                 d_cleft_nm=None,
                 # results
@@ -121,8 +122,8 @@ class SegPrePost(SegBase):
         """
         self.check_steps(["tomo"], raise_error=True)
         io.write_tomo(
-            data=self.steps["tomo"]["I"],
-            mrcname=filename,
+            tomo=self.steps["tomo"]["I"],
+            tomo_file=filename,
             voxel_size=self.steps["tomo"]["voxel_size_nm"]*10
         )
 
@@ -313,7 +314,7 @@ class SegPrePost(SegBase):
     
     def read_tomo(self, tomo_file, model_file,
             voxel_size_nm=None, d_mem_nm=5, d_cleft_nm=20,
-            obj_bound=1, obj_ref=2
+            obj_bound=1, obj_ref=2, obj_divide=3
         ):
         """ load and clip tomo and model
         :param tomo_file, model_file: filename of tomo, model
@@ -436,22 +437,36 @@ class SegPrePost(SegBase):
 
         # load from self
         self.check_steps(["tomo", "detect"], raise_error=True)
-        d_mem = self.steps["tomo"]["d_mem"]
-        d_cleft = self.steps["tomo"]["d_cleft"]
         zyx_ref = self.steps["tomo"]["zyx_ref"]
         zyx = self.steps["detect"]["zyx"]
 
-        # extract two largest components
-        zyx_comps = dividing.divide_to_two(
-            zyx,
-            group_rthresh=d_mem,
-            group_size=int(d_cleft),
-            ratio_comps=ratio_comps,
-            max_iter=10,
-            zfilter=zfilter
-        )
+        # dividing using model
+        obj_divide = self.steps["tomo"]["obj_divide"]
+        model = self.steps["tomo"]["model"]
+        if (obj_divide in model["object"]):
+            zyx_comps = dividing.divide_two_mask(
+                zyx, 
+                zyx_mod_divide=(model[model["object"]==obj_divide][["z", "y", "x"]].values),
+                zyx_bound=self.steps["tomo"]["zyx_bound"],
+                shape=self.steps["tomo"]["shape"]
+            )
+
+        # dividing using spectral
+        else:
+            d_mem = self.steps["tomo"]["d_mem"]
+            d_cleft = self.steps["tomo"]["d_cleft"]
+            zyx_comps = dividing.divide_two_auto(
+                zyx,
+                group_rthresh=d_mem,
+                group_size=int(d_cleft),
+                ratio_comps=ratio_comps,
+                max_iter=10,
+                zfilter=zfilter
+            )
+
+        # assign components
         zyx_comp1, zyx_comp2 = zyx_comps[:2]
-        
+
         # compare components' distance to ref
         dist1 = np.sum((zyx_comp1 - zyx_ref)**2, axis=1).min()
         dist2 = np.sum((zyx_comp2 - zyx_ref)**2, axis=1).min()

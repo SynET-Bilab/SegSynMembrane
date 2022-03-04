@@ -127,7 +127,7 @@ class SegSteps:
         # generate mask for bound (after clipping)
         mask_bound = io.model_to_mask(
             zyx_mod=model[model["object"] == obj_bound][["z","y","x"]].values,
-            shape=I.shape, closed=True
+            shape=I.shape, closed=True, amend=True
         )
 
         # calculate bound contours and lengths
