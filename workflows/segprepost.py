@@ -350,6 +350,7 @@ class SegPrePost(SegBase):
             finished=True,
             # parameters
             obj_ref=obj_ref,
+            obj_divide=obj_divide,
             d_cleft_nm=d_cleft_nm,
             # results
             zyx_ref=zyx_ref,
