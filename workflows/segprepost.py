@@ -376,7 +376,7 @@ class SegPrePost(SegBase):
             dzfilter = int(zfilter)
         return dzfilter
 
-    def detect(self, factor_tv=5, factor_supp=0.25, xyfilter=2.5, zfilter=-1):
+    def detect(self, factor_tv=5, factor_supp=0.25, xyfilter=3, zfilter=-1):
         """ detect membrane features
         :param factor_tv: sigma for tv = factor_tv*d_mem
         :param factor_supp: sigma for normal suppression = factor_supp*mean(contour_len_bound)

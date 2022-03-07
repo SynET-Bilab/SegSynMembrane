@@ -47,7 +47,9 @@ def build_parser():
     parser.add_argument("--detect_tv", type=float, default=5,
         help="float. Step 'detect': sigma for tensor voting = membrane thickness * detect_tv. The larger the smoother and more connected.")
     parser.add_argument("--detect_xyfilter", type=float, default=3,
-        help="float (>1). Step 'detect': after tensor voting and normal suppression, filter out voxels with Ssupp below quantile threshold, the threshold = 1-xyfilter*fraction_mems.Smaller values filter out more voxels.")
+        help="float (>1). Step 'detect': filter out voxels with Ssupp below quantile threshold, the threshold = 1-xyfilter*fraction_mems.Smaller values filter out more voxels.")
+    parser.add_argument("--detect_zfilter", type=float, default=-1,
+        help="float. Step 'detect': filter out connected components whose z-span < dzfilter; dzfilter = {nz+zfilter if zfilter<=0, nz*zfilter if 0<zfilter<1}.")
     
     # evomsac
     parser.add_argument("--evomsac_grids", type=float, nargs=2, default=[50, 150],
@@ -208,13 +210,13 @@ def run_seg(args):
     # detect
     params = {
         "factor_tv": args.detect_tv,
-        "xyfilter": args.detect_xyfilter
+        "xyfilter": args.detect_xyfilter,
+        "zfilter": args.detect_zfilter,
     }
     if ifrun.check(seg.steps["detect"], params):
         logging.info("starting detect")
         seg.detect(
             factor_supp=0.25,
-            zfilter=-1,
             **params
         )
         # save

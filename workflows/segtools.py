@@ -2,6 +2,7 @@
 """
 
 import numpy as np
+import multiprocessing.dummy
 from etsynseg import io, utils, tracing
 from etsynseg import hessian, dtvoting, nonmaxsup
 from etsynseg import evomsac, matching, meshrefine
@@ -166,7 +167,7 @@ class SegSteps:
     @staticmethod
     def detect(I, mask_bound, contour_len_bound,
             sigma_hessian, sigma_tv, sigma_supp,
-            dO_threshold=np.pi/4, xyfilter=2.5, dzfilter=1
+            dO_threshold, xyfilter, dzfilter
         ):
         """ detect membrane features
         :param sigma_<hessian,tv,supp>: sigma in voxel for hessian, tv, normal suppression
@@ -201,21 +202,26 @@ class SegSteps:
 
         # filter in xy: small Ssupp
         Bfilt_xy = np.zeros(Bsupp.shape, dtype=int)
-        for iz in range(Bsupp.shape[0]):
+
+        def filter_xy_one(iz):
             # estimating the fraction of membranes by no. of pts
             npts_bound = contour_len_bound[iz]
             npts_ref = np.sum(Bref[iz])
             fraction_mems = npts_bound/npts_ref
-            
+
             # set thresh according to the fraction
             qthresh = 1 - np.clip(xyfilter*fraction_mems, 0, 1)
-            
+
             # filter out pixels with small Ssupp
             ssupp = Ssupp[iz][Bsupp[iz].astype(bool)]
             sthresh = np.quantile(ssupp, qthresh)
-            
+
             # assign filtered results
-            Bfilt_xy[iz][Ssupp[iz]>sthresh] = 1
+            Bfilt_xy[iz][Ssupp[iz] > sthresh] = 1
+        
+        pool = multiprocessing.dummy.Pool()
+        pool.map(filter_xy_one, range(Bsupp.shape[0]))
+        pool.close()
 
         # filter in 3d: z-span
         Bfilt_dz = utils.filter_connected_dz(
