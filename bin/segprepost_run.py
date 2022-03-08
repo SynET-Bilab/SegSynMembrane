@@ -142,7 +142,7 @@ def run_seg(args):
 
     # inputs
     # case: tomo (and model)
-    if (not args.input_files[0].endswith(".npz")) or (not args.input_files[0].endswith(".npz~")):
+    if not args.input_files[0].endswith(".npz"):
         # set tomo, infer model
         if len(args.input_files) == 1:
             tomo_file = args.input_files[0]

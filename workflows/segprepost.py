@@ -444,9 +444,9 @@ class SegPrePost(SegBase):
         # dividing using model
         obj_divide = self.steps["tomo"]["obj_divide"]
         model = self.steps["tomo"]["model"]
-        if (obj_divide in model["object"]):
+        if (obj_divide in model["object"].values):
             zyx_comps = dividing.divide_two_mask(
-                zyx, 
+                zyx,
                 zyx_mod_divide=(model[model["object"]==obj_divide][["z", "y", "x"]].values),
                 zyx_bound=self.steps["tomo"]["zyx_bound"],
                 shape=self.steps["tomo"]["shape"]
