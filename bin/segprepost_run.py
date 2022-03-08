@@ -113,9 +113,36 @@ def run_seg(args):
     )
     logging.info("starting etsynseg")
 
+    # show diagnostics and quit
+    if args.diagnose:
+        step_file = args.input_files[0]
+        logging.info("showing diagnostics: %s", step_file)
+        seg.load_steps(step_file)
+
+        log_params = {
+            "tomo": ["voxel_size_nm"],
+            "detect": ["factor_tv", "xyfilter"],
+            "evomsac": ["grid_xy_nm", "grid_z_nm", "shrink_sidegrid", "fitness_fthresh"],
+            "meshrefine": ["factor_normal", "factor_mesh"]
+        }
+        log_status = seg.view_status()
+        log_str = (
+            "\nparameters:\n  " + "\n  ".join([
+            f"{k}: " + ", ".join([f"{vi}={seg.steps[k][vi]}" for vi in v])
+            for k, v in log_params.items()])
+            + "\nstatus:\n  " + "\n  ".join([
+            f"{k}: " + ", ".join([f"{ki}={vi}" for ki, vi in v.items()])
+            for k, v in log_status.items()])
+        )
+        logging.info(log_str)
+        
+        seg.imshow3d_steps()
+        napari.run()
+        return
+
     # inputs
     # case: tomo (and model)
-    if not args.input_files[0].endswith(".npz"):
+    if (not args.input_files[0].endswith(".npz")) or (not args.input_files[0].endswith(".npz~")):
         # set tomo, infer model
         if len(args.input_files) == 1:
             tomo_file = args.input_files[0]
@@ -166,31 +193,6 @@ def run_seg(args):
         seg.load_steps(step_file)
         name = step_file.split("-steps.npz")[0]
         
-        # show diagnostics and quit
-        if args.diagnose:
-            logging.info("showing diagnostics")
-            log_params = {
-                "tomo": ["voxel_size_nm"],
-                "detect": ["factor_tv", "xyfilter"],
-                "evomsac": ["grid_xy_nm", "grid_z_nm", "shrink_sidegrid", "fitness_fthresh"],
-                "meshrefine": ["factor_normal", "factor_mesh"]
-            }
-            log_status = seg.view_status()
-            log_str = (
-                "\nparameters:\n  " + "\n  ".join([
-                f"{k}: " + ", ".join([f"{vi}={seg.steps[k][vi]}" for vi in v])
-                for k, v in log_params.items()])
-                + "\nstatus:\n  " + "\n  ".join([
-                f"{k}: " + ", ".join([f"{ki}={vi}" for ki, vi in v.items()])
-                for k, v in log_status.items()])
-            )
-            logging.info(log_str)
-            
-            seg.imshow3d_steps()
-            napari.run()
-            return
-
-
 
     #=========================
     # run steps, save
