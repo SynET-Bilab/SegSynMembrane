@@ -4,7 +4,7 @@ import argparse
 import pathlib
 import logging
 import napari
-from etsynseg.workflows import SegPrePost
+from etsynseg.workflows import SegOneMem
 
 
 def build_parser():
@@ -13,7 +13,7 @@ def build_parser():
     """
     # parser
     parser = argparse.ArgumentParser(
-        prog="segprepost_run.py",
+        prog="segonemem_run.py",
         description="Segmentation of synaptic membranes. Inputs: tomo and boundary model. Outputs: record of steps (-steps.npz), segmentation result (-seg.npz), model (-seg.mod), quickview image (-seg.png).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
@@ -36,12 +36,12 @@ def build_parser():
     )
 
     # tomo continued
-    parser.add_argument("--model_objs", type=int, nargs="+", default=[1, 2, 3],
-        help="int int (optional 3rd int) (1-based). Object id's in the model file in the order of the boundary, the presynaptic reference point, and the optional dividing line.")
+    parser.add_argument("--model_objs", type=int, nargs="+", default=[1, 2],
+        help="int (optional 2nd int) (1-based). Object id's in the model file in the order of the boundary, the reference point for insideness.")
     parser.add_argument("-vx", "--voxel_size", type=float, default=None,
         help="float (in nm). Voxel size in nm. If not set, then read from tomo file's header.")
-    parser.add_argument("--lengths", type=float, nargs=2, default=[5, 20],
-        help="float float (in nm). Membrane thickness and cleft width.")
+    parser.add_argument("--lengths", type=float, nargs=1, default=[5],
+        help="float (in nm). Membrane thickness.")
     
     # detect
     parser.add_argument("--detect_tv", type=float, default=5,
@@ -102,7 +102,7 @@ def run_seg(args):
     #=========================
     
     # init
-    seg = SegPrePost()
+    seg = SegOneMem()
     ifrun = IfRunStep()
 
     logging.basicConfig(
@@ -161,10 +161,10 @@ def run_seg(args):
             return
 
         # set model objects
-        if len(args.model_objs) < 2:
-            raise ValueError("--model_objs should receive 2 or 3 arguments.")
-        elif len(args.model_objs) == 2:
-            args.model_objs.append(0)  # assign an invalid value to skip obj_divide
+        if len(args.model_objs) < 1:
+            raise ValueError("--model_objs should receive 1 or 2 arguments.")
+        elif len(args.model_objs) == 1:
+            args.model_objs.append(0)  # assign an invalid value to skip obj_ref
 
         # read tomo and model
         logging.info("reading tomo and model: %s %s", tomo_file, model_file)
@@ -173,10 +173,8 @@ def run_seg(args):
             tomo_file, model_file,
             obj_bound=args.model_objs[0],
             obj_ref=args.model_objs[1],
-            obj_divide=args.model_objs[2],
             voxel_size_nm=args.voxel_size,
             d_mem_nm=args.lengths[0],
-            d_cleft_nm=args.lengths[1]
         )
 
         # setup namings
@@ -221,13 +219,6 @@ def run_seg(args):
             factor_supp=0.25,
             **params
         )
-        # save
-        seg.save_steps(filenames["steps"])
-
-    # divide
-    if ifrun.check(seg.steps["divide"], {}):
-        logging.info("starting divide")
-        seg.divide(ratio_comps=0.5, zfilter=-1)
         # save
         seg.save_steps(filenames["steps"])
 
