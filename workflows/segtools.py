@@ -85,7 +85,8 @@ class SegSteps:
     #     return zyx_sorted
 
     @staticmethod
-    def read_tomo(tomo_file, model_file,
+    def read_tomo(
+            tomo_file, model_file,
             voxel_size_nm=None, d_mem_nm=5, obj_bound=1
         ):
         """ load and clip tomo and model
@@ -165,7 +166,8 @@ class SegSteps:
         return results
 
     @staticmethod
-    def detect(I, mask_bound, contour_len_bound,
+    def detect(
+            I, mask_bound, contour_len_bound,
             sigma_hessian, sigma_tv, sigma_supp,
             dO_threshold, xyfilter, dzfilter
         ):
@@ -181,12 +183,18 @@ class SegSteps:
         # negate, hessian
         Ineg = utils.negate_image(I)
         S, O = hessian.features3d(Ineg, sigma=sigma_hessian)
-        
+        B = mask_bound*nonmaxsup.nms3d(S, O)
+
         # tv, nms
-        Stv, Otv = dtvoting.stick3d(
-            S*mask_bound, O*mask_bound, sigma=sigma_tv
-        )
-        Btv = mask_bound*nonmaxsup.nms3d(Stv, Otv)
+        if sigma_tv > 0:
+            Stv, Otv = dtvoting.stick3d(
+                B, O*B, sigma=sigma_tv
+            )
+            Btv = mask_bound*nonmaxsup.nms3d(Stv, Otv)
+        else:
+            Stv = S
+            Otv = O
+            Btv = B
         
         # refine: orientation, nms, orientation changes
         _, Oref = hessian.features3d(Btv, sigma=sigma_hessian)
@@ -239,9 +247,10 @@ class SegSteps:
 
     @staticmethod
     def evomsac(
-        zyx, voxel_size_nm, grid_z_nm, grid_xy_nm,
-        shrink_sidegrid, fitness_rthresh,
-        pop_size, max_iter, tol, factor_eval):
+            zyx, voxel_size_nm, grid_z_nm, grid_xy_nm,
+            shrink_sidegrid, fitness_rthresh,
+            pop_size, max_iter, tol, factor_eval
+        ):
         """ evomsac for one divided part
         :param zyx: 3d binary image
         :param voxel_size_nm: voxel spacing in nm
@@ -323,7 +332,10 @@ class SegSteps:
         return mpop
 
     @staticmethod
-    def match(B, O, Bsac, sigma_tv, sigma_hessian, sigma_extend, mask_bound=None):
+    def match(
+            B, O, Bsac,
+            sigma_tv, sigma_hessian, sigma_extend, mask_bound=None
+        ):
         """ match for one divided part
         :param B, O: 3d binary image and orientation from detected
         :param Bsac: 3d binary image from evomsac
@@ -350,12 +362,6 @@ class SegSteps:
             sigma_hessian=sigma_hessian,
             sigma_tv=sigma_extend
         )
-        # Bmatch = next(iter(utils.extract_connected(Bmatch)))[1]
-
-        # # smoothing
-        # _, Osmooth = hessian.features3d(Bmatch, sigma_hessian)
-        # Bsmooth = nonmaxsup.nms3d(Bmatch, Osmooth*Bmatch)
-        # Bsmooth = next(iter(utils.extract_connected(Bsmooth)))[1]
 
         # bounding
         if mask_bound is not None:
@@ -367,7 +373,10 @@ class SegSteps:
         return Bmatch, zyx_sorted
 
     @staticmethod
-    def meshrefine(zyx, zyx_ref, sigma_normal, sigma_mesh, sigma_hull, mask_bound):
+    def meshrefine(
+            zyx, zyx_ref,
+            sigma_normal, sigma_mesh, sigma_hull, mask_bound
+        ):
         """ calculate surface normal for one divided part
         :param zyx: coordinates
         :param zyx_ref: reference zyx for insideness
