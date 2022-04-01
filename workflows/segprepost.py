@@ -239,6 +239,9 @@ class SegPrePost(SegBase):
 
         # results from steps
         Is_overlay = []
+        Is_overlay.append(
+            self.points_to_voxels(self.steps["tomo"]["zyx_bound"])
+        )
         if self.check_steps(["detect"]):
             Is_overlay.extend([
                 self.points_to_voxels(self.steps["detect"][f"zyx{i}"])
@@ -254,6 +257,7 @@ class SegPrePost(SegBase):
                 break
                 
         name_Is = [
+            "mask",
             "detect(not filtered)", "detect(filtered)",
             "divide(pre)", "divide(post)",
             "evomsac(pre)", "evomsac(post)",
@@ -261,6 +265,7 @@ class SegPrePost(SegBase):
             "meshrefine(pre)", "meshrefine(post)",
         ]
         cmap_Is = [
+            "bop blue",
             "red", "bop orange",
             "magenta", "magenta",
             "green", "green",
@@ -268,7 +273,7 @@ class SegPrePost(SegBase):
             "yellow", "yellow",
         ]
         cmap_vecs = ["yellow", "yellow"]
-        visible_Is = [True]*2 + [False]*8
+        visible_Is = [False] + [True]*2 + [False]*8
         visible_vecs = True
 
         # normals
