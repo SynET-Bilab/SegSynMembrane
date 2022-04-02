@@ -150,10 +150,10 @@ def nn_distance(pts, p_norm=1):
     dists = tree.query(pts, k=2, p=p_norm)[0][:, 1]
     return dists
 
-def mesh_subdivide(mesh, target_size=1):
-    """ subdivide-simplify mesh till the max distance between nearest neighbors <= target_size
+def mesh_subdivide(mesh, target_spacing=1):
+    """ subdivide-simplify mesh till the max distance between nearest neighbors <= target_spacing
     :param mesh: open3d mesh
-    :param target_size: target size
+    :param target_spacing: target size
     :return: mdiv
         mdiv: subdivided open3d mesh
     """
@@ -165,12 +165,13 @@ def mesh_subdivide(mesh, target_size=1):
     # 1st-round subdivision
     # niter: determined according to max 1nn distance
     dist = np.max(nn_distance(mdiv.vertices))
-    niter = int(np.ceil(np.log2(dist/target_size)))
-    mdiv = mdiv.subdivide_loop(number_of_iterations=niter)
+    niter = int(np.ceil(np.log2(dist/target_spacing)))
+    if niter >= 1:
+        mdiv = mdiv.subdivide_loop(number_of_iterations=niter)
 
     # # refined subdivision (skipped, too time-consuming, and not very necessary)
-    # # iterate until target_size is reached
-    # while np.max(nn_distance(mdiv.vertices)) > target_size:
+    # # iterate until target_spacing is reached
+    # while np.max(nn_distance(mdiv.vertices)) > target_spacing:
     #     mdiv = mdiv.subdivide_loop()
     return mdiv
 
@@ -179,15 +180,17 @@ def mesh_subdivide(mesh, target_size=1):
 # workflow
 #=========================
 
-def refine_surface(zyx, sigma_normal, sigma_mesh, sigma_hull, mask_bound=None):
+def refine_surface(zyx, sigma_normal, sigma_mesh, sigma_hull, target_spacing=1, mask_bound=None, return_mesh=False):
     """ refine surface using mesh-based methods, mainly poisson reconstruction
     :param zyx: points
     :param sigma_normal: length scale for normal estimation
     :param sigma_mesh: spatial resolution for poisson reconstruction
     :param sigma_hull: length to expand in the normal direction when computing hull
+    :param target_spacing: target spacing of points
     :param mask_bound: a mask for boundary
-    :return: zyx_refine
+    :return: zyx_refine, (mesh)
         zyx_refine: points for the refined surface
+        mesh: if return_mesh is true; mesh before refinement
     """
     # create mesh
     xyz = utils.reverse_coord(zyx)
@@ -206,7 +209,7 @@ def refine_surface(zyx, sigma_normal, sigma_mesh, sigma_hull, mask_bound=None):
     mesh = mesh.select_by_index(iv_surround)
 
     # subdivide to pixel scale
-    mdiv = mesh_subdivide(mesh, target_size=1)
+    mdiv = mesh_subdivide(mesh, target_spacing=target_spacing)
     
     # remove duplicates
     pts = np.round(np.asarray(mdiv.vertices)).astype(int)
@@ -223,4 +226,7 @@ def refine_surface(zyx, sigma_normal, sigma_mesh, sigma_hull, mask_bound=None):
         # B_refine = next(utils.extract_connected(B_refine, connectivity=3))[1]
         zyx_refine = utils.voxels_to_points(B_refine)
 
-    return zyx_refine
+    if return_mesh:
+        return zyx_refine, mdiv
+    else:
+        return zyx_refine
