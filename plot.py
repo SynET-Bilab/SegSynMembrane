@@ -8,7 +8,7 @@ from etsynseg import utils
 
 __all__ = [
     # matplotlib: 2d plot
-    "imshow", "scatter", "imoverlay",
+    "imshow", "scatter", "imoverlay", "scatter_value",
     # napari: 3d viewer
     "imshow3d"
 ]
@@ -138,7 +138,7 @@ def scatter(
         marker_size=0.1,
         cmap="viridis", colorbar=True, colorbar_shrink=0.6,
         title_arr=None, suptitle=None,
-        figsize1=None, save=None, dpi=None
+        figsize1=None, save=None, dpi=72
     ):
     """ show multiple scatters
     :param xy_arr: 1d list of 2d array [x, y]
@@ -237,6 +237,53 @@ def imoverlay(im_dict, shape=None,
         fig.savefig(save, dpi=dpi)
 
     return fig, axes
+
+def scatter_value(
+    x, y, value,
+    s_xy=1, fig_area=24, dpi=72,
+    cmap="viridis", colorbar=False, colorbar_shrink=0.6,
+    xlabel=None, ylabel=None,
+    save=None
+):
+    """ scatter plot with values (with proper marker sizes)
+    :param x, y, value: 1d array for each, shapes should match
+    :param s_xy: marker size in units of x,y
+    :param fig_area: area of figure in inches
+    :param dpi: points per inch
+    :param cmap, colorbar, colorbar_shrink: set colors
+    :param xlabel, ylabel: labels for x,y
+    :param save: name to save fig
+    """
+    # set marker size in units of x,y
+    # set figsize proportional to ranges of x,y
+    x_range = np.ptp(x)
+    y_range = np.ptp(y)
+    figsize_x = np.sqrt(fig_area * x_range / y_range)
+    figsize_y = fig_area / figsize_x
+    # marker size: s/(dpi*figsize_x)=s_xy/x_range
+    s = s_xy * dpi * figsize_x / x_range
+
+    # plot
+    fig, ax = plt.subplots(
+        figsize=(figsize_x, figsize_y),
+        constrained_layout=True,
+        dpi=dpi
+    )
+    ax.set_aspect(1)
+    im = ax.scatter(
+        x, y, c=value, s=s, cmap=cmap
+    )
+
+    # set auxiliary
+    ax.set(xlabel=xlabel, ylabel=ylabel)
+    if colorbar:
+        fig.colorbar(
+            im, ax=ax, shrink=colorbar_shrink
+        )
+    if save is not None:
+        fig.savefig(save, dpi=dpi)
+    return fig, ax
+
 
 #=========================
 # napari
