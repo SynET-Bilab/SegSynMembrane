@@ -113,10 +113,12 @@ class Embed:
 
 class Project:
     """ projecting membrane along normals
+    attributes:
+        e1,e2: unit vectors in order xyz
     """
-    def __init__(self, e2=(0, 1., 0)):
+    def __init__(self, e2=(0, 0, 1.)):
         """ init
-        :param e2: unit vector, e1=mean(nzyx)
+        :param e2: unit vector, in order xyz, e1=cross(e2,mean(nzyx))
         """
         # setup e2
         self.e2 = np.asarray(e2) if e2 is not None else np.array([0, 1., 0])
