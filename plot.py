@@ -239,12 +239,12 @@ def imoverlay(im_dict, shape=None,
     return fig, axes
 
 def scatter_value(
-    x, y, value,
-    s_xy=1, fig_area=24, dpi=72,
-    cmap="viridis", colorbar=False, colorbar_shrink=0.6,
-    xlabel=None, ylabel=None,
-    save=None
-):
+        x, y, value,
+        s_xy=1, fig_area=24, dpi=72,
+        cmap="viridis", colorbar=False, colorbar_shrink=0.6,
+        xlabel=None, ylabel=None,
+        save=None
+    ):
     """ scatter plot with values (with proper marker sizes)
     :param x, y, value: 1d array for each, shapes should match
     :param s_xy: marker size in units of x,y
@@ -253,6 +253,7 @@ def scatter_value(
     :param cmap, colorbar, colorbar_shrink: set colors
     :param xlabel, ylabel: labels for x,y
     :param save: name to save fig
+    :return: fig, ax, s_pt
     """
     # set marker size in units of x,y
     # set figsize proportional to ranges of x,y
@@ -261,7 +262,7 @@ def scatter_value(
     figsize_x = np.sqrt(fig_area * x_range / y_range)
     figsize_y = fig_area / figsize_x
     # marker size: s/(dpi*figsize_x)=s_xy/x_range
-    s = s_xy * dpi * figsize_x / x_range
+    s_pt = s_xy * dpi * figsize_x / x_range
 
     # plot
     fig, ax = plt.subplots(
@@ -271,7 +272,7 @@ def scatter_value(
     )
     ax.set_aspect(1)
     im = ax.scatter(
-        x, y, c=value, s=s, cmap=cmap
+        x, y, c=value, s=s_pt, cmap=cmap
     )
 
     # set auxiliary
@@ -282,7 +283,7 @@ def scatter_value(
         )
     if save is not None:
         fig.savefig(save, dpi=dpi)
-    return fig, ax
+    return fig, ax, s_pt
 
 
 #=========================

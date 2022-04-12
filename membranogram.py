@@ -5,7 +5,7 @@ from etsynseg import utils
 
 __all__ = [
     "interpolate_dist", "interpolate_avg",
-    "embed", "project"
+    "Embed", "Project"
 ]
 
 #=========================
@@ -58,54 +58,102 @@ def interpolate_avg(zyx, nzyx, dist_arr, I):
 #=========================
 # embeddings
 #=========================
-
-def embed(zyx, step=5, n_neigh=20):
+class Embed:
     """ embedding membrane to 2d by LTSA
-    :param zyx: points on membrane (assumed sorted)
-    :param step: sample zyx with this step size
-    :param n_neigh: number of neighbors for LTSA
-    :return: emb1, emb2
-        emb1,emb2: embedded points along axis 1,2
     """
-    # downsample points: step in xy, step in z
-    # zyx is too dense, downsampling is less computationally expensive and gives good global shape 
-    zyx_sample = []
-    for z in np.unique(zyx[:, 0])[::step]:
-        zyx_sample.append(zyx[zyx[:, 0] == z][::step])
-    zyx_sample = np.concatenate(zyx_sample, axis=0)
+    def __init__(self, step=5, n_neigh=20):
+        """ init
+        :param step: sample zyx with this step size
+        :param n_neigh: number of neighbors for LTSA
+        """
+        self.step = step
+        self.n_neigh = n_neigh
+        self.mf = None
+    
+    def fit(self, zyx):
+        """ fit
+        :param zyx: points on membrane (assumed sorted)
+        :return: self
+        """
+        # downsample points: step in xy, step in z
+        # zyx is too dense, downsampling is less computationally expensive and gives good global shape
+        zyx_sample = []
+        for z in np.unique(zyx[:, 0])[::self.step]:
+            zyx_sample.append(zyx[zyx[:, 0] == z][::self.step])
+        zyx_sample = np.concatenate(zyx_sample, axis=0)
 
-    # adjust n_neigh to a valid value
-    n_sample = len(zyx_sample)
-    n_neigh = n_neigh if n_neigh < n_sample else n_sample-1
+        # adjust n_neigh to a valid value
+        n_sample = len(zyx_sample)
+        n_neigh = self.n_neigh if self.n_neigh < n_sample else n_sample-1
 
-    # LTSA
-    mf = manifold.LocallyLinearEmbedding(
-        n_neighbors=n_neigh, n_components=2,
-        method="ltsa"
-    )
-    mf.fit(zyx_sample)
-    emb = mf.transform(zyx)
-    return emb[:, 0], emb[:, 1]
+        # LTSA
+        self.mf = manifold.LocallyLinearEmbedding(
+            n_neighbors=n_neigh, n_components=2,
+            method="ltsa"
+        )
+        self.mf.fit(zyx_sample)
+        return self
+    
+    def transform(self, zyx):
+        """ transform
+        :param zyx: coord to be transformed
+        :return: emb1, emb2
+            emb1,emb2: embedded points along axis 1,2
+        """
+        emb = self.mf.transform(zyx)
+        emb1, emb2 = emb[:, 0], emb[:, 1]
+        return emb1, emb2
 
-def project(zyx, nzyx, e2=(0, 1., 0)):
+    def fit_transform(self, zyx):
+        """ combines fit and transform
+        :return: results of transform
+        """
+        self.fit(zyx)
+        return self.transform(zyx)
+
+class Project:
     """ projecting membrane along normals
-    :param zyx, nzyx: coordinates of membranes and their normals
-    :param e2: unit vector, e1=mean(nzyx)
-    :return: p1, p2
-        p1,p2: projected coordinates on e1,e2
     """
-    # convert to xyz to be safe
-    xyz = utils.reverse_coord(zyx)
-    xyz_ct = xyz - np.mean(xyz, axis=0)
-    nxyz_avg = np.mean(nzyx, axis=0)[::-1]
+    def __init__(self, e2=(0, 1., 0)):
+        """ init
+        :param e2: unit vector, e1=mean(nzyx)
+        """
+        # setup e2
+        self.e2 = np.asarray(e2) if e2 is not None else np.array([0, 1., 0])
 
-    # e2: // +y by default
-    # e1: if nzyx//+x, e1//-z
-    e2 = np.asarray(e2) if e2 is not None else np.array([0, 1., 0])
-    e1 = np.cross(e2, nxyz_avg)
-    e1 = e1 / np.linalg.norm(e1)
+        # init other variables
+        self.e1 = None
+        self.xyz_center = None
+        self.nxyz_avg = None
 
-    # project
-    p1 = np.dot(xyz_ct, e1)
-    p2 = np.dot(xyz_ct, e2)
-    return p1, p2
+    def fit(self, zyx, nzyx):
+        """ fit
+        :param zyx, nzyx: coordinates of membranes and their normals
+        :return: self
+        """
+        # convert to xyz to be safe
+        self.xyz_center = np.mean(zyx, axis=0)[::-1]
+        self.nxyz_avg = np.mean(nzyx, axis=0)[::-1]
+
+        # calc e1
+        e1 = np.cross(self.e2, self.nxyz_avg)
+        self.e1 = e1 / np.linalg.norm(e1)
+        return self
+
+    def transform(self, zyx):
+        """ transform
+        :param zyx: coord to be transformed
+        :return: p1, p2
+            p1,p2: projected coordinates on e1,e2
+        """
+        xyz = utils.reverse_coord(zyx) - self.xyz_center
+        p1 = np.dot(xyz, self.e1)
+        p2 = np.dot(xyz, self.e2)
+        return p1, p2
+
+    def fit_transform(self, zyx, nzyx):
+        """ combines fit and transform
+        :return: results of transform
+        """
+        self.fit(zyx, nzyx)
+        return self.transform(zyx)
