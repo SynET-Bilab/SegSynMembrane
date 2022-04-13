@@ -132,35 +132,53 @@ def imshow(
     return fig, axes
 
 def scatter(
-        xy_arr,
-        labels_arr=None,
-        shape=None,
-        marker_size=0.1,
-        cmap="viridis", colorbar=True, colorbar_shrink=0.6,
+        xy_arr, v_arr=None, shape=None,
+        s_xy=1, figarea1=None, figsize1=None, dpi=100,
+        cmap="viridis", colorbar=False, colorbar_shrink=0.6,
         title_arr=None, suptitle=None,
-        figsize1=None, save=None, dpi=72
+        save=None
     ):
-    """ show multiple scatters
-    :param xy_arr: 1d list of 2d array [x, y]
-    :param labels_arr: 1d list of labels for each xy
+    """ show multiple scatters.
+    assumed x and y use the same units, all xy's share axes
+    :param xy_arr: 1d list of 2d array with shape (npts, 2)
+    :param v_arr: 1d list of values for each xy
     :param shape: (nrows, ncols), will auto set if either is None
-    :param cmap, colorbar, colorbar_shrink: set colors
-    :param title_arr, suptitle, supxlabel, supylabel: set labels
-    :param figsize1: size of one subplot
+    :param s_xy: marker size in units of x,y
+    :param figarea1: area (in inch) of one subplot, overrides figsize1
+    :param figsize1: size (in inch) of one subplot
+    :param dpi: points per inch
+    :param cmap, colorbar, colorbar_shrink: colors
+    :param title_arr, suptitle: titles
     :param save: name to save fig
-    :param dpi: dpi of saved fig
-    :return: fig, axes
+    :return: fig, axes, s_pt
     """
-    # regularize labels_arr
-    if labels_arr is None:
-        labels_arr = [None]*len(xy_arr)
+    # setup v_arr
+    if v_arr is None:
+        v_arr = [None]*len(xy_arr)
 
     # setup subplots
     fig, axes = setup_subplots(len(xy_arr), shape, figsize1)
     shape = axes.shape
 
+    # setup figsize and s_pt
+    # get ranges of x,y
+    xy_all = np.concatenate(xy_arr, axis=0)
+    x_range = np.ptp(xy_all[:, 0])
+    y_range = np.ptp(xy_all[:, 1])
+    del xy_all
+    # update figarea1 and figsize
+    if figarea1 is None:
+        figarea1 = np.multiply(*fig.get_size_inches())/np.multiply(*shape)
+    else:
+        figsize1_x = np.sqrt(figarea1 * x_range / y_range)
+        figsize1_y = figarea1 / figsize1_x
+        fig.set_size_inches((figsize1_x*shape[0], figsize1_y*shape[1]))
+    # marker size in points
+    # s_pt/s_xy = dpi*sqrt(figarea1/(x_range*y_range))
+    s_pt = s_xy * dpi * np.sqrt(figarea1 / (x_range*y_range))
+
     # plot on each ax
-    for idx1d, (xy, labels) in enumerate(zip(xy_arr, labels_arr)):
+    for idx1d, (xy, v) in enumerate(zip(xy_arr, v_arr)):
         # get 2d index
         idx2d = np.unravel_index(idx1d, shape)
 
@@ -168,8 +186,7 @@ def scatter(
         axes[idx2d].set_aspect(1)
         im = axes[idx2d].scatter(
             xy[:, 0], xy[:, 1],
-            s=marker_size,
-            c=labels, cmap=cmap
+            s=s_pt, c=v, cmap=cmap
         )
 
         # setup colorbar, title
@@ -185,7 +202,7 @@ def scatter(
     if save is not None:
         fig.savefig(save, dpi=dpi)
 
-    return fig, axes
+    return fig, axes, s_pt
 
 def imoverlay(im_dict, shape=None,
         figsize1=None, save=None, dpi=200,
@@ -237,53 +254,6 @@ def imoverlay(im_dict, shape=None,
         fig.savefig(save, dpi=dpi)
 
     return fig, axes
-
-def scatter_value(
-        x, y, value,
-        s_xy=1, fig_area=24, dpi=72,
-        cmap="viridis", colorbar=False, colorbar_shrink=0.6,
-        xlabel=None, ylabel=None,
-        save=None
-    ):
-    """ scatter plot with values (with proper marker sizes)
-    :param x, y, value: 1d array for each, shapes should match
-    :param s_xy: marker size in units of x,y
-    :param fig_area: area of figure in inches
-    :param dpi: points per inch
-    :param cmap, colorbar, colorbar_shrink: set colors
-    :param xlabel, ylabel: labels for x,y
-    :param save: name to save fig
-    :return: fig, ax, s_pt
-    """
-    # set marker size in units of x,y
-    # set figsize proportional to ranges of x,y
-    x_range = np.ptp(x)
-    y_range = np.ptp(y)
-    figsize_x = np.sqrt(fig_area * x_range / y_range)
-    figsize_y = fig_area / figsize_x
-    # marker size: s/(dpi*figsize_x)=s_xy/x_range
-    s_pt = s_xy * dpi * figsize_x / x_range
-
-    # plot
-    fig, ax = plt.subplots(
-        figsize=(figsize_x, figsize_y),
-        constrained_layout=True,
-        dpi=dpi
-    )
-    ax.set_aspect(1)
-    im = ax.scatter(
-        x, y, c=value, s=s_pt, cmap=cmap
-    )
-
-    # set auxiliary
-    ax.set(xlabel=xlabel, ylabel=ylabel)
-    if colorbar:
-        fig.colorbar(
-            im, ax=ax, shrink=colorbar_shrink
-        )
-    if save is not None:
-        fig.savefig(save, dpi=dpi)
-    return fig, ax, s_pt
 
 
 #=========================
