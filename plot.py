@@ -142,7 +142,7 @@ def scatter(
     assumed x and y use the same units, all xy's share axes
     :param xy_arr: 1d list of 2d array with shape (npts, 2)
     :param v_arr: 1d list of values for each xy
-    :param shape: (nrows, ncols), will auto set if either is None
+    :param shape: (nrows(y), ncols(x)), will auto set if either is None
     :param s_xy: marker size in units of x,y
     :param figarea1: area (in inch) of one subplot, overrides figsize1
     :param figsize1: size (in inch) of one subplot
@@ -172,7 +172,7 @@ def scatter(
     else:
         figsize1_x = np.sqrt(figarea1 * x_range / y_range)
         figsize1_y = figarea1 / figsize1_x
-        fig.set_size_inches((figsize1_x*shape[0], figsize1_y*shape[1]))
+        fig.set_size_inches((figsize1_x*shape[1], figsize1_y*shape[0]))
     # marker size in points
     # s_pt/s_xy = dpi*sqrt(figarea1/(x_range*y_range))
     s_pt = s_xy * dpi * np.sqrt(figarea1 / (x_range*y_range))
