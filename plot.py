@@ -57,7 +57,7 @@ def setup_subplots(n, shape, figsize1):
 def imshow(
         I_arr, shape=None, style="binary",
         vrange=None, qrange=(0, 1),
-        cmap="gray", colorbar=True, colorbar_shrink=0.6,
+        cmap="gray", colorbar=False, colorbar_shrink=0.6,
         title_arr=None, suptitle=None,
         figsize1=None, save=None, dpi=None
     ):
