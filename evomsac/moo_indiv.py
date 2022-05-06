@@ -88,7 +88,7 @@ class MOOTools:
         # fitness
         # bspline
         self.surf_meta = bspline.Surface(
-            uv_size=(self.n_uz, self.n_vxy), degree=2
+            nu=self.n_uz, nv=self.n_vxy, degree=2
         )
         # pointcloud
         self.pcd = utils.points_to_pointcloud(self.zyx)
