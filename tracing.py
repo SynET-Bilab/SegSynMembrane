@@ -214,40 +214,6 @@ class Trace:
     #=========================
     # depth-first-scan
     #=========================
-    
-    # def dfs2d_from_point(self, yx_curr, map_yxd, yx_trace, d_trace):
-    #     """ trace segment from current (y,x) in one direction, depth-first (recursive)
-    #     :param yx_curr: current (y,x)
-    #     :param map_yxd: {(y,x): direction}
-    #     :param yx_trace, d_trace: list of (y,x)'s, d's in the trace
-    #     :return: yx_trace, d_trace
-    #         yx_trace: [(y,x)_1,(y,x)_2,...]
-    #         d_trace: [d_1,d_2,...]
-    #     """
-    #     # return: if yx_curr is not in image, or visited
-    #     if (yx_curr not in map_yxd) or (map_yxd[yx_curr] is None):
-    #         return
-
-    #     # visit yx_curr, flag with None
-    #     d_curr = map_yxd[yx_curr]
-    #     yx_trace.append(yx_curr)
-    #     d_trace.append(d_curr)
-    #     map_yxd[yx_curr] = None
-
-    #     # return: if max_size is reached
-    #     if len(yx_trace) >= self.max_size:
-    #         return
-
-    #     # visit next
-    #     for dydx in self.find_next_yx(d_curr):
-    #         yx_next = (yx_curr[0]+dydx[0], yx_curr[1]+dydx[1])
-    #         # align next orientation, update dict
-    #         if (yx_next in map_yxd) and (map_yxd[yx_next] is not None):
-    #             d_next = self.find_next_direction(d_curr, map_yxd[yx_next])
-    #             map_yxd[yx_next] = d_next
-    #             self.dfs2d_from_point(yx_next, map_yxd, yx_trace, d_trace)
-    #             break
-    #     return
 
     def dfs2d_from_point(self, yx_start, map_yxd):
         """ trace segment from current (y,x) in one direction, depth-first (iterative)
