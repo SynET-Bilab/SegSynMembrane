@@ -5,14 +5,14 @@ import time
 import numpy as np
 import mrcfile
 from etsynseg import io, utils, plot
-from etsynseg import dividing
+from submodules import dividing
 from etsynseg.workflows import SegBase, SegSteps
 
 
 class SegPrePost(SegBase):
     """ workflow for segmentation
     attribute formats:
-        binary images: save coordinates (utils.voxels_to_points, utils.points_to_voxels)
+        binary images: save coordinates (utils.pixels2points, utils.points2pixels)
         sparse images (O): save as sparse (utils.sparsify3d, utils.densify3d)
         MOOPop: save state (MOOPop().dump_state, MOOPop(state=state))
     
@@ -118,7 +118,7 @@ class SegPrePost(SegBase):
     
     def output_tomo(self, filename):
         """ output clipped tomo
-        :param filename: filename(.mrc) for saving
+            filename: filename(.mrc) for saving
         """
         self.check_steps(["tomo"], raise_error=True)
         io.write_tomo(
@@ -129,9 +129,9 @@ class SegPrePost(SegBase):
 
     def output_model(self, step, filename, clipped=False):
         """ output results to a model file
-        :param step: step name, one of {match, surf_fit}
-        :param filename: filename(.mod) for saving
-        :param clipped: if coordinates are for the clipped data
+            step: step name, one of {match, surf_fit}
+            filename: filename(.mod) for saving
+            clipped: if coordinates are for the clipped data
         """
         self.check_steps(["tomo", step], raise_error=True)
         
@@ -150,8 +150,8 @@ class SegPrePost(SegBase):
     
     def output_seg(self, filename, clipped=False):
         """ output final seg, including points and normals
-        :param filename: filename(.npz) for saving
-        :param clipped: if coordinates are for the clipped data
+            filename: filename(.npz) for saving
+            clipped: if coordinates are for the clipped data
         """
         self.check_steps(["tomo", "meshrefine"], raise_error=True)
         steps = self.steps
@@ -174,11 +174,11 @@ class SegPrePost(SegBase):
 
     def output_figure(self, step, filename, clipped=True, nslice=5, dpi=300):
         """ output results to a figure
-        :param step: step name, one of {match, surf_fit}
-        :param filename: filename(.png) for saving
-        :param clipped: if coordinates are for the clipped data
-        :param nslice: no. of slices to plot
-        :param dpi: dpi for saving
+            step: step name, one of {match, surf_fit}
+            filename: filename(.png) for saving
+            clipped: if coordinates are for the clipped data
+            nslice: no. of slices to plot
+            dpi: dpi for saving
         """
         self.check_steps(["tomo", step], raise_error=True)
 
@@ -206,10 +206,10 @@ class SegPrePost(SegBase):
     
     def plot_slices(self, I, zyxs, nslice):
         """ plot sampled slices of image
-        :param I: 3d image
-        :param zyxs: array of zyx to overlay on the image
-        :param nslice: number of slices to show
-        :return: fig, axes
+            I: 3d image
+            zyxs: array of zyx to overlay on the image
+            nslice: number of slices to show
+        Returns: fig, axes
         """
         iz_min = np.min([np.min(zyx_i[:, 0]) for zyx_i in zyxs])
         iz_max = np.max([np.max(zyx_i[:, 0]) for zyx_i in zyxs])
@@ -227,8 +227,8 @@ class SegPrePost(SegBase):
     
     def imshow3d_steps(self, vec_width=0.25, vec_length=2):
         """ imshow important intermediate results
-        :param vec_width: width for plotting normal vectors
-        :param vec_length: length for plotting normal vectors
+            vec_width: width for plotting normal vectors
+            vec_length: length for plotting normal vectors
         """
         # setup
         self.check_steps(["tomo"], raise_error=True)
@@ -240,17 +240,17 @@ class SegPrePost(SegBase):
         # results from steps
         Is_overlay = []
         Is_overlay.append(
-            self.points_to_voxels(self.steps["tomo"]["zyx_bound"])
+            self.points2pixels(self.steps["tomo"]["zyx_bound"])
         )
         if self.check_steps(["detect"]):
             Is_overlay.extend([
-                self.points_to_voxels(self.steps["detect"][f"zyx{i}"])
+                self.points2pixels(self.steps["detect"][f"zyx{i}"])
                 for i in ("_nofilt", "")
             ])
         for step in ["divide", "evomsac", "match", "meshrefine"]:
             if self.check_steps([step]):
                 Is_overlay.extend([
-                    self.points_to_voxels(self.steps[step][f"zyx{i}"])
+                    self.points2pixels(self.steps[step][f"zyx{i}"])
                     for i in (1, 2)
                 ])
             else:
@@ -306,12 +306,12 @@ class SegPrePost(SegBase):
     # utils
     #=========================
     
-    def points_to_voxels(self, coord):
+    def points2pixels(self, coord):
         """ coord to mask, use default shape
         """
         self.check_steps(["tomo"], raise_error=True)
         shape = self.steps["tomo"]["shape"]
-        return utils.points_to_voxels(coord, shape)
+        return utils.points2pixels(coord, shape)
 
     #=========================
     # read tomo
@@ -322,9 +322,9 @@ class SegPrePost(SegBase):
             obj_bound=1, obj_ref=2, obj_divide=3
         ):
         """ load and clip tomo and model
-        :param tomo_file, model_file: filename of tomo, model
-        :param obj_bound, obj_ref: obj label for boundary and presynapse, begins with 1
-        :param voxel_size_nm: manually set; if None then read from tomo_file
+            tomo_file, model_file: filename of tomo, model
+            obj_bound, obj_ref: obj label for boundary and presynapse, begins with 1
+            voxel_size_nm: manually set; if None then read from tomo_file
         :action: assign steps["tomo"]: I, voxel_size_nm, zyx_shift, zyx_bound, contour_bound, zyx_ref, d_mem, d_cleft
         """
         time_start = time.process_time()
@@ -370,7 +370,7 @@ class SegPrePost(SegBase):
     
     def set_dzfilter(self, zfilter, nz):
         """ set dzfilter. see self.detect.
-        :return: dzfilter
+        Returns: dzfilter
         """
         # set dzfilter
         if zfilter <= 0:  # as offset
@@ -383,10 +383,10 @@ class SegPrePost(SegBase):
 
     def detect(self, factor_tv=5, factor_supp=0.25, xyfilter=3, zfilter=-1):
         """ detect membrane features
-        :param factor_tv: sigma for tv = factor_tv*d_mem
-        :param factor_supp: sigma for normal suppression = factor_supp*mean(contour_len_bound)
-        :param xyfilter: for each xy plane, filter out pixels with Ssupp below quantile threshold; the threshold = 1-xyfilter*fraction_mems. see SegSteps().detect()
-        :param zfilter: a component will be filtered out if its z-span < dzfilter;
+            factor_tv: sigma for tv = factor_tv*d_mem
+            factor_supp: sigma for normal suppression = factor_supp*mean(contour_len_bound)
+            xyfilter: for each xy plane, filter out pixels with Ssupp below quantile threshold; the threshold = 1-xyfilter*fraction_mems. see SegSteps().detect()
+            zfilter: a component will be filtered out if its z-span < dzfilter;
             dzfilter = {nz+zfilter if zfilter<=0, nz*zfilter if 0<zfilter<1}
         :action: assign steps["detect"]: B, O
         """
@@ -395,7 +395,7 @@ class SegPrePost(SegBase):
         # load from self
         self.check_steps(["tomo"], raise_error=True)
         I = self.steps["tomo"]["I"]
-        mask_bound = self.points_to_voxels(self.steps["tomo"]["zyx_bound"])
+        mask_bound = self.points2pixels(self.steps["tomo"]["zyx_bound"])
         d_mem = self.steps["tomo"]["d_mem"]
         
         # sets sigma_supp, dzfilter
@@ -409,7 +409,7 @@ class SegPrePost(SegBase):
             sigma_hessian=d_mem,
             sigma_tv=d_mem*factor_tv,
             sigma_supp=sigma_supp,
-            dO_threshold=np.pi/4,
+            dO_thresh=np.pi/4,
             xyfilter=xyfilter,
             dzfilter=dzfilter
         )
@@ -435,8 +435,8 @@ class SegPrePost(SegBase):
 
     def divide(self, ratio_comps=0.5, zfilter=-1):
         """ divide detected image into pre-post candidates
-        :param ratio_comps: divide the largest component if size2/size1<ratio_comps
-        :param zfilter: consider a component as candidate if its z-span >= dzfilter. see self.detect for relations between zfilter and dzfilter.
+            ratio_comps: divide the largest component if size2/size1<ratio_comps
+            zfilter: consider a component as candidate if its z-span >= dzfilter. see self.detect for relations between zfilter and dzfilter.
         :action: assign steps["divide"]: zyx1, zyx2
         """
         time_start = time.process_time()
@@ -506,11 +506,11 @@ class SegPrePost(SegBase):
             pop_size=40, max_iter=200, tol=(0.01, 10), factor_eval=1
         ):
         """ evomsac for both divided parts
-        :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
-        :param pop_size: size of population
-        :param tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
-        :param max_iter: max number of generations
-        :param factor_eval: factor for assigning evaluation points
+            grid_z_nm, grid_xy_nm: grid spacing in z, xy
+            pop_size: size of population
+            tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
+            max_iter: max number of generations
+            factor_eval: factor for assigning evaluation points
         :action: assign steps["evomsac"]
         """
         time_start = time.process_time()
@@ -561,8 +561,8 @@ class SegPrePost(SegBase):
 
     def match(self, factor_tv=0, factor_extend=1):
         """ match for both divided parts
-        :param factor_tv: sigma for tv on detected = factor_tv*d_mem
-        :param factor_extend: sigma for tv extension on evomsac surface = factor_extend*d_mem
+            factor_tv: sigma for tv on detected = factor_tv*d_mem
+            factor_extend: sigma for tv extension on evomsac surface = factor_extend*d_mem
         :action: assign steps["match"]: zyx1,  zyx2
         """
         time_start = time.process_time()
@@ -571,17 +571,17 @@ class SegPrePost(SegBase):
         self.check_steps(["tomo", "detect", "divide", "evomsac"], raise_error=True)
         d_mem = self.steps["tomo"]["d_mem"]
         O = utils.densify3d(self.steps["detect"]["Oz"])
-        Bdiv1 = self.points_to_voxels(self.steps["divide"]["zyx1"])
-        Bdiv2 = self.points_to_voxels(self.steps["divide"]["zyx2"])
-        Bsac1 = self.points_to_voxels(self.steps["evomsac"]["zyx1"])
-        Bsac2 = self.points_to_voxels(self.steps["evomsac"]["zyx2"])
+        Bdiv1 = self.points2pixels(self.steps["divide"]["zyx1"])
+        Bdiv2 = self.points2pixels(self.steps["divide"]["zyx2"])
+        Bsac1 = self.points2pixels(self.steps["evomsac"]["zyx1"])
+        Bsac2 = self.points2pixels(self.steps["evomsac"]["zyx2"])
 
         # match
         params = dict(
             sigma_tv=d_mem*factor_tv,
             sigma_hessian=d_mem,
             sigma_extend=d_mem*factor_extend,
-            mask_bound=self.points_to_voxels(self.steps["tomo"]["zyx_bound"])
+            mask_bound=self.points2pixels(self.steps["tomo"]["zyx_bound"])
         )
         _, zyx1 = SegSteps.match(Bdiv1, O*Bdiv1, Bsac1, **params)
         _, zyx2 = SegSteps.match(Bdiv2, O*Bdiv2, Bsac2, **params)
@@ -605,8 +605,8 @@ class SegPrePost(SegBase):
 
     def meshrefine(self, factor_normal=2, factor_mesh=2):
         """ surface fitting for both divided parts
-        :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
-        :param factor_<normal,mesh>: sigma for normal,mesh,hull calculations = d_mem*factor
+            grid_z_nm, grid_xy_nm: grid spacing in z, xy
+            factor_<normal,mesh>: sigma for normal,mesh,hull calculations = d_mem*factor
         :action: assign steps["surf_fit"]: zyx1,  zyx2
         """
         time_start = time.process_time()
@@ -627,7 +627,7 @@ class SegPrePost(SegBase):
             sigma_normal=factor_normal*d_mem,
             sigma_mesh=sigma_mesh,
             sigma_hull=d_mem,
-            mask_bound=self.points_to_voxels(self.steps["tomo"]["zyx_bound"])
+            mask_bound=self.points2pixels(self.steps["tomo"]["zyx_bound"])
         )
 
         # normal directions: towards cleft
@@ -636,8 +636,8 @@ class SegPrePost(SegBase):
         nxyz2 = -nxyz2
 
         # distance to the other membrane
-        pcdref1 = utils.points_to_pointcloud(zyxref1)
-        pcdref2 = utils.points_to_pointcloud(zyxref2)
+        pcdref1 = utils.points2pointcloud(zyxref1)
+        pcdref2 = utils.points2pointcloud(zyxref2)
         dist1 = np.asarray(pcdref1.compute_point_cloud_distance(pcdref2))
         dist2 = np.asarray(pcdref2.compute_point_cloud_distance(pcdref1))
         

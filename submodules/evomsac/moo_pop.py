@@ -1,4 +1,4 @@
-""" single objective optimization: population
+""" Multi-objective optimization: populations.
 """
 
 import pickle
@@ -9,30 +9,45 @@ import matplotlib
 import matplotlib.pyplot as plt
 import deap, deap.base, deap.tools
 
-from etsynseg.evomsac import MOOTools
+from .moo_indiv import MOOTools
 
 class MOOPop:
-    """ evolving populations
-    Usage:
+    """ Evolving populations.
+
+    Examples:
         # evolve
         mootools = MOOTools(B, n_vxy, n_uz, nz_eachu, r_thresh)
         moopop = MOOPop(mootools, pop_size)
         moopop.init_pop()
         moopop.evolve(max_iter, (tol, n_back), dump_step, state_pkl, n_proc)
         # dump, load
-        state = moopop.dump_state(file_pkl)
-        moopop = MOOPop(state=file_pkl)
+        state = moopop.dump_state(pkl_file)
+        moopop = MOOPop(state=pkl_file)
         # stats and plot
         moopop.plot_logs(save)
         # fit surface and plot
         B_arr = moopop.fit_surfaces_eval([indiv1, indiv2])
         imshow3d(mootools.B, B_arr)
+
+    Methods:
+        # setup
+        init_from_mootools, register_map
+        # io
+        dump_state
+        # metrics
+        calc_hypervolume, select_by_hypervolume
+        # population operations
+        init_pop, logging_pop, evaluate_pop, fit_surface_eval
+        # evolve
+        evolve_one_gen, evolve, plot_logs
     """
     def __init__(self, mootools=None, state=None, pop_size=4):
-        """ init
-        :param mootools: MOOTools(); if given, init; if None, init later
-        :param state: state (from dump_state); or a pickle file
-        :param pop_size: population size, multiples of 4 (required by selTournamentDCD)
+        """ Initialization.
+
+        Args:
+            mootools (MOOTools): Init from MOOTools.
+            state (dict or str): Load a MOOPop state (from self.dump_state) or a pickle file containing the state.
+            pop_size (int): Population size. Should be multiples of 4 (required by selTournamentDCD).
         """
         # attributes
         self.mootools = None
@@ -71,10 +86,12 @@ class MOOPop:
             raise ValueError("Should provide either mootools or state")
 
     def init_from_mootools(self, mootools):
-        """ initialize tools for evolution algorithm
-        :param mootools: MOOTools()
-        :return: None
-        :action: assign variables mootools, toolbox
+        """ Initialize from MOOTools.
+
+        Setup self.mootools and self.toolbox
+
+        Args:
+            mootools (MOOTools): MOOTools for init.
         """
         # setup meta
         self.mootools = mootools
@@ -94,15 +111,25 @@ class MOOPop:
         self.toolbox.register("sort_fronts", deap.tools.sortNondominated)
     
     def register_map(self, func_map=map):
-        """ for applying multiprocessing.dummy.Pool().map
+        """ Register map function to self.toolbox.
+
+        For multithreading,
+        pool = multiprocessing.dummy.Pool()
+        func_map = pool.map
+
+        Args:
+            func_map (Callable): Function for mapping.
         """
         self.toolbox.register("map", func_map)
     
-    def dump_state(self, file_pkl=None):
-        """ dump population state
-        :param file_pkl: name of pickle file to dump; or None
-        :return: state
-            state: {mootools,pop_size,pop_list,log_front_list,log_indicator}
+    def dump_state(self, pkl_file=None):
+        """ Dump MOOPop state.
+
+        Args:
+            pkl_file (str, optional): Filename of target pickle file.
+
+        Returns:
+            state (dict): {mootools_config,pop_size,pop_list,log_front_list,log_indicator}.
         """
         # convert MOOIndiv to list
         if self.pop is not None:
@@ -127,14 +154,17 @@ class MOOPop:
             log_front_list=log_front_list,
             log_indicator=self.log_indicator
         )
-        if file_pkl is not None:
-            with open(file_pkl, "wb") as pkl:
+        if pkl_file is not None:
+            with open(pkl_file, "wb") as pkl:
                 pickle.dump(state, pkl)
         return state
 
     def init_pop(self, pop=None, n_proc=None):
-        """ initialize population, logbook, evaluate
-        :param pop: provide pop, then init does the rest
+        """ Initialize population, logbook, evaluate.
+
+        Args:
+            pop (list of MOOIndiv): Population. Random init if not provided.
+            n_proc (int): The number of processors for multithreading.
         """
         # generation population
         if pop is None:
@@ -157,9 +187,15 @@ class MOOPop:
         self.log_indicator = []
 
     def calc_hypervolume(self, front):
-        """ calculate hypervolume of the front
-        :param front: list of indiv, composing the same front
-        :return: hypervolume
+        """ Calculate hypervolume of the Pareto front.
+
+        Wraps deap.tools._hypervolume.hv.hypervolume.
+
+        Args:
+            front (list of MOOIndiv): Pareto front.
+
+        Returns:
+            hypervolume (float): hypervolume w.r.t. (0,0).
         """
         # weighted objectives, to maximize
         wobj = np.array([ind.fitness.wvalues for ind in front])
@@ -168,10 +204,12 @@ class MOOPop:
         return hypervolume
     
     def select_by_hypervolume(self, front):
-        """select individual with least contribution to hypervolume
-        :param front: list of indiv, composing the same front
-        :return: indiv
-            indiv: selected indiv
+        """ Select the individual with the least contribution to hypervolume.
+
+        Args:
+            front (list of MOOIndiv): Pareto front.
+        Returns:
+            indiv (MOOIndiv): The selected individual.
         """
         # calculate hypervolume for front w/o each individual
         hv_arr = []
@@ -184,9 +222,10 @@ class MOOPop:
         return indiv
 
     def logging_pop(self, n_back=None):
-        """ log front and indicator
-        :param n_back: number of previous steps for calculation indicator changes
-        :action: update self.log_front, self.log_indicator
+        """ Log front and indicator.
+
+        Args:
+            n_back (int): Consider this number of previous steps when calculating indicator changes.
         """
         # pareto front
         front = self.toolbox.sort_fronts(self.pop, self.pop_size, first_front_only=True)[0]
@@ -212,10 +251,10 @@ class MOOPop:
         self.log_indicator.append(indicator)
 
     def evaluate_pop(self, pop):
-        """ evaluate population
-        :param pop: list of individuals
-        :return: None
-        :action: assigned fitness to individuals
+        """ Evaluate population. Assign fitness to individuals.
+
+        Args:
+            pop (list of MOOIndiv): Population.
         """
         # find individuals that are not evaluated
         pop_invalid = [indiv for indiv in pop if not indiv.fitness.valid]
@@ -225,10 +264,12 @@ class MOOPop:
             indiv.fitness.values = fit
 
     def evolve_one_gen(self, variation):
-        """ evolve one generation, perform crossover or mutation
-        :param action: select an action, 0=crossover, 1=mutation
-        :return: None
-        :action: update self.pop, self.log_stats, self.log_front
+        """ Evolve for one generation. Perform either crossover or mutation.
+        
+        Updates self.pop, self.log_stats, self.log_front.
+
+        Args:
+            variation (int): Variation to perform. 0 for crossover, 1 for mutation.
         """
         # select for variation, copy, shuffle
         offspring = self.toolbox.select_var(self.pop, self.pop_size)
@@ -248,7 +289,7 @@ class MOOPop:
                 self.toolbox.mutate(mutant)
                 del mutant.fitness.values
         else:
-            raise ValueError("action should be 0(crossover) or 1(mutation)")
+            raise ValueError("Variation should be 0 (crossover) or 1 (mutation).")
         
         # update fitness
         self.evaluate_pop(offspring)
@@ -257,16 +298,18 @@ class MOOPop:
         self.pop = self.toolbox.select_best(self.pop+offspring, self.pop_size)
 
     def evolve(self, var_cycle=(0, 1), tol=(0.01, 10), max_iter=200,
-            step_dump=None, file_pkl=None, n_proc=None
+            step_dump=None, pkl_file=None, n_proc=None
         ):
-        """ evolve using multithreading
-        :param var_cycle: variations to cycle, 0=crossover, 1=mutate
-        :param tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
-        :param max_iter: max number of generations
-        :param step_dump, file_pkl: dump into file_pkl at step_dump intervals
-        :param n_proc: number of processors for multithreading
-        :return: None
-        :action: update self.pop, self.log_front, self.log_indicator
+        """ Evolve multiple steps.
+
+        Updates self.pop, self.log_stats, self.log_front.
+
+        Args:
+            var_cycle (tuple): Sequence of variations to cycle. 0 for crossover, 1 for mutation.
+            tol (2-tuple): (tol_value, n_back). Terminate if change_ratio < tol_value within the last n_back steps.
+            max_iter (int): The max number of generations.
+            step_dump (int), pkl_file (str): Dump MOOPop state into pkl_file at step_dump intervals.
+            n_proc (int): The number of processors for multithreading.
         """
         # setup: pool, map
         pool = multiprocessing.dummy.Pool(n_proc)
@@ -283,14 +326,14 @@ class MOOPop:
                 break
 
             # dump
-            if (step_dump is not None) and (file_pkl is not None):
+            if (step_dump is not None) and (pkl_file is not None):
                 # at intervals or at the last step
                 if i % step_dump == 0:
-                    self.dump_state(file_pkl)
+                    self.dump_state(pkl_file)
         
         # final dump
-        if file_pkl is not None:
-            self.dump_state(file_pkl)
+        if pkl_file is not None:
+            self.dump_state(pkl_file)
 
         # clean-up: map, pool
         self.register_map()
@@ -298,9 +341,14 @@ class MOOPop:
     
     def plot_logs(self, log_front=None, log_indicator=None,
             moo_labels=("coverage", "fit extra"), save=None):
-        """ plot pareto fronts
-        :param log_front: log of fronts, use self.log_front if None
-        :return: fig, ax
+        """ Plot Pareto fronts during evolution.
+
+        Args:
+            log_front (list of list of MOOIndiv): Log of fronts. Each element in the list is the Pareto front of that generation. Use self.log_front if None.
+
+        Returns:
+            fig (matplotlib.figure.Figure): Figure object.
+            axes (np.ndarray): Array of matplotlib AxesSubplot objects.
         """
         # set default
         if log_front is None:
@@ -339,11 +387,14 @@ class MOOPop:
         return fig, axes
     
     def fit_surfaces_eval(self, pop, u_eval=None, v_eval=None):
-        """ fit surfaces from individuals, evaluate at net
-        :param pop: array of individuals
-        :param u_eval, v_eval: arrays of evaluation points along u, v
-        :return: zyx_arr
-            zyx_arr: [zyx_sample_0, zyx_surf_0, zyx_sample_1, zyx_surf_1, ...]
+        """ Fit surfaces of individuals.
+
+        Args:
+            pop (list of MOOIndiv): Individuals to fit.
+            u_eval, v_eval (np.ndarray): 1d arrays of u(z) and v(xy) to evaluate at, which range from [0,1]. Defaults to the max length of wireframes.
+
+        Returns:
+            zyx_arr: Points of samples and fitted surfaces. [sample0, surf0,sample1,surf1,...].
         """
         zyx_arr = []
         for indiv in pop:

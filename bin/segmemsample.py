@@ -9,8 +9,8 @@ import starfile
 
 def normal_to_euler(normal):
     """ convert normal to euler angles
-    :param normal: (nx,ny,nz)
-    :return: euler
+        normal: (nx,ny,nz)
+    Returns: euler
         euler: ()
     """
     nx, ny, nz = normal
@@ -21,10 +21,10 @@ def normal_to_euler(normal):
 
 def downsample(xyz, normal, step_xy, step_z, factor_offset=0.5):
     """ downsample points and normals
-    :param xyz, normal: array of points and normals, shape=(npts,3)
-    :param step_xy, step_z: int, step in xy and z
-    :param factor_offset: index of the first sample = int(factor_offset*step)
-    :return: xyz_sample, normal_sample
+        xyz, normal: array of points and normals, shape=(npts,3)
+        step_xy, step_z: int, step in xy and z
+        factor_offset: index of the first sample = int(factor_offset*step)
+    Returns: xyz_sample, normal_sample
     """
     xyz_sample = []
     normal_sample = []
@@ -43,10 +43,10 @@ def downsample(xyz, normal, step_xy, step_z, factor_offset=0.5):
 
 def get_tomo_path(seg_file, tomo_file=None):
     """ get path to tomo file from seg-npz
-    :param seg_file: path to seg.npz
-    :param tomo_file: tomo_file in seg.npz
+        seg_file: path to seg.npz
+        tomo_file: tomo_file in seg.npz
         which is relative path to tomo w.r.t seg
-    :return: tomo_rel
+    Returns: tomo_rel
         tomo_rel: path to tomo relative to pwd
     """
     if tomo_file is None:
@@ -64,11 +64,11 @@ def get_tomo_path(seg_file, tomo_file=None):
 
 def star_optics(cs, voltage, apix, box_size):
     """ generate star file sections: optics
-    :param cs: spherical aberration in mm
-    :param voltage: voltage in kV
-    :param apix: pixel in angstrom
-    :param box_size: output box size in pixel
-    :return: df_optics
+        cs: spherical aberration in mm
+        voltage: voltage in kV
+        apix: pixel in angstrom
+        box_size: output box size in pixel
+    Returns: df_optics
     """
     df_optics = pd.DataFrame(
         data=[[1, "opticsGroup1", cs, voltage, apix, apix, box_size, 3]],
@@ -82,12 +82,12 @@ def star_optics(cs, voltage, apix, box_size):
 
 def star_samples(seg_files, key_xyz, key_normal, key_dist=None, step_xy=1, step_z=1, factor_offset=0.5, dist_threshs_nm=(None, None)):
     """ generate star file sections: micrographs, particles
-    :param seg_files: list of seg.npz
-    :param key_<xyz,normal,dist>: keys in seg.npz for xyz, normal, distance
-    :param step_xy, step_z: int, step in xy and z
-    :param factor_offset: index of the first sample = int(factor_offset*step)
-    :param dist_threshs_nm: lower and upper thresholds of distance in nm
-    :return: df_micrographs, df_particles, apix
+        seg_files: list of seg.npz
+        key_<xyz,normal,dist>: keys in seg.npz for xyz, normal, distance
+        step_xy, step_z: int, step in xy and z
+        factor_offset: index of the first sample = int(factor_offset*step)
+        dist_threshs_nm: lower and upper thresholds of distance in nm
+    Returns: df_micrographs, df_particles, apix
     """
     col_micrographs = ("rlnMicrographName", "rlnOpticsGroup")
     col_particles = (
@@ -143,7 +143,7 @@ def star_samples(seg_files, key_xyz, key_normal, key_dist=None, step_xy=1, step_
     
 def build_parser():
     """ build parser for sampling.
-    :return: parser
+    Returns: parser
     """
     parser = argparse.ArgumentParser(
         prog="segmemsample.py",

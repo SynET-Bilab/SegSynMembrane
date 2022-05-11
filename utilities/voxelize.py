@@ -1,16 +1,20 @@
-
 import functools
 import numpy as np
 
 class Voxelize:
-    """ Pixel-precision voxelization of a parameteric surface (from NURBS fitting)
-    Usage:
+    """ Pixel-precision voxelization of a parameteric surface.
+
+    Examples:
         vox = Voxelize(surface)
         vox.run([0, 1], [0, 1])
         vox.pts
+    
     Attributes:
         pts: coordinates of surface points, [[z1,y1,x1],[z2,y2,x2],...]
         uv: parameters of surface points, [[u1,v1],[u2,v2],...]
+    
+    Notes:
+        This voxelization method is a bit slow.
     """
     def __init__(self, surface):
         """ init
@@ -22,20 +26,24 @@ class Voxelize:
 
     @functools.lru_cache
     def evaluate(self, u, v):
-        """ cached evaluation of surface at location (u, v)
-        :param u, v: parameteric positions
-        :return: coord
-            coord: [z,y,x] at (u,v)
+        """ Cached evaluation of surface at location (u,v).
+
+        Args:
+            u, v (float): Parameteric positions, ranged between [0,1].
+
+        Returns:
+            zyx (np.ndarray): Coordinate [z,y,x] at (u,v).
         """
         return self.surface(u, v)
 
     def run(self, bound_u, bound_v):
-        """ recursive rasterization surface in a uv-square
-        :param bound_u, bound_v: bounds in u,v directions, e.g. [u_min, u_max]
-        :return: None
-        :action:
-            if corners are not connected: run for finer regions
-            if corners are connected: append midpoint to self.pts
+        """ Recursive voxelization of the surface in a uv-square.
+
+        If corners are not connected: run for finer regions.
+        If corners are connected: append midpoint to self.pts.
+
+        Args:
+            bound_u, bound_v (2-tuple): Bounds in u,v directions, e.g. (u_min, u_max).
         """
         # evaluate corners, calculate differences
         fuv = [[self.evaluate(u, v) for v in bound_v] for u in bound_u]

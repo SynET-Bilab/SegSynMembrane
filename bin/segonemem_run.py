@@ -9,7 +9,7 @@ from etsynseg.workflows import SegOneMem
 
 def build_parser():
     """ build parser for segmentation.
-    :return: parser
+    Returns: parser
     """
     # parser
     parser = argparse.ArgumentParser(
@@ -95,7 +95,7 @@ def backup_file(filename):
 
 def run_seg(args):
     """ run segmentation
-    :param args: args from parser.parse_args()
+        args: args from parser.parse_args()
     """
     #=========================
     # setups

@@ -1,22 +1,25 @@
 import numpy as np
 import sklearn.decomposition
 
-
 class Grid:
-    """ Assigning points into grids
-    Usage:
+    """ Assigning points into grids.
+    
+    Examples:
         grid = Grid(zyx, n_vxy, n_uz, nz_eachu)
-        grid.uv_size, grid.uv_zyx
+
     Attributes:
         uv_size: uv_size[iu][iv] is the number of elements in the grid
         uv_zyx: uv_zyx[iu][iv] is the list of [z,y,x] of points in the grid
     """
     def __init__(self, zyx, n_vxy, n_uz, nz_eachu, shrink_sidegrid):
-        """ init and generate grids
-        :param zyx: points, shape=(npts, 3)
-        :param n_vxy, n_uz: number of sampling grids in v(xy) and u(z) directions
-        :param nz_eachu: number of z-direction slices contained in each grid
-        :param shrink_sidegrid: grids close to the side in xy are shrinked to this ratio
+        """ Initialize and generate grids.
+
+        Args:
+            zyx (np.ndarray): Points, with shape=(npts,3).
+            n_vxy, n_uz (int): The number of sampling grids in v(xy) and u(z) directions.
+            nz_eachu (int): The number of z-direction slices contained in each grid.
+            shrink_sidegrid (float): Grids close to the sides in xy are shrinked to this ratio.
+                A smaller ratio facilitates the coverage of sampling.
         """
         # record of inputs
         self.zyx = zyx
@@ -40,9 +43,10 @@ class Grid:
         self.uv_size, self.uv_zyx = self.get_grid_zyx()
 
     def get_ubin_iz(self):
-        """ for each bin in u(z)-direction, get z-indexes
-        :return: ubin_iz
-            ubin_iz: shape=(n_uz, nz_eachu), ubin_iz[iu]=(z1,z2,z3,...)
+        """ For each bin in u(z)-direction, get z-indexes.
+
+        Returns:
+            ubin_iz (tuple): shape=(n_uz,nz_eachu), ubin_iz[iu]=(z1,z2,z3,...)
         """
         # split iz into n_uz parts
         iz_split = np.array_split(
@@ -58,9 +62,10 @@ class Grid:
         return ubin_iz
 
     def get_ubin_zyx(self):
-        """ for each bin and slice in u(z)-direction, get coordinates sorted by PC
-        :return: ubin_zyx
-            ubin_zyx: shape=(n_uz, nz_eachu, n_points, 3), ubin_zyx[iu][i]=((z1,y1,x1),...)
+        """ For each bin and slice in u(z)-direction, get coordinates sorted by PC.
+
+        Returns:
+            ubin_zyx (tuple): shape=(n_uz,nz_eachu,n_points,3), ubin_zyx[iu][i]=((z1,y1,x1),...).
         """
         # pca of all points
         pca = sklearn.decomposition.PCA()
@@ -85,10 +90,11 @@ class Grid:
         return ubin_zyx
 
     def get_grid_zyx(self):
-        """ for each uv-grid, get size and coordinates
-        :return: uv_size, uv_zyx
-            uv_size: uv_size[(iu,iv)]=n_uv, number of points in the grid
-            uv_zyx: uv_zyx[(iu,iv)]=((z1,y1,x1),...), coordinates in the grid
+        """ For each uv-grid, get size and coordinates.
+
+        Returns:
+            uv_size (dict): The number of points in grid (iu,iv), uv_size[(iu,iv)]=n_uv.
+            uv_zyx (dict): Coordinates in the grid (iu,iv), uv_zyx[(iu,iv)]=((z1,y1,x1),...).
         """
         # initialize
         uv_zyx = {

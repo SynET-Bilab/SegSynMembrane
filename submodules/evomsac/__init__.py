@@ -1,6 +1,5 @@
 
 # auxiliary functions
-from .voxelize import Voxelize
 from .grid import Grid
 
 # multi-objective optimization

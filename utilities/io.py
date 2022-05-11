@@ -24,26 +24,24 @@ __all__ = [
 # tomo
 #=========================
 
-def read_tomo(tomo_file, negate=False):
-    """ read tomo file (mrc)
-    :param tomo_file: mrc tomo file
-    :param negate: if True, return negated image
+def read_tomo(tomo_file):
+    """ Read tomo file (mrc)
+        tomo_file: mrc tomo file
+        negate: if True, return negated image
         convenient for loading original black foreground tomo
-    :return: data, voxel_size
+    Returns: data, voxel_size
         voxel_size: in A, in mrcfile format (tuple)
     """
     with mrcfile.open(tomo_file, permissive=True) as mrc:
         tomo = mrc.data
         voxel_size = mrc.voxel_size
-    if negate:
-        tomo = utils.negate_image(tomo)
     return tomo, voxel_size
 
 def read_tomo_clip(tomo_file, clip_range=None):
     """ clip mrc according to the range of model
-    :param tomo_file: filename of tomo
-    :param clip_range: {x: (min,max), y:..., z:...}
-    :return: tomo, voxel_size
+        tomo_file: filename of tomo
+        clip_range: {x: (min,max), y:..., z:...}
+    Returns: tomo, voxel_size
         tomo: clipped
         voxel_size: read with mrcfile, in A
     """
@@ -65,8 +63,8 @@ def read_tomo_clip(tomo_file, clip_range=None):
 
 def write_tomo(tomo, tomo_file, voxel_size=None, dtype=None):
     """ write 3d data to mrc
-    :param voxel_size: in A, (x,y,z), or a number, or None
-    :param dtype: datatype, if None use data.dtype
+        voxel_size: in A, (x,y,z), or a number, or None
+        dtype: datatype, if None use data.dtype
         mrc-compatible: int8/16, uint8/16, float32, complex64
     """
     # ensure data is numpy array
@@ -104,7 +102,7 @@ def write_tomo(tomo, tomo_file, voxel_size=None, dtype=None):
 
 def read_model(model_file):
     """ load xyz from model file
-    :return: DataFrame[object,contour,x,y,z] with correct dtypes
+    Returns: DataFrame[object,contour,x,y,z] with correct dtypes
         dtypes: z is also int
         range: object,contour are 1-based; x,y,z are 0-based
     """
@@ -133,10 +131,10 @@ def read_model(model_file):
 def write_model(zyx_arr, model_file, dist_thresh=5):
     """ write points to model
     one object for each zyx in array, one open contour for each consecutive line in each z
-    :param zyx_arr: array of zyx=[[z1,y1,x1],...]
-    :param model_file: filename of model
-    :param dist_thresh: if the distance between adjacent points > this threshold, break contour
-    :return: data
+        zyx_arr: array of zyx=[[z0,y0,x0],...]
+        model_file: filename of model
+        dist_thresh: if the distance between adjacent points > this threshold, break contour
+    Returns: data
         data: object, contour, x, y, z
     """
     # make data from zyx's
@@ -184,8 +182,8 @@ def write_model(zyx_arr, model_file, dist_thresh=5):
 def interpolate_two_open(zyx1, zyx2):
     """ interpolate between two z's for open contours
     finds dtw with lower score for the original and the reverse points
-    :param zyx1, zyx2: contours' points on the two z's
-    :return: path, score
+        zyx1, zyx2: contours' points on the two z's
+    Returns: path, score
         path: [(i11,i12),(i21,i22),...], correspondence between two contours
     """
     # dtw for both the original sequence and its reverse
@@ -203,8 +201,8 @@ def interpolate_two_open(zyx1, zyx2):
 def interpolate_two_closed(zyx1, zyx2):
     """ interpolate between two z's for closed contours
     finds dtw with the lowest score amoing all cycles
-    :param zyx1, zyx2: contours' points on the two z's
-    :return: path, score
+        zyx1, zyx2: contours' points on the two z's
+    Returns: path, score
         path: [(i11,i12),(i21,i22),...], correspondence between two contours
     """
     # calc dtw for each possible roll
@@ -230,9 +228,9 @@ def interpolate_two_closed(zyx1, zyx2):
 
 def interpolate_contours(zyx, closed=True):
     """ interpolate contours through z, using dynamic time warping (dtw)
-    :param zyx: points, ordered in each z
-    :param closed: if the contour is treated as closed
-    :return: zyx_interp
+        zyx: points, ordered in each z
+        closed: if the contour is treated as closed
+    Returns: zyx_interp
     """
     zyx = np.round(zyx).astype(int)
     z_given = sorted(np.unique(zyx[:, 0]))
@@ -268,9 +266,9 @@ def interpolate_contours(zyx, closed=True):
 
 def extend_contours(zyx, shape):
     """ extend open contours to the boundary
-    :param zyx: points
-    :param shape: shape of mask, (nz,ny,nx)
-    :return: zyx_ext
+        zyx: points
+        shape: shape of mask, (nz,ny,nx)
+    Returns: zyx_ext
         zyx_ext: extended points added to zyx, not clipped
     """
     ymin, ymax = 0, shape[1] - 1
@@ -278,8 +276,8 @@ def extend_contours(zyx, shape):
 
     def extend_one(zyx1, zyx2):
         """ extend from yx1 to yx2
-        :param yx1, yx2: point 1, 2
-        :return: yxe
+            yx1, yx2: point 1, 2
+        Returns: yxe
         """
         # get direction
         yx1 = zyx1[1:]
@@ -323,9 +321,9 @@ def extend_contours(zyx, shape):
 
 def contours_to_mask_closed(zyx, shape):
     """ convert closed contours to mask (0,1's)
-    :param zyx: points
-    :param shape: shape of mask, (nz,ny,nx)
-    :return: mask
+        zyx: points
+        shape: shape of mask, (nz,ny,nx)
+    Returns: mask
     """
     # use polygon
     zyx = np.round(zyx).astype(int)
@@ -341,9 +339,9 @@ def contours_to_mask_closed(zyx, shape):
 
 def contours_to_mask_open(zyx, shape):
     """ convert closed contours to mask (0,1's)
-    :param zyx: points
-    :param shape: shape of mask, (nz,ny,nx)
-    :return: mask
+        zyx: points
+        shape: shape of mask, (nz,ny,nx)
+    Returns: mask
     """
     # use lines
     zyx = np.round(zyx).astype(int)
@@ -377,13 +375,13 @@ def contours_to_mask_open(zyx, shape):
 
 def model_to_mask(zyx_mod, shape, interpolate=True, closed=True, extend=False, amend=True):
     """ convert model to mask, dtw-interpolate for missing z's
-    :param zyx_mod: model points, ordered in each z
-    :param shape: shape of mask, (nz,ny,nx)
-    :param interpolate: if interpolate between missing z's
-    :param closed: if the contour is treated as closed
-    :param extend: if extend open contours to the boundary
-    :param amend: if amend interpolations by setting model intersections to 1
-    :return: mask
+        zyx_mod: model points, ordered in each z
+        shape: shape of mask, (nz,ny,nx)
+        interpolate: if interpolate between missing z's
+        closed: if the contour is treated as closed
+        extend: if extend open contours to the boundary
+        amend: if amend interpolations by setting model intersections to 1
+    Returns: mask
     """
     # convert to int
     zyx_mod = np.round(zyx_mod).astype(int)

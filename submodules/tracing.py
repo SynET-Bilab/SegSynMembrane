@@ -1,26 +1,29 @@
-""" trace
-"""
-
 import collections
 import numpy as np
 import sklearn.decomposition
-from etsynseg import utils
+from etsynseg import pcdutils
 
 __all__ = [
-    "Trace"
+    "Tracing"
 ]
 
+class Tracing:
+    """ Tracing connected segments in a stack of 2d images.
 
-class Trace:
-    """ trace in 2d planes
-    usage:
-        tr = etsynseg.tracing.Trace(B, O)
-        yx_trs_iz, d_trs_iz = tr.bfs2d(iz)
-        trs = tr.bfs3d()
-        yx_trs_iz, d_trs_iz = tr.dfs2d(iz)
-        trs = tr.dfs3d()
+    Examples:
+        tr = etsynseg.tracing.Tracing(B, O, n_next=2, max_size=10)
+        yx_trs, d_trs = tr.bfs2d(iz)
+        yx_trs, d_trs = tr.bfs2d(iz)
+        zyx = tr.sort_points(method="bfs")
     """
     def __init__(self, B, O, n_next=2, max_size=np.inf):
+        """ Initialization.
+
+        Args:
+            B, O (np.ndarray): Input binary image and orientation, with shape=(nz,ny,nx).
+            n_next (int): The number of candidate pixels to consider for the next visit. Ranges from 1 (next along O) to 3 (plus two neighbors).
+            max_size (int): The max size of a segment.
+        """
         # save variables
         self.B = B
         self.O = np.copy(O)
@@ -39,10 +42,10 @@ class Trace:
     #=========================
     
     def set_direction(self):
-        """ set pca for projected yx; align O to pc axis
+        """ Set pca for projected yx. Align O to axis pc1.
         """
         # calc pca
-        zyx = utils.voxels_to_points(self.B)
+        zyx = pcdutils.pixels2points(self.B)
         self.pca = sklearn.decomposition.PCA(n_components=1)
         self.pca.fit(zyx[:, 1:])
         
@@ -52,9 +55,13 @@ class Trace:
         self.O[(self.B>0)&(inner_prod<0)] += np.pi
 
     def prep_find_next_yx(self, n_next):
-        """ prep for finding next yx
-        :param n_next: number of next points, max=3
-        :return: {map_dydx, bins}
+        """ Preparations for finding next point.
+        
+        Args:
+            n_next (int): The number of candidate pixels for the next visit. See __init__().
+
+        Returns:
+            {map_dydx, bins} (dict): Bins for assigning angles from [0,2pi) to 16 discrete codes. Map_dydx maps the code to a list of candidate (dy,dx)'s for the next visit.
         """
         # dict from direction to dydx
         # key = index in histogram
@@ -87,12 +94,15 @@ class Trace:
         return dict(map_dydx=map_dydx, bins=bins)
 
     def find_next_yx(self, d_curr):
-        """ find next yx candidates according to current direction
-        :param d_curr: current direction
-        :return: dydx_candidates
-            dydx_candidates: three possible dydx's among 8 neighbors
+        """ Find next yx candidates according to current direction.
+
+        Args:
+            d_curr (float): Direction of the current point.
+
+        Returns:
+            dydx_candidates (list of 2-tuple): A list of candidate (dy,dx)'s for the next visit.
         """
-        # direction: keep in range (0, 2pi)
+        # direction: keep in range [0,2pi)
         d_curr = np.mod(d_curr, 2*np.pi)
 
         # categorize: into bins from
@@ -103,10 +113,14 @@ class Trace:
         return dydx_candidates
 
     def find_next_direction(self, d_curr, o_next):
-        """ convert next orientation to direction that's closest to current direction
-        :param d_curr: current direction
-        :param o_next: next orientation
-        :return: d_next
+        """ Find the direction of the next point, and align its value to be contiguous with the direction of the current point.
+
+        Args:
+            d_curr (float): Direction of the current point, which ranges in [0,2pi).
+            o_next (float): Orientation of the next point, which ranges in (-pi/2,pi/2).
+
+        Returns:
+            d_next (float): Aligned direction of the next point.
         """
         # diff if d_next=o_next
         diff1 = np.mod(o_next-d_curr, 2*np.pi)
@@ -125,12 +139,15 @@ class Trace:
     #=========================
     
     def bfs2d_from_point(self, yx_start, map_yxd):
-        """ trace segment from current (y,x) in one direction, breadth-first
-        :param yx_start: current (y,x)
-        :param map_yxd: {(y,x): direction}
-        :return: yx_tr, d_tr
-            yx_tr: [(y,x)_1,(y,x)_2,...]
-            d_tr: [d_1,d_2,...]
+        """ Trace a segment from the current point and its direction. Breadth-first scan.
+
+        Args:
+            yx_start (2-tuple): The current point, (y,x).
+            map_yxd (dict): Maps a point to its direction, each item is like (y,x):direction.
+
+        Returns:
+            yx_tr (list of 2-tuple): A list of traced points, [(y1,x1),(y2,x2),...].
+            d_tr (list of float): A list of direction corresponding to the points, [d1,d2,...].
         """
         yx_tr = []
         d_tr = []
@@ -167,11 +184,14 @@ class Trace:
         return yx_tr, d_tr
 
     def bfs2d(self, iz):
-        """ trace a slice, breadth-first
-        :param iz: z index of slice
-        :return: yx_trs, d_trs
-            yx_trs: [yx_tr_0, yx_tr_1, ...]
-            d_trs: [d_tr_0, d_tr_1, ...]
+        """ Trace a 2d image slice using breadth-first scan.
+
+        Args:
+            iz (int): Index of the slice in z-direction.
+
+        Returns:
+            yx_trs (list): A list of traced segments. Each segment in the list reads [(y1,x1),(y2,x2),...].
+            d_trs (list): A list of the direction of points in the segments. Each item in the list reads [d1,d2,...].
         """
         B_iz = self.B[iz]
         O_iz = self.O[iz]
@@ -199,29 +219,20 @@ class Trace:
         
         return yx_trs, d_trs
 
-    def bfs3d(self):
-        """ trace 3d binary image self.B, breadth-first
-        :return: trs
-            trs: [(iz_1, yx_trs_1, d_trs_1),...]
-        """
-        # flatten array
-        trs = []
-        for iz in range(self.nz):
-            yx_iz, d_iz = self.bfs2d(iz)
-            trs.append((iz, yx_iz, d_iz))
-        return trs
-
     #=========================
     # depth-first-scan
     #=========================
 
     def dfs2d_from_point(self, yx_start, map_yxd):
-        """ trace segment from current (y,x) in one direction, depth-first (iterative)
-        :param yx_start: current (y,x)
-        :param map_yxd: {(y,x): direction}
-        :return: yx_tr, d_tr
-            yx_tr: [(y,x)_1,(y,x)_2,...]
-            d_tr: [d_1,d_2,...]
+        """ Trace a segment from the current point and its direction. Depth-first scan.
+
+        Args:
+            yx_start (2-tuple): The current point, (y,x).
+            map_yxd (dict): Maps a point to its direction, each item is like (y,x):direction.
+
+        Returns:
+            yx_tr (list of 2-tuple): A list of traced points, [(y1,x1),(y2,x2),...].
+            d_tr (list of float): A list of direction corresponding to the points, [d1,d2,...].
         """
         yx_tr = []
         d_tr = []
@@ -259,11 +270,14 @@ class Trace:
         return yx_tr, d_tr
 
     def dfs2d(self, iz):
-        """ trace a slice, depth-first
-        :param iz: z index of slice
-        :return: yx_trs, d_trs
-            yx_trs: [yx_trace_0, yx_trace_1, ...]
-            d_trs: [d_trace_0, d_trace_1, ...]
+        """ Trace a 2d image slice using depth-first scan.
+
+        Args:
+            iz (int): Index of the slice in z-direction.
+
+        Returns:
+            yx_trs (list): A list of traced segments. Each segment in the list reads [(y1,x1),(y2,x2),...].
+            d_trs (list): A list of the direction of points in the segments. Each item in the list reads [d1,d2,...].
         """
         B_iz = self.B[iz]
         O_iz = self.O[iz]
@@ -294,32 +308,32 @@ class Trace:
         
         return yx_trs, d_trs
 
-    def dfs3d(self):
-        """ trace 3d binary image self.B, depth-first
-        :return: trs
-            trs: [(iz_1, yx_trs_1, d_trs_1),...]
-        """
-        # flatten array
-        trs = []
-        for iz in range(self.nz):
-            yx_iz, d_iz = self.dfs2d(iz)
-            trs.append((iz, yx_iz, d_iz))
-        return trs
-
     #=========================
-    # sort coordinates
+    # sorting points
     #=========================
     
-    def sort_points(self):
-        """ sort voxels of image by bfs
-        :return: zyx
-            zyx: 2d np.ndarray, [[z1,y1,x1],...]
+    def sort_points(self, method="bfs"):
+        """ Sorting pixels of the image stack by BFS.
+
+        Args:
+            method (str): 'bfs' or 'dfs'.
+
+        Returns:
+            zyx (np.ndarray): Array of sorted points. Shape=(npts,3), [[z1,y1,x1],...].
         """
+        # setup method
+        if method == "bfs":
+            func_trace = self.bfs2d
+        elif method == "dfs":
+            func_trace = self.dfs2d
+        else:
+            raise ValueError("Method should be bfs or dfs.")
+
         zyx_arr = []
         # sort for each slice
         for iz in range(self.B.shape[0]):
-            # get yx by bfs, directly concat
-            yx_trs, _ = self.bfs2d(iz)
+            # get yx, directly concat
+            yx_trs, _ = func_trace(iz)
             yx_iz = np.concatenate(yx_trs, axis=0)
             # prepend z
             z_iz = iz*np.ones((len(yx_iz), 1), dtype=np.int_)

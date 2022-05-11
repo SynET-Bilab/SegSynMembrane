@@ -1,5 +1,5 @@
 __author__ = "Zhenghan Liao"
-__version__ = "0.1"
+__version__ = "0.2"
 
 # dependencies = [
 ## conda-forge
@@ -14,10 +14,15 @@ __version__ = "0.1"
 # ]
 
 # auxiliary functions
-from etsynseg import utils, io, plot, tracing, bspline, membranogram
-# membrane detection
-from etsynseg import hessian, dtvoting, nonmaxsup
-# membrane extraction
-from etsynseg import dividing, evomsac, matching, meshrefine
+from .utilities import imgutils, pcdutils
+from .utilities import io, plot
+from .utilities import bspline
+
+from .submodules import features, nonmaxsup, dtvoting
+from .submodules import tracing, dividing
+from .submodules import evomsac, matching, meshrefine
+
 # workflows
-from etsynseg import workflows
+# from etsynseg import workflows
+
+from .submodules import membranogram

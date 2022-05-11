@@ -4,11 +4,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import napari
-from etsynseg import utils
+from etsynseg import pcdutils
 
 __all__ = [
     # matplotlib: 2d plot
-    "imshow", "scatter", "imoverlay", "scatter_value",
+    "imshow", "scatter", "imoverlay",
     # napari: 3d viewer
     "imshow3d"
 ]
@@ -19,11 +19,16 @@ __all__ = [
 #=========================
 
 def setup_subplots(n, shape, figsize1):
-    """ setup subplots
-    :param n: number of subplots, can be different from shape
-    :param shape: (nrows, ncols), either can be None
-    :param figsize1: size of one subplot
-    :return: fig, axes
+    """ Common setups for matplotlib subplots.
+
+    Args:
+        n (int): The number of subplots.
+        shape (2-tuple): (nrows, ncols) for the grid of subplots, where either can be None.
+        figsize1 (2-tuple): (size_x, size_y), the size of one subplot.
+
+    Returns:
+        fig (matplotlib.figure.Figure): Figure object.
+        axes (np.ndarray): Array of matplotlib AxesSubplot objects, with shape=(nrows,ncols).
     """
     # setup shape
     if shape is None:
@@ -61,17 +66,24 @@ def imshow(
         title_arr=None, suptitle=None,
         figsize1=None, save=None, dpi=None
     ):
-    """ show multiple images
-    :param I_arr: a 1d list of images
-    :param shape: (nrows, ncols), will auto set if either is None
-    :param style: custom, gray, binary, orient
-    :param vrange, qrange: range of value(v) or quantile(q)
-    :param cmap, colorbar, colorbar_shrink: set colors
-    :param title_arr, suptitle, supxlabel, supylabel: set labels
-    :param figsize1: size of one subplot
-    :param save: name to save fig
-    :param dpi: dpi of saved fig
-    :return: fig, axes
+    """ Imshow of an array of 2d images. Optionally save the figure.
+
+    Args:
+        I_arr (list): A list of 2d images, each has shape=(ny,nx).
+        shape (2-tuple): (nrows, ncols) of subplots.
+        style (str): Plotting style. One of custom, gray, binary, orient.
+        vrange, qrange (2-tuple for each): The range of values (vmin,vmax) or quantiles of values (qmin,qmax) for colormap.
+        cmap (str): Colormap.
+        colorbar (bool): Whether to show the colorbar.
+        colorbar_shrink (float): The shrink factor of the colorbar.
+        title_arr (list of str): Titles for each subplot.
+        suptitle (str): Suptitle for the figure.
+        figsize1 (2-tuple): The size of one subplot. (size_x, size_y), in inches.
+        save (str), dpi (int): Save figure with this name and this dpi.
+
+    Returns:
+        fig (matplotlib.figure.Figure): Figure object.
+        axes (np.ndarray): Array of matplotlib AxesSubplot objects, with shape=(nrows,ncols).
     """
     # setup styles
     # grayscale image: adjust qrange
@@ -138,19 +150,27 @@ def scatter(
         title_arr=None, suptitle=None,
         save=None
     ):
-    """ show multiple scatters.
-    assumed x and y use the same units, all xy's share axes
-    :param xy_arr: 1d list of 2d array with shape (npts, 2)
-    :param v_arr: 1d list of values for each xy
-    :param shape: (nrows(y), ncols(x)), will auto set if either is None
-    :param s_xy: marker size in units of x,y
-    :param figarea1: area (in inch) of one subplot, overrides figsize1
-    :param figsize1: size (in inch) of one subplot
-    :param dpi: points per inch
-    :param cmap, colorbar, colorbar_shrink: colors
-    :param title_arr, suptitle: titles
-    :param save: name to save fig
-    :return: fig, axes, s_pt
+    """ Scatter plots of an array of 2d points. Optionally save the figure.
+
+    Args:
+        xy_arr (list of np.ndarray): A list of pointclouds, each element has shape=(npts, 2).
+        v_arr (list of np.ndarray): A list of values for each pointcloud, each element has shape=(npts).
+        shape (2-tuple): (nrows, ncols) of subplots.
+        s_xy (float): Marker size in units of x,y, which will be converted to matplotlib units when plotting.
+        figarea1 (float): The area (in inches) of one subplot. Will override figsize1.
+        figsize1 (2-tuple): The size of one subplot. (size_x, size_y), in inches.
+        dpi (int): Image resolution.
+        cmap (str): Colormap.
+        colorbar (bool): Whether to show the colorbar.
+        colorbar_shrink (float): The shrink factor of the colorbar.
+        title_arr (list of str): Titles for each subplot.
+        suptitle (str): Suptitle for the figure.
+        save (str): Save figure with this name.
+
+    Returns:
+        fig (matplotlib.figure.Figure): Figure object.
+        axes (np.ndarray): Array of matplotlib AxesSubplot objects, with shape=(nrows,ncols).
+        s_pt (float): The converted marker size in image points.
     """
     # setup v_arr
     if v_arr is None:
@@ -209,15 +229,25 @@ def imoverlay(im_dict, shape=None,
         bg_qrange=(0.02, 0.98), bg_alpha=0.5, bg_cmap='gray',
         fg_alpha=1., fg_cmaps=('Blues','Oranges','Greens','Reds')
     ):
-    """ show multiple images with overlays
-    :param im_dict: {title1: {I: I, yxs: [yx1, yx2]}, title2: ...}
-    :param shape: (nrows, ncols), will auto set if either is None
-    :param bg_qrange, bg_alpha, bg_cmap: quantile range, alpha value, colormap of the background image
-    :param fg_alpha: alpha value of foreground images
-    :param figsize1: size of one subplot
-    :param save: name to save fig
-    :param dpi: dpi of saved fig
-    :return: fig, axes
+    """ Imshow a list of 2d background images with overlaying 2d points.
+
+    Args:
+        im_dict (dict): Input dict of images and points. Each item is formatted as:
+            title: {'I': image, 'yxs': [yx0,yx1,...]}
+            where the image has shape=(ny,nx);
+            where yxi=[[yi0,xi0],[yi1,xi1],...], with shape=(npts,2).
+        shape (2-tuple): (nrows, ncols) of subplots.
+        bg_qrange (2-tuple): The quantile range for the value of the background image.
+        bg_alpha (float): The alpha value of the image.
+        bg_cmap (str): The colormap of the image.
+        fg_alpha (float): The alpha value of foreground points.
+        fg_cmaps (list of str): A list of colormaps for points.
+        figsize1 (2-tuple): The size of one subplot. (size_x, size_y), in inches.
+        save (str), dpi (int): Save figure with this name and this dpi.
+
+    Returns:
+        fig (matplotlib.figure.Figure): Figure object.
+        axes (np.ndarray): Array of matplotlib AxesSubplot objects, with shape=(nrows,ncols).
     """
     # setup figure
     fig, axes = setup_subplots(len(im_dict), shape, figsize1)
@@ -241,7 +271,7 @@ def imoverlay(im_dict, shape=None,
         # overlaying images
         # yx to im, set zero pixels to alpha=0
         for i, yx in enumerate(item["yxs"]):
-            im_i = utils.points_to_voxels(yx, item["I"].shape)
+            im_i = pcdutils.points2pixels(yx, item["I"].shape)
             axes[idx2d].imshow(
                 # set vmax=2 so that midpoint of cmap is shown
                 im_i, vmin=0, vmax=2,
@@ -267,17 +297,22 @@ def imshow3d(
         cmap_Is=None, cmap_vecs=None,
         visible_Is=True, visible_vecs=True
     ):
-    """ plot images using napari
-    :param I: main image
-    :param Is_overlay: array of overlaying images
-    :param vecs_zyx: array of vector positions, each shape = (npts, 3)
-    :param vecs_dir: array of vector directions, each shape = (npts, 3)
-    :param vec_width: width of vectors
-    :param name_I, name_Is, name_vecs: names for I, Is, vecs
-    :param cmap_Is, cmap_vecs: default=["green", "yellow", "cyan", "magenta",
-        "bop blue", "bop orange", "bop purple", "red", "blue"]
-    :param visible_Is, visible_vecs: if visible, True/False, or array of bools
-    :return: viewer
+    """ Imshow 3d (or 2d) images using napari.
+
+    A main image is overlayed by multiple other images (e.g. segmentations) and vectors (e.g. normals). 
+
+    Args:
+        I (np.ndarray): The main image, with shape=(nz,ny,nx).
+        Is_overlay (list of np.ndarray): A list of overlaying images, each with shape=(nz,ny,nx).
+        vecs_zyx (list of np.ndarray): A list of vector positions, each with shape=(npts,3) and each position is [zi,yi,xi].
+        vecs_dir (list of np.ndarray): A list of vector directions, each with shape=(npts,3) and each direction is [vzi,vyi,vxi].
+        vec_width (float): The width of vectors.
+        name_I (str), name_Is (list of str), name_vecs (list of str): The names for the main image, overlaying images, vectors.
+        cmap_Is, cmap_vecs (list of str): A list of colormaps for overlaying images, vectors. Default=['green','yellow','cyan','magenta','bop blue','bop orange','bop purple','red','blue'].
+        visible_Is, visible_vecs (list of bool): A list to indicate whether each image or vector is visible.
+    
+    Returns:
+        viewer (napari.Viewer): The viewer object for the images.
     """
     # setup defaults
     # cmaps

@@ -3,17 +3,21 @@
 
 import numpy as np
 import multiprocessing.dummy
-from etsynseg import io, utils, tracing
-from etsynseg import hessian, dtvoting, nonmaxsup
-from etsynseg import evomsac, matching, meshrefine
+
+from etsynseg import matching, meshrefine, nonmaxsup, tracing
+from . import features
+from etsynseg import io, utils, imgutils
+from etsynseg import dtvoting
+from etsynseg import evomsac
 
 __all__ = [
     "SegBase", "SegSteps"
 ]
+
 class SegBase:
     """ workflow for segmentation
     attribute formats:
-        binary images: save coordinates (utils.voxels_to_points, self.coord_to_binary)
+        binary images: save coordinates (utils.pixels2points, self.coord_to_binary)
         sparse images (O): save as sparse (utils.sparsify3d, utils.densify3d)
         MOOPop: save state (MOOPop().dump_state, MOOPop(state=state))
     """
@@ -31,13 +35,13 @@ class SegBase:
     
     def save_steps(self, filename):
         """ save steps to npz
-        :param filename: filename to save to
+            filename: filename to save to
         """
         np.savez_compressed(filename, **self.steps)
     
     def load_steps(self, filename):
         """ load steps from npz
-        :param filename: filename to load from
+            filename: filename to load from
         """
         steps = np.load(filename, allow_pickle=True)
         self.steps = {key: steps[key].item() for key in steps.keys()}
@@ -45,8 +49,8 @@ class SegBase:
 
     def check_steps(self, steps_prev, raise_error=False):
         """ raise error if any prerequisite steps is not finished
-        :param steps_prev: array of names of prerequisite steps
-        :param raise_error: if raise error when prerequisites are not met
+            steps_prev: array of names of prerequisite steps
+            raise_error: if raise error when prerequisites are not met
         """
         satisfied = True
         for step in steps_prev:
@@ -65,8 +69,8 @@ class SegSteps:
     # @staticmethod
     # def sort_points(zyx):
     #     """ sort coordinates by pc
-    #     :param zyx: zyx
-    #     :return: zyx_sorted
+    #         zyx: zyx
+    #     Returns: zyx_sorted
     #     """
     #     # fit pca
     #     pca = sklearn.decomposition.PCA(n_components=1)
@@ -90,11 +94,11 @@ class SegSteps:
             voxel_size_nm=None, d_mem_nm=5, obj_bound=1
         ):
         """ load and clip tomo and model
-        :param tomo_file, model_file: filename of tomo, model
-        :param voxel_size_nm: if None then read from tomo_file
-        :param d_mem_nm: lengthscale of membrane thickness
-        :param obj_bound: obj label for boundary
-        :return: results
+            tomo_file, model_file: filename of tomo, model
+            voxel_size_nm: if None then read from tomo_file
+            d_mem_nm: lengthscale of membrane thickness
+            obj_bound: obj label for boundary
+        Returns: results
             results: {tomo_file,model_file,obj_bound,d_mem_nm,
                 I,shape,voxel_size_nm,model,clip_range,zyx_shift,zyx_bound,contour_bound,contour_len_bound,d_mem}
         """
@@ -133,7 +137,7 @@ class SegSteps:
         )
 
         # calculate bound contours and lengths
-        contour_bound = utils.mask_to_contour(mask_bound)
+        contour_bound = utils.component_contour(mask_bound)
         contour_bound = np.round(contour_bound).astype(np.int_)
         contour_len_bound = []
         for iz in range(I.shape[0]):
@@ -158,7 +162,7 @@ class SegSteps:
             model=model,
             clip_range=clip_range,
             zyx_shift=zyx_shift,
-            zyx_bound=utils.voxels_to_points(mask_bound),
+            zyx_bound=utils.pixels2points(mask_bound),
             contour_bound=contour_bound,
             contour_len_bound=contour_len_bound,
             d_mem=d_mem_nm/voxel_size_nm,
@@ -169,20 +173,20 @@ class SegSteps:
     def detect(
             I, mask_bound, contour_len_bound,
             sigma_hessian, sigma_tv, sigma_supp,
-            dO_threshold, xyfilter, dzfilter
+            dO_thresh, xyfilter, dzfilter
         ):
         """ detect membrane features
-        :param sigma_<hessian,tv,supp>: sigma in voxel for hessian, tv, normal suppression
-        :param xyfilter: for each xy plane, filter out pixels with Ssupp below quantile threshold; the threshold = 1-xyfilter*fraction_mems, fraction_mems is estimated by the ratio between contour length of boundary and the number of points. the smaller xyfilter, more will be filtered out.
-        :param dzfilter: a component will be filtered out if its z-range < dzfilter
-        :return: zyx_nofilt, zyx, Oz
+            sigma_<hessian,tv,supp>: sigma in voxel for hessian, tv, normal suppression
+            xyfilter: for each xy plane, filter out pixels with Ssupp below quantile threshold; the threshold = 1-xyfilter*fraction_mems, fraction_mems is estimated by the ratio between contour length of boundary and the number of points. the smaller xyfilter, more will be filtered out.
+            dzfilter: a component will be filtered out if its z-range < dzfilter
+        Returns: zyx_nofilt, zyx, Oz
             zyx_nofilt: points before filtering (normal suppression and other filters)
             zyx: points after filtering
             Oz: orientation sparsified
         """
         # negate, hessian
         Ineg = utils.negate_image(I)
-        S, O = hessian.features3d(Ineg, sigma=sigma_hessian)
+        S, O = features.features3d(Ineg, sigma=sigma_hessian)
         B = mask_bound*nonmaxsup.nms3d(S, O)
 
         # tv, nms
@@ -197,14 +201,14 @@ class SegSteps:
             Btv = B
         
         # refine: orientation, nms, orientation changes
-        _, Oref = hessian.features3d(Btv, sigma=sigma_hessian)
+        _, Oref = features.features3d(Btv, sigma=sigma_hessian)
         Bref = nonmaxsup.nms3d(Stv*Btv, Oref*Btv)
         
         # normal suppression
         Bsupp, Ssupp = dtvoting.suppress_by_orient(
             Bref, Oref*Bref,
             sigma=sigma_supp,
-            dO_threshold=dO_threshold
+            dO_thresh=dO_thresh
         )
         Ssupp = Ssupp * Bsupp
 
@@ -240,9 +244,9 @@ class SegSteps:
         Odetect = Oref*Bdetect
 
         # retuls
-        zyx_nofilt = utils.voxels_to_points(Bref)
-        zyx = utils.voxels_to_points(Bdetect)
-        Oz = utils.sparsify3d(Odetect)
+        zyx_nofilt = utils.pixels2points(Bref)
+        zyx = utils.pixels2points(Bdetect)
+        Oz = imgutils.sparsify3d(Odetect)
         return zyx_nofilt, zyx, Oz
 
     @staticmethod
@@ -252,16 +256,16 @@ class SegSteps:
             pop_size, max_iter, tol, factor_eval
         ):
         """ evomsac for one divided part
-        :param zyx: 3d binary image
-        :param voxel_size_nm: voxel spacing in nm
-        :param grid_z_nm, grid_xy_nm: grid spacing in z, xy
-        :param shrink_sidegrid: grids close to the side in xy are shrinked to this ratio
-        :param fitness_rthresh: distance threshold for fitness evaluation, r_outliers >= fitness_rthresh
-        :param pop_size: size of population
-        :param tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
-        :param max_iter: max number of generations
-        :param factor_eval: factor for assigning evaluation points
-        :return: zyx_sac, mpopz
+            zyx: 3d binary image
+            voxel_size_nm: voxel spacing in nm
+            grid_z_nm, grid_xy_nm: grid spacing in z, xy
+            shrink_sidegrid: grids close to the side in xy are shrinked to this ratio
+            fitness_rthresh: distance threshold for fitness evaluation, r_outliers >= fitness_rthresh
+            pop_size: size of population
+            tol: (tol_value, n_back), terminate if change ratio < tol_value within last n_back steps
+            max_iter: max number of generations
+            factor_eval: factor for assigning evaluation points
+        Returns: zyx_sac, mpopz
             zyx_sac: zyx after evomsac
             mpopz: mpop state, load by mpop=SegSteps.evomsac_mpop_load(mpopz, zyx)
         """
@@ -294,8 +298,8 @@ class SegSteps:
         # indiv = mpop.select_by_hypervolume(mpop.log_front[-1])
         indiv = mpop.log_front[-1][0]
         pts_net = mpop.mootools.get_coord_net(indiv)
-        nu_eval = np.max(utils.wireframe_lengths(pts_net, axis=0))
-        nv_eval = np.max(utils.wireframe_lengths(pts_net, axis=1))
+        nu_eval = np.max(utils.wireframe_length(pts_net, axis=0))
+        nv_eval = np.max(utils.wireframe_length(pts_net, axis=1))
         zyx_sac, _ = mpop.mootools.fit_surface_eval(
             indiv,
             u_eval=np.linspace(0, 1, factor_eval*int(nu_eval)),
@@ -309,9 +313,9 @@ class SegSteps:
     @staticmethod
     def evomsac_mpop_save(mpop, save_zyx=False):
         """ save moopop
-        :param mpop: MOOPop
-        :param save_zyx: whether to save zyx
-        :return: mpopz
+            mpop: MOOPop
+            save_zyx: whether to save zyx
+        Returns: mpopz
             mpopz: state of mpop
         """
         mpopz = mpop.dump_state()
@@ -322,9 +326,9 @@ class SegSteps:
     @staticmethod
     def evomsac_mpop_load(mpopz, zyx=None):
         """ load moopop
-        :param mpopz: MOOPop state
-        :param zyx: coordinates
-        :return: mpop
+            mpopz: MOOPop state
+            zyx: coordinates
+        Returns: mpop
         """
         if zyx is not None:
             mpopz["mootools_config"]["zyx"] = zyx
@@ -337,12 +341,12 @@ class SegSteps:
             sigma_tv, sigma_hessian, sigma_extend, mask_bound=None
         ):
         """ match for one divided part
-        :param B, O: 3d binary image and orientation from detected
-        :param Bsac: 3d binary image from evomsac
-        :param sigma_tv: sigma for tv enhancement of B, so that lines gets more connected; if 0 then skip tv
-        :param sigma_<hessian,extend>: sigmas for hessian and tv extension of evomsac'ed image
-        :param mask_bound: 3d binary mask for bounding polygon
-        :return: Bmatch, zyx_sorted
+            B, O: 3d binary image and orientation from detected
+            Bsac: 3d binary image from evomsac
+            sigma_tv: sigma for tv enhancement of B, so that lines gets more connected; if 0 then skip tv
+            sigma_<hessian,extend>: sigmas for hessian and tv extension of evomsac'ed image
+            mask_bound: 3d binary mask for bounding polygon
+        Returns: Bmatch, zyx_sorted
             Bmatch: resulting binary image from matching
             zyx_sorted: coordinates sorted by tracing
         """
@@ -351,7 +355,7 @@ class SegSteps:
             Stv, Otv = dtvoting.stick3d(B, O, sigma=sigma_tv)
             mask_tv = Stv > np.exp(-1/2)
             Btv = nonmaxsup.nms3d(Stv*mask_tv, Otv)
-            Btv = next(iter(utils.extract_connected(Btv)))[1]
+            Btv = next(iter(imgutils.connected_components(Btv)))[1]
         else:
             Btv = B
             Otv = O
@@ -368,7 +372,7 @@ class SegSteps:
             Bmatch = Bmatch * mask_bound
 
         # ordering
-        zyx_sorted = tracing.Trace(Bmatch, O*Bmatch).sort_points()
+        zyx_sorted = tracing.Tracing(Bmatch, O*Bmatch).sort_points()
         
         return Bmatch, zyx_sorted
 
@@ -378,13 +382,13 @@ class SegSteps:
             sigma_normal, sigma_mesh, sigma_hull, mask_bound
         ):
         """ calculate surface normal for one divided part
-        :param zyx: coordinates
-        :param zyx_ref: reference zyx for insideness
-        :param sigma_normal: length scale for normal estimation
-        :param sigma_mesh: spatial resolution for poisson reconstruction
-        :param sigma_hull: length to expand in the normal direction when computing hull
-        :param mask_bound: a mask for boundary
-        :return: zyx, nxyz
+            zyx: coordinates
+            zyx_ref: reference zyx for insideness
+            sigma_normal: length scale for normal estimation
+            sigma_mesh: spatial resolution for poisson reconstruction
+            sigma_hull: length to expand in the normal direction when computing hull
+            mask_bound: a mask for boundary
+        Returns: zyx, nxyz
             zyx: sorted zyx coordinates
             nxyz: normals in xyz order
         """
@@ -402,9 +406,9 @@ class SegSteps:
             shape = mask_bound.shape
         else:
             shape = np.ceil(np.max(zyx, axis=0)).astype(np.int_) + 1
-        Bsort = utils.points_to_voxels(zyx_refine, shape)
-        _, Osort = hessian.features3d(Bsort, 1)
-        zyx_sort = tracing.Trace(Bsort, Osort*Bsort).sort_points()
+        Bsort = utils.points2pixels(zyx_refine, shape)
+        _, Osort = features.features3d(Bsort, 1)
+        zyx_sort = tracing.Tracing(Bsort, Osort*Bsort).sort_points()
 
         # calculate normal
         nxyz = meshrefine.normals_points(
