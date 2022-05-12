@@ -1,7 +1,7 @@
 import numpy as np
 import scipy as sp
 from sklearn import manifold
-from etsynseg import utils
+from etsynseg import pcdutils
 
 __all__ = [
     "interpolate_dist", "interpolate_avg",
@@ -187,7 +187,7 @@ class Project:
         Returns:
             p1, p2 (np.ndarray): Projected coordinates on e1,e2.
         """
-        xyz = utils.reverse_coord(zyx) - self.xyz_center
+        xyz = pcdutils.reverse_coord(zyx) - self.xyz_center
         p1 = np.dot(xyz, self.e1)
         p2 = np.dot(xyz, self.e2)
         return p1, p2

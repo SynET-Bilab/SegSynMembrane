@@ -4,9 +4,10 @@
 import time
 import numpy as np
 import mrcfile
-from etsynseg import io, utils, plot
+from etsynseg import io, plot
 from submodules import dividing
 from etsynseg.workflows import SegBase, SegSteps
+from utilities import utils
 
 
 class SegPrePost(SegBase):

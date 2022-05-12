@@ -17,6 +17,7 @@ __version__ = "0.2"
 from .utilities import imgutils, pcdutils
 from .utilities import io, plot
 from .utilities import bspline
+from .utilities import modutils
 
 from .submodules import features, nonmaxsup, dtvoting
 from .submodules import tracing, dividing

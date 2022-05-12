@@ -2,6 +2,7 @@
 """ B-Spline tools.
 
 References:
+    curve interpolation: https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/INT-APP/CURVE-INT-global.html
     centripetal parameters: https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/INT-APP/PARA-centripetal.html
     centripetal knots: https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/INT-APP/PARA-knot-generation.html
 """
@@ -72,24 +73,29 @@ class Centripetal:
         ], axis=0)
         return ts_u, ts_v
 
-    def generate_knots(self, ts):
+    def generate_knots(self, ts, degree=None):
         """ Generate knots given parameters.
 
         Args:
             ts (np.ndarray): Parameters, with shape=(npts,).
+            degree (int): Degree of spline basis. If None then use self.degree.
         
         Returns:
             knots (np.ndarray): Knots, with shape=(npts+degree+1).
         """
+        # setup degree
+        if degree is None:
+            degree = self.degree
+
         # knot generation
         npts = len(ts)
         # starting part: degree+1 knots
-        knots = np.zeros(npts+self.degree+1)
+        knots = np.zeros(npts+degree+1)
         # middle part: npts-degree-1 knots
         t_rollsum = np.convolve(
-            ts[1:], np.ones(self.degree), mode='valid'
-        )[:npts-self.degree-1]
-        knots[self.degree+1:npts] = t_rollsum/self.degree
+            ts[1:], np.ones(degree), mode='valid'
+        )[:npts-degree-1]
+        knots[degree+1:npts] = t_rollsum/degree
         # ending part: degree+1 knots
         knots[npts:] = 1
         return knots
@@ -128,10 +134,18 @@ class Curve:
         Returns:
             fit (splipy.curve.Curve): Interpolated curve.
         """
+        if len(pts) <= 1:
+            raise ValueError("Number of points <=1.")
+        
+        # setup degree
+        degree = min(self.degree, len(pts)-1)
+
+        # generate parameters
         ts = self.param.parametrize1d(pts)
-        knots = self.param.generate_knots(ts)
-        basis = splipy.BSplineBasis(order=self.degree+1, knots=knots)
-    
+        knots = self.param.generate_knots(ts, degree=degree)
+        basis = splipy.BSplineBasis(order=degree+1, knots=knots)
+
+        # interpolate
         fit = curve_factory.interpolate(
             pts, basis=basis, t=ts
         )
@@ -170,12 +184,21 @@ class Surface:
         Returns:
             fit (splipy.surface.Surface): Interpolated surface.
         """
-        ts_u, ts_v = self.param.parametrize2d(pts_net)
-        knots_u = self.param.generate_knots(ts_u)
-        knots_v = self.param.generate_knots(ts_v)
-        basis_u = splipy.BSplineBasis(order=self.degree+1, knots=knots_u)
-        basis_v = splipy.BSplineBasis(order=self.degree+1, knots=knots_v)
+        if (pts_net.shape[0] <= 1) or (pts_net.shape[1] <= 1):
+            raise ValueError("Number of points along either axis <=1.")
 
+        # setup degree
+        degree_u = min(self.degree, pts_net.shape[0]-1)
+        degree_v = min(self.degree, pts_net.shape[1]-1)
+
+        # generate parameters
+        ts_u, ts_v = self.param.parametrize2d(pts_net)
+        knots_u = self.param.generate_knots(ts_u, degree=degree_u)
+        knots_v = self.param.generate_knots(ts_v, degree=degree_v)
+        basis_u = splipy.BSplineBasis(order=degree_u+1, knots=knots_u)
+        basis_v = splipy.BSplineBasis(order=degree_v+1, knots=knots_v)
+
+        # interpolate
         fit = surface_factory.interpolate(
             pts_net,
             bases=(basis_u, basis_v),

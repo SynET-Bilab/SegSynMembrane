@@ -5,8 +5,9 @@ import numpy as np
 import multiprocessing.dummy
 
 from etsynseg import matching, meshrefine, nonmaxsup, tracing
+from utilities import utils
 from . import features
-from etsynseg import io, utils, imgutils
+from etsynseg import io, imgutils
 from etsynseg import dtvoting
 from etsynseg import evomsac
 

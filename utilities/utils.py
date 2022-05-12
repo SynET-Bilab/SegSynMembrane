@@ -2,9 +2,7 @@
 """
 import numpy as np
 import pandas as pd
-import scipy as sp
 import skimage
-import open3d as o3d
 
 __all__ = [
 

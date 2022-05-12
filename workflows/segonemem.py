@@ -4,8 +4,9 @@
 import time
 import numpy as np
 import mrcfile
-from etsynseg import io, utils, imgutils, plot
+from etsynseg import io, imgutils, plot
 from etsynseg.workflows import SegBase, SegSteps
+from utilities import utils
 
 
 class SegOneMem(SegBase):

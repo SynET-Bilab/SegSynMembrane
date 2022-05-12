@@ -2,20 +2,85 @@
 """
 import numpy as np
 import scipy as sp
+from sklearn import decomposition
 import open3d as o3d
 
 __all__ = [
+    # misc
+    "points_range", "points_deduplicate", "wireframe_length",
     # conversion
     "pixels2points", "points2pixels", "reverse_coord", "points2pointcloud",
     # normals
-    "normals_pointcloud", "normals_points",
+    "normals_gen_ref", "normals_pointcloud", "normals_points",
     # convex hull
     "convex_hull", "points_in_hull",
     # mesh
     "reconstruct_mesh", "subdivide_mesh", "meshpoints_surround",
-    # grids
-    "wireframe_length"
 ]
+
+
+#=========================
+# misc
+#=========================
+
+def points_range(pts, margin=0):
+    """ Calculate the range of points.
+
+    Args:
+        pts (np.ndarray): Array of points with shape=(npts,dim).
+        margin (float or tuple): Margin in each direction to be added to the range.
+
+    Returns:
+        low (np.ndarray): Point at the lowest end, with shape=(dim,).
+        high (np.ndarray): Point at the highest end, with shape=(dim,).
+        shape (tuple): Shape of image that can contain the points, high-low+1.
+    """
+    margin = np.ceil(np.asarray(margin)).astype(int)
+    low = np.floor(np.min(pts, axis=0)).astype(int) - margin
+    high = np.ceil(np.max(pts, axis=0)).astype(int) + margin
+    shape = tuple(high - low + 1)
+    return low, high, shape
+
+
+def points_deduplicate(pts, round2int=True):
+    """ Deduplicate points while retaining the order.
+
+    Remove points that duplicate previous ones. Optionally round the points to integers first.
+
+    Args:
+        pts (np.ndarray): Array of points with shape=(npts,dim).
+        round2int (bool): If round to integer first.
+
+    Returns:
+        pts_dedup (np.ndarray): Deduplicated array of points, with shape=(npts_dedup,dim).
+    """
+    if round2int:
+        pts = np.round(pts).astype(int)
+    diff = np.abs(np.diff(pts, axis=0)).max(axis=1)
+    pts_dedup = np.concatenate([pts[:1], pts[1:][diff > 0]])
+    return pts_dedup
+
+def wireframe_length(pts_net, axis=0):
+    """ Calculate total lengths of wireframe along one axis.
+
+    Input can be either net-shaped points or flattened points.
+
+    Args:
+        pts_net (np.ndarray): Net-shaped nu*nv points arranged in net-shape, with shape=(nu,nv,dim). Or flattened points with shape=(nu,dim).
+        axis (int): 0 for u-direction, 1 for v-direction.
+
+    Returns:
+        wires (np.ndarray): [len0,len1,...]. nv elements if axis=u, nu elements if axis=v.
+    """
+    # A, B - axes
+    # [dz,dy,dx] along A for each B
+    diff_zyx = np.diff(pts_net, axis=axis)
+    # len of wire segments along A for each B
+    segments = np.linalg.norm(diff_zyx, axis=-1)
+    # len of wire along A for each B
+    wires = np.sum(segments, axis=axis)
+    return wires
+
 
 #=========================
 # conversion
@@ -33,18 +98,22 @@ def pixels2points(I):
     pts = np.argwhere(I)
     return pts
 
-def points2pixels(pts, shape):
+def points2pixels(pts, shape=None):
     """ Convert points to an image with 1's on point locations (rounded) and 0's otherwise.
 
     Args:
         pts (np.ndarray): Array of points with shape=(npts,I.ndim). Format of each point is [y,x] for 2d or [z,y,x] for 3d.
-        shape (tuple or list): Shape of the target image, (ny,nx) for 2d or (nz,ny,nx) for 3d.
+        shape (tuple): Shape of the target image, (ny,nx) for 2d or (nz,ny,nx) for 3d.
     
     Returns:
         I (np.ndarray): Image with shape = (ny,nx) for 2d or (nz,ny,nx) for 3d.
     """
     # round to int
     pts = np.round(np.asarray(pts)).astype(int)
+
+    # setup shape
+    if shape is None:
+        shape = np.max(pts, axis=0) + 1
 
     # remove out-of-bound points
     dim = pts.shape[1]
@@ -94,6 +163,39 @@ def points2pointcloud(pts, normals=None):
 # normals
 #=========================
 
+def normals_gen_ref(zyx, dist=None):
+    """ Generate default reference point for the directions of normals.
+
+    First calculate the PC1 of all points.
+    Cross multiply PC1 with z+ to get a direction.
+    The reference point is shifted from the center along the direction by some distance.
+    The default distance is the norm of the span of points in all directions.
+
+    Args:
+        zyx (np.ndarray): 3d points, with shape=(npts,3).
+        dist (float or None): Distance from the center.
+
+    Returns:
+        zyx_ref (np.ndarray): Reference point, [z_ref,y_ref,x_ref].
+    """
+    # setup dist
+    if dist is None:
+        dist = np.linalg.norm(np.ptp(zyx, axis=0))
+
+    # get pc1 vector
+    pca = decomposition.PCA().fit(zyx)
+    e1 = pca.components_[0]
+    e1 = e1 / np.linalg.norm(e1)
+
+    # direction: cross product of pc1 and z+
+    e2 = np.array([1, 0, 0])
+    direction = np.cross(e1, e2)
+
+    # reference point
+    center = np.mean(zyx, axis=0)
+    zyx_ref = center + dist*direction
+    return zyx_ref
+
 def normals_pointcloud(pcd, sigma, pt_ref=None):
     """ Estimate normals for point cloud.
 
@@ -102,7 +204,7 @@ def normals_pointcloud(pcd, sigma, pt_ref=None):
     Args:
         pcd (open3d.geometry.PointCloud): open3d pointcloud
         sigma (float): Neighborhood radius for normal estimation.
-        pt_ref (np.ndarray, optional): Reference point 'inside'. Formated to be comparable with pcd.points[0].
+        pt_ref (np.ndarray, optional): Reference point 'inside'. Formatted to be comparable with pcd.points[0].
     Returns:
         pcd (open3d.geometry.PointCloud): Point cloud with normals.
     """
@@ -279,47 +381,3 @@ def meshpoints_surround(mesh, idx_center):
         [idx_center, tri[itri_bound].ravel()]
     ))
     return idx_surround
-
-
-#=========================
-# grid tools
-#=========================
-
-def wireframe_length(pts_net, axis=0):
-    """ Calculate total lengths of wireframe along one axis.
-
-    Input can be either net-shaped points or flattened points.
-
-    Args:
-        pts_net (np.ndarray): Net-shaped nu*nv points arranged in net-shape, with shape=(nu,nv,dim). Or flattened points with shape=(nu,dim).
-        axis (int): 0 for u-direction, 1 for v-direction.
-
-    Returns:
-        wires (np.ndarray): [len0,len1,...]. nv elements if axis=u, nu elements if axis=v.
-    """
-    # A, B - axes
-    # [dz,dy,dx] along A for each B
-    diff_zyx = np.diff(pts_net, axis=axis)
-    # len of wire segments along A for each B
-    segments = np.linalg.norm(diff_zyx, axis=-1)
-    # len of wire along A for each B
-    wires = np.sum(segments, axis=axis)
-    return wires
-
-def points_deduplicate(pts, round2int=True):
-    """ Deduplicate points.
-
-    Remove points that duplicate previous ones. Optionally round the points to integers first.
-
-    Args:
-        pts (np.ndarray): Array of points with shape=(npts,dim).
-        round2int (bool): If round to integer first.
-
-    Returns:
-        pts_dedup (np.ndarray): Deduplicated array of points, with shape=(npts_dedup,dim).
-    """
-    if round2int:
-        pts = np.round(pts).astype(int)
-    diff = np.abs(np.diff(pts, axis=0)).max(axis=1)
-    pts_dedup = np.concatenate([pts[:1], pts[1:][diff > 0]])
-    return pts_dedup
