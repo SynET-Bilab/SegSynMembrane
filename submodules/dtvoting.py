@@ -20,15 +20,12 @@ References:
 import numpy as np
 from numpy import fft
 import multiprocessing.dummy
-from etsynseg import imgutils
 
 __all__ = [
     # stick tv
     "prep_wmfft_stick", "stick2d_wmfft", "stick2d", "stick3d",
     # ball tv
-    "prep_wmfft_ball", "ball2d_wmfft", "ball2d", "ball3d",
-    # suppression
-    "suppress_by_orient"
+    "prep_wmfft_ball", "ball2d_wmfft", "ball2d", "ball3d"
 ]
 
 
@@ -286,27 +283,3 @@ def ball3d(S, O, sigma):
     pool.map(calc_one, range(nz))
     pool.close()
     return Stv
-
-
-#=========================
-# suppress by orientation
-#=========================
-
-def suppress_by_orient(B, O, sigma, dO_thresh=np.pi/4):
-    """ Apply a strong TV field, then suppress pixels where change in O is large.
-
-    Args:
-        B, O (np.ndarray): Input binary image and orientation, with shape=(nz,ny,nx).
-        dO_thresh (float, in rad): Suppress pixels whose change in O after TV is >= this value.
-
-    Returns:
-        Bsupp (np.ndarray): Binary mask of image with 1's at non-suppressed pixels and 0's otherwise, with shape=(nz,ny,nx).
-        Stv (np.ndarray): Saliency after TV, with shape=(nz,ny,nx).
-    """
-    # apply strong tv field
-    Stv, Otv = stick3d(B, O, sigma)
-    # calculate change in O
-    dO = imgutils.orients_absdiff(Otv, O)
-    # mask of pixels with small dO
-    Bsupp = B*(dO<dO_thresh)
-    return Bsupp, Stv

@@ -21,7 +21,7 @@ from .utilities import modutils
 
 from .submodules import features, nonmaxsup, dtvoting
 from .submodules import tracing, dividing
-from .submodules import evomsac, matching, meshrefine
+from .submodules import detecting, evomsac, matching, meshrefine
 
 # workflows
 # from etsynseg import workflows
