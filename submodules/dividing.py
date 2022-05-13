@@ -1,144 +1,63 @@
 
 import numpy as np
-import scipy as sp
-import igraph
-import leidenalg
 import sklearn.cluster
 import pandas as pd
 from etsynseg import imgutils, pcdutils
 
 __all__ = [
-    "weighted_graph_orient", "weight_matrix_agg",
     "divide_spectral", "divide_two_auto"
 ]
 
-
-def weighted_graph_orient(zyx, O, r_thresh, sigma_dO=np.pi/6):
-    """ Generated graph whose vertices are points and edges are weighted by orientational differences.
-
-    Weight=np.exp(-0.5*(dO/sigma_dO)**2) for all pairs with distance<r_thresh 
-
-    Args:
-        zyx (np.ndarray): Points with shape=(npts, ndim) and in format [[zi,yi,xi],...].
-        O (np.ndarray): Orientation, with shape=(nz,ny,nx).
-        r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
-        sigma_dO (float): Sigma of orientational difference for edge weighting.
-    
-    Returns:
-        g (igraph.Graph): Graph with weighted edges (g.es["weight]).
-    """
-    zyx = np.asarray(zyx, dtype=int)
-
-    # get pairs within r_thresh
-    kdtree = sp.spatial.KDTree(zyx)
-    pairs = kdtree.query_pairs(r=r_thresh)
-    pairs = tuple(pairs)
-
-    # calc orientational difference between pairs
-    Oflat = O[tuple(zyx.T)]  # flatten O
-    idx1, idx2 = np.transpose(pairs)
-    dO = imgutils.absdiff_orient(Oflat[idx1], Oflat[idx2])
-
-    # make graph
-    g = igraph.Graph()
-    g.add_vertices(len(zyx))
-    g.add_edges(pairs)
-    g.es["weight"] = np.exp(-0.5*(dO/sigma_dO)**2)
-    return g
-
-def weight_matrix_agg(g_agg):
-    """ Generate edge weight matrix for aggregated graph.
-
-    The aggregated graph is produced by leidenalg partition.aggregate_partition().graph.
-    This graph contains self-edges and repeated edges.
-    In the weight matrix, self-edges are excluded, repeated edges are weight-summed.
-
-    Args:
-        g_agg (igraph.Graph): The aggregated graph.
-    
-    Returns:
-        weight_mat (sp.sparse.csr_matrix): Weight matrix.
-    """
-    # get edges
-    e_dict = {}
-    ew_arr = []
-    e1_arr = []
-    e2_arr = []
-    for e in g_agg.es:
-        e1, e2 = e.tuple
-        # exclude self-edges
-        if e1 == e2:
-            continue
-        # add new edges
-        if e.tuple not in e_dict:
-            ew_arr.append(e["weight"])
-            e1_arr.append(e1)
-            e2_arr.append(e2)
-            e_dict[e.tuple] = len(ew_arr) - 1
-        # add weight to existed edges
-        else:
-            eid = e_dict[e.tuple]
-            ew_arr[eid] += e["weight"]
-
-    # generate weight matrix
-    # symmetrize
-    value = ew_arr+ew_arr
-    row = e1_arr+e2_arr
-    col = e2_arr+e1_arr
-    # construct sparse matrix
-    nv = g_agg.vcount()
-    weight_mat = sp.sparse.csr_matrix(
-        (value, (row, col)),
-        shape=(nv, nv)
-    )
-    return weight_mat
-
-def divide_spectral(zyx, O, r_thresh, sigma_dO, max_group_size=0, n_clust=2):
+def divide_spectral(zyx, orients, r_thresh, sigma_dO, n_clusts=2):
     """ Divide connected pixels into clusters using Leiden and spectral methods.
     
     The constructed graph is weighted by orientational differences.
     Leiden clustering is applied to aggregate the graph of points and reduce the number of nodes.
-    Spectral clustering is applied to cut the aggregated graph into n_clust parts.
+    Spectral clustering is applied to cut the aggregated graph into n_clusts parts.
 
     Args:
         zyx (np.ndarray): Points with shape=(npts, ndim) and in format [[zi,yi,xi],...].
-        O (np.ndarray): Orientation, with shape=(nz,ny,nx).
+        orients (np.ndarray): Orientation at each point, ranged in [0,pi/2], shape=(npts,).
         r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
         sigma_dO (float): Sigma of orientational difference for edge weighting.
-        max_group_size (int): Max size of Leiden clusters. 0 for no-limit.
-        n_clust (int): The number of output clusters.
+        n_clusts (int): The number of output clusters.
 
     Returns:
         zyx_clusts (list of np.ndarray): Points for each cluster, sorted from the largest in size.
             [zyx1,zyx2,...], where zyxi are points with shape=(npts,3) for cluster i.
     """
     # build graph for points
-    g_pts = weighted_graph_orient(zyx, O, r_thresh=r_thresh, sigma_dO=sigma_dO)
+    g_pts = pcdutils.neighbors_graph(
+        zyx, orients=orients, r_thresh=r_thresh
+    )
+    dorients = np.asarray(g_pts.es["dorients"])
+    g_pts.es["weights"] = np.exp(-0.5*(dorients/sigma_dO)**2)
 
     # partition points using leiden
-    part_pts = leidenalg.find_partition(
-        g_pts,
-        leidenalg.ModularityVertexPartition,
-        weights=g_pts.es["weight"],
-        max_comm_size=max_group_size
+    community = g_pts.community_leiden(
+        objective_function="modularity",
+        weights=g_pts.es["weights"]
     )
 
     # aggregate points to get graph for groups
-    part_grps = part_pts.aggregate_partition()
-    mat_grps = weight_matrix_agg(part_grps.graph)
+    g_grps = community.cluster_graph(
+        combine_edges={"weights": "sum"}
+    )
+    mat_grps = g_grps.get_adjacency_sparse(attribute="weights")
 
     # spectral clustering on groups
     clust_grps = sklearn.cluster.SpectralClustering(
-        n_clust=n_clust,
+        n_clusters=n_clusts,
         affinity="precomputed",
         assign_labels="discretize"
     )
     clust_grps.fit(mat_grps)
     
     # assign cluster label to each point
-    # clust_grps.labels_[i_grp] gives cluster index for group with index i_grp
-    # use part_pts.membership to relate i_grp to points positions
-    label_pts = clust_grps.labels_[part_pts.membership]
+    # membership[i] gives group index (i_grp) of point i
+    # clust_grps.labels_[i_grp] gives cluster index of group i_grp
+    # then label_pts[i] is the cluster index of points i
+    label_pts = clust_grps.labels_[community.membership]
 
     # sort cluster labels by size
     label_clusts = list(

@@ -5,12 +5,12 @@ __version__ = "0.2"
 ## conda-forge
 # "numpy", "scipy", "pandas",
 # "scikit-learn", "scikit-image", "tslearn",
-# "deap", "igraph", "leidenalg",
+# "deap", "igraph",
 # "matplotlib", "napari",
 # "mrcfile", "starfile", "h5py"
 ## pypi
 # splipy
-# open3d
+# open3d > 0.15
 # ]
 
 # auxiliary functions
