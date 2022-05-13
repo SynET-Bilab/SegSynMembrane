@@ -362,8 +362,8 @@ def region_surround_contour(zyx, nzyx, width, cut_end=True):
         zyx_plus.append(zyx_plus_z)
         zyx_minus.append(zyx_minus_z)
 
-    zyx_plus = np.concatenate(zyx_plus, axis=0)
-    zyx_minus = np.concatenate(zyx_minus, axis=0)
+    zyx_plus = np.concatenate(zyx_plus, axis=0).astype(int)
+    zyx_minus = np.concatenate(zyx_minus, axis=0).astype(int)
 
     return zyx_plus, zyx_minus
 
@@ -397,6 +397,7 @@ def mask_from_model(zyx_mod, width, normal_ref=None, interp_degree=2, cut_end=Tr
     # interpolate along z and xy
     zyx = interpolate_contours_alongz(zyx, closed=False)
     zyx = interpolate_contours_alongxy(zyx, degree=interp_degree)
+    zyx = pcdutils.points_deduplicate(zyx)
 
     # estimate normals
     if normal_ref is None:

@@ -120,7 +120,7 @@ def run_seg(args):
         seg.load_steps(step_file)
 
         log_params = {
-            "tomo": ["voxel_size_nm"],
+            "tomo": ["pixel_nm"],
             "detect": ["factor_tv", "xyfilter"],
             "evomsac": ["grid_xy_nm", "grid_z_nm", "shrink_sidegrid", "fitness_fthresh"],
             "meshrefine": ["factor_normal", "factor_mesh"]
@@ -174,7 +174,7 @@ def run_seg(args):
             obj_bound=args.model_objs[0],
             obj_ref=args.model_objs[1],
             obj_divide=args.model_objs[2],
-            voxel_size_nm=args.voxel_size,
+            pixel_nm=args.voxel_size,
             d_mem_nm=args.lengths[0],
             d_cleft_nm=args.lengths[1]
         )

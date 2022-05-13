@@ -109,7 +109,7 @@ def star_samples(seg_files, key_xyz, key_normal, key_dist=None, step_xy=1, step_
         seg = np.load(seg_file, allow_pickle=True)
         tomo_file = get_tomo_path(seg_file, seg["tomo_file"].item())
         data_micrographs.append([tomo_file, 1])
-        voxel_sizes_nm.append(seg["voxel_size_nm"].item())
+        voxel_sizes_nm.append(seg["pixel_nm"].item())
 
         # get particles
         # set dist thresh mask

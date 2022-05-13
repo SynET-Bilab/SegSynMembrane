@@ -5,10 +5,8 @@ import numpy as np
 import multiprocessing.dummy
 
 from etsynseg import matching, meshrefine, nonmaxsup, tracing
-from utilities import utils
-from . import features
-from etsynseg import io, imgutils
-from etsynseg import dtvoting
+from etsynseg import imgutils, pcdutils, modutils, io
+from etsynseg import features, dtvoting
 from etsynseg import evomsac
 
 __all__ = [
@@ -90,83 +88,97 @@ class SegSteps:
     #     return zyx_sorted
 
     @staticmethod
-    def read_tomo(
-            tomo_file, model_file,
-            voxel_size_nm=None, d_mem_nm=5, obj_bound=1
-        ):
-        """ load and clip tomo and model
-            tomo_file, model_file: filename of tomo, model
-            voxel_size_nm: if None then read from tomo_file
-            d_mem_nm: lengthscale of membrane thickness
-            obj_bound: obj label for boundary
-        Returns: results
-            results: {tomo_file,model_file,obj_bound,d_mem_nm,
-                I,shape,voxel_size_nm,model,clip_range,zyx_shift,zyx_bound,contour_bound,contour_len_bound,d_mem}
+    def read_tomo_model(tomo_file, model_file, width_nm, pixel_nm=None, interp_degree=2):
+        """ Read tomo and model.
+
+        Read model: object 1 for guide lines, object 2 for reference point.
+        Generate region mask surrounding the guide lines.
+        Decide clip range from the region mask.
+        Read tomo, clip.
+
+        Args:
+            tomo_file (str): Filename of tomo mrc.
+            model_file (str): Filename of imod model.
+            width_nm (float): Extend from guide lines by this width (in nm) to get the bound.
+            pixel_nm (float): Pixel size in nm. If None then read from tomo.
+            interp_degree (int): Degree of bspline interpolation of the model.
+                2 for most cases.
+                1 for finely-drawn model to preserve the original contours.
+    
+        Returns:
+            results (dict): Tomo, model, and relevant info. See below for fields in the dict.
+                tomo_file, model_file: filenames
+                I: clipped tomo
+                shape: I.shape
+                pixel_nm: pixel size in nm
+                model: model DataFrame, in the original coordinates
+                clip_low: [z,y,x] at the lower corner for clipping
+                mask_bound, mask_guide, mask_plus, mask_minus: zyx-points in the masks generated from the guide lines
+                normal_ref: reference point inside for normal orientation
+                }
         """
+        # read tomo
+        I, pixel_A = io.read_tomo(tomo_file, mode="mmap")
+        # get pixel size in nm
+        if pixel_nm is None:
+            pixel_nm = pixel_A / 10
+
         # read model
         model = io.read_model(model_file)
+        # object: guide lines
+        if 1 in model["object"].values:
+            model_guide = model[model["object"]==1][['z','y','x']].values
+        else:
+            raise ValueError(f"The object for guide lines is not found in the model file.")
+        # object: normal ref point
+        if 2 in model["object"].values:
+            normal_ref = model[model["object"]==2][['z','y','x']].values[0]
+        else:
+            normal_ref = None
+
+        # generate mask from guide line
+        mask_guide, mask_plus, mask_minus, normal_ref = modutils.mask_from_model(
+            model_guide,
+            width=width_nm/pixel_nm,
+            normal_ref=normal_ref,
+            interp_degree=interp_degree,
+            cut_end=True
+        )
+        # combine all parts of the mask
+        mask_bound = np.concatenate([mask_guide, mask_plus, mask_minus], axis=0)
+        mask_bound = np.unique(mask_bound, axis=0)
         
-        # set the range of clipping
-        # use np.floor/ceil -> int to ensure integers
-        model_bound = model[model["object"] == obj_bound]
-        clip_range = {
-            i: (int(np.floor(model_bound[i].min())),
-                int(np.ceil(model_bound[i].max())))
-            for i in ["x", "y", "z"]
-        }
-        zyx_shift = np.array([clip_range[i][0] for i in ['z', 'y', 'x']])
+        # get clip range and raw shape from the mask
+        clip_low, _, shape = pcdutils.points_range(mask_bound, margin=0)
+        
+        # clip coordinates
+        mask_guide -= clip_low
+        mask_plus -= clip_low
+        mask_minus -= clip_low
+        mask_bound -= clip_low
+        normal_ref -= clip_low
 
-        # read tomo, clip to bound
-        I, voxel_size_A = io.read_tomo_clip(
-            tomo_file, clip_range
-        )
-        I = np.asarray(I)
-
-        # voxel_size in nm
-        if voxel_size_nm is None:
-            # assumed voxel_size_A is the same for x,y,z
-            voxel_size_nm = voxel_size_A.tolist()[0] / 10
-
-        # shift model coordinates
-        for i in ["x", "y", "z"]:
-            model[i] -= clip_range[i][0]
-
-        # generate mask for bound (after clipping)
-        mask_bound = io.model_to_mask(
-            zyx_mod=model[model["object"] == obj_bound][["z","y","x"]].values,
-            shape=I.shape, closed=True, amend=True
-        )
-
-        # calculate bound contours and lengths
-        contour_bound = utils.component_contour(mask_bound)
-        contour_bound = np.round(contour_bound).astype(np.int_)
-        contour_len_bound = []
-        for iz in range(I.shape[0]):
-            yx_iz = contour_bound[contour_bound[:, 0] == iz][:, 1:]
-            # step=2 to avoid zigzags
-            contour_len_iz = np.sum(np.linalg.norm(
-                np.diff(yx_iz[::2], axis=0), axis=1))
-            contour_len_bound.append(contour_len_iz)
-        contour_len_bound = np.array(contour_len_bound)
-
+        # clip tomo
+        sub = tuple(slice(ci, ci+si) for ci, si in zip(clip_low, shape))
+        I = np.asarray(I[sub])
+        shape = I.shape
+        
         # save parameters and results
         results = dict(
             # parameters
             tomo_file=tomo_file,
             model_file=model_file,
-            obj_bound=obj_bound,
-            d_mem_nm=d_mem_nm,
             # results
             I=I,
-            shape=I.shape,
-            voxel_size_nm=voxel_size_nm,
+            shape=shape,
+            pixel_nm=pixel_nm,
             model=model,
-            clip_range=clip_range,
-            zyx_shift=zyx_shift,
-            zyx_bound=utils.pixels2points(mask_bound),
-            contour_bound=contour_bound,
-            contour_len_bound=contour_len_bound,
-            d_mem=d_mem_nm/voxel_size_nm,
+            clip_low=clip_low,
+            mask_bound=mask_bound,
+            normal_ref=normal_ref,
+            mask_guide=mask_guide,
+            mask_plus=mask_plus,
+            mask_minus=mask_minus
         )
         return results
 
@@ -252,13 +264,13 @@ class SegSteps:
 
     @staticmethod
     def evomsac(
-            zyx, voxel_size_nm, grid_z_nm, grid_xy_nm,
+            zyx, pixel_nm, grid_z_nm, grid_xy_nm,
             shrink_sidegrid, fitness_rthresh,
             pop_size, max_iter, tol, factor_eval
         ):
         """ evomsac for one divided part
             zyx: 3d binary image
-            voxel_size_nm: voxel spacing in nm
+            pixel_nm: voxel spacing in nm
             grid_z_nm, grid_xy_nm: grid spacing in z, xy
             shrink_sidegrid: grids close to the side in xy are shrinked to this ratio
             fitness_rthresh: distance threshold for fitness evaluation, r_outliers >= fitness_rthresh
@@ -274,13 +286,13 @@ class SegSteps:
         zs = np.unique(zyx[:, 0])
         yxs = {z: zyx[zyx[:, 0] == z][:, 1:] for z in zs}
         # grids in z
-        n_uz = len(zs)*voxel_size_nm/grid_z_nm
+        n_uz = len(zs)*pixel_nm/grid_z_nm
         n_uz = max(3, int(np.round(n_uz)+1))
         # grids in xy
         l_xy = np.median(
             [np.linalg.norm(np.ptp(yxs[z], axis=0)) for z in zs]
         )
-        n_vxy = l_xy*voxel_size_nm/grid_xy_nm + 2*(1-shrink_sidegrid)
+        n_vxy = l_xy*pixel_nm/grid_xy_nm + 2*(1-shrink_sidegrid)
         n_vxy = max(3, int(np.round(n_vxy)+1))
 
         # setup mootools, moopop

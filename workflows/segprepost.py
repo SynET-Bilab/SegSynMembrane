@@ -36,7 +36,7 @@ class SegPrePost(SegBase):
                 # results
                 I=None,
                 shape=None,
-                voxel_size_nm=None,
+                pixel_nm=None,
                 model=None,
                 clip_range=None,
                 zyx_shift=None,
@@ -125,7 +125,7 @@ class SegPrePost(SegBase):
         io.write_tomo(
             tomo=self.steps["tomo"]["I"],
             tomo_file=filename,
-            voxel_size=self.steps["tomo"]["voxel_size_nm"]*10
+            voxel_size=self.steps["tomo"]["pixel_nm"]*10
         )
 
     def output_model(self, step, filename, clipped=False):
@@ -164,7 +164,7 @@ class SegPrePost(SegBase):
         np.savez(
             filename,
             tomo_file=steps["tomo"]["tomo_file"],
-            voxel_size_nm=steps["tomo"]["voxel_size_nm"],
+            pixel_nm=steps["tomo"]["pixel_nm"],
             xyz1=utils.reverse_coord(steps["meshrefine"]["zyx1"]+zyx_shift),
             xyz2=utils.reverse_coord(steps["meshrefine"]["zyx2"]+zyx_shift),
             normal1=steps["meshrefine"]["nxyz1"],
@@ -319,36 +319,20 @@ class SegPrePost(SegBase):
     #=========================
     
     def read_tomo(self, tomo_file, model_file,
-            voxel_size_nm=None, d_mem_nm=5, d_cleft_nm=20,
-            obj_bound=1, obj_ref=2, obj_divide=3
+            pixel_nm=None, d_mem_nm=5, d_cleft_nm=20
         ):
         """ load and clip tomo and model
             tomo_file, model_file: filename of tomo, model
             obj_bound, obj_ref: obj label for boundary and presynapse, begins with 1
-            voxel_size_nm: manually set; if None then read from tomo_file
-        :action: assign steps["tomo"]: I, voxel_size_nm, zyx_shift, zyx_bound, contour_bound, zyx_ref, d_mem, d_cleft
+            pixel_nm: manually set; if None then read from tomo_file
+        :action: assign steps["tomo"]: I, pixel_nm, zyx_shift, zyx_bound, contour_bound, zyx_ref, d_mem, d_cleft
         """
         time_start = time.process_time()
 
-        # check model file
-        model = io.read_model(model_file)
-        if obj_bound not in model["object"].values:
-            raise ValueError(f"object bound (index={obj_bound}) not found in the model")
-        if obj_ref not in model["object"].values:
-            raise ValueError(f"object presynaptic reference (index={obj_ref}) not found in the model")
-
         # read tomo and model, clip
-        results = SegSteps.read_tomo(
+        results = SegSteps.read_tomo_model(
             tomo_file, model_file,
-            voxel_size_nm=voxel_size_nm, d_mem_nm=d_mem_nm,
-            obj_bound=obj_bound
-        )
-        
-        # get coordinates of presynaptic label
-        model = results["model"]
-        series_ref = model[model["object"] == obj_ref].iloc[0]
-        zyx_ref = np.array(
-            [series_ref[i] for i in ["z", "y", "x"]]
+            width_nm=width_nm, pixel_nm=pixel_nm, interp_degree=2
         )
 
         # save parameters and results
@@ -360,7 +344,7 @@ class SegPrePost(SegBase):
             d_cleft_nm=d_cleft_nm,
             # results
             zyx_ref=zyx_ref,
-            d_cleft=d_cleft_nm/results["voxel_size_nm"],
+            d_cleft=d_cleft_nm/results["pixel_nm"],
         ))
         self.steps["tomo"].update(results)
         self.steps["tomo"]["timing"] = time.process_time()-time_start
@@ -519,7 +503,7 @@ class SegPrePost(SegBase):
         # load from self
         self.check_steps(["tomo", "divide"], raise_error=True)
         d_mem = self.steps["tomo"]["d_mem"]
-        voxel_size_nm = self.steps["tomo"]["voxel_size_nm"]
+        pixel_nm = self.steps["tomo"]["pixel_nm"]
 
         # do for each divided part
         params = dict(
@@ -535,7 +519,7 @@ class SegPrePost(SegBase):
             **dict(
                 fitness_rthresh=fitness_fthresh*d_mem,
                 factor_eval=factor_eval,
-                voxel_size_nm=voxel_size_nm
+                pixel_nm=pixel_nm
             )
         )
         zyx1, mpopz1 = SegSteps.evomsac(self.steps["divide"]["zyx1"], **params_extend)

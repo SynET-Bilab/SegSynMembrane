@@ -33,7 +33,7 @@ class SegOneMem(SegBase):
                 # results
                 I=None,
                 shape=None,
-                voxel_size_nm=None,
+                pixel_nm=None,
                 model=None,
                 clip_range=None,
                 zyx_shift=None,
@@ -104,7 +104,7 @@ class SegOneMem(SegBase):
         io.write_tomo(
             tomo=self.steps["tomo"]["I"],
             tomo_file=filename,
-            voxel_size=self.steps["tomo"]["voxel_size_nm"]*10
+            voxel_size=self.steps["tomo"]["pixel_nm"]*10
         )
 
     def output_model(self, step, filename, clipped=False):
@@ -143,7 +143,7 @@ class SegOneMem(SegBase):
         np.savez(
             filename,
             tomo_file=steps["tomo"]["tomo_file"],
-            voxel_size_nm=steps["tomo"]["voxel_size_nm"],
+            pixel_nm=steps["tomo"]["pixel_nm"],
             xyz=utils.reverse_coord(steps["meshrefine"]["zyx"]+zyx_shift),
             normal=steps["meshrefine"]["nxyz"]
         )
@@ -285,14 +285,14 @@ class SegOneMem(SegBase):
     #=========================
     
     def read_tomo(self, tomo_file, model_file,
-            voxel_size_nm=None, d_mem_nm=5,
+            pixel_nm=None, d_mem_nm=5,
             obj_bound=1, obj_ref=2
         ):
         """ load and clip tomo and model
             tomo_file, model_file: filename of tomo, model
             obj_bound, obj_ref: obj label for boundary and presynapse, begins with 1
-            voxel_size_nm: manually set; if None then read from tomo_file
-        :action: assign steps["tomo"]: I, voxel_size_nm, zyx_shift, zyx_bound, contour_bound, zyx_ref, d_mem, d_cleft
+            pixel_nm: manually set; if None then read from tomo_file
+        :action: assign steps["tomo"]: I, pixel_nm, zyx_shift, zyx_bound, contour_bound, zyx_ref, d_mem, d_cleft
         """
         time_start = time.process_time()
 
@@ -304,7 +304,7 @@ class SegOneMem(SegBase):
         # read tomo and model, clip
         results = SegSteps.read_tomo(
             tomo_file, model_file,
-            voxel_size_nm=voxel_size_nm, d_mem_nm=d_mem_nm,
+            pixel_nm=pixel_nm, d_mem_nm=d_mem_nm,
             obj_bound=obj_bound
         )
         
@@ -424,7 +424,7 @@ class SegOneMem(SegBase):
         # load from self
         self.check_steps(["tomo"], raise_error=True)
         d_mem = self.steps["tomo"]["d_mem"]
-        voxel_size_nm = self.steps["tomo"]["voxel_size_nm"]
+        pixel_nm = self.steps["tomo"]["pixel_nm"]
 
         # evomsac
         params = dict(
@@ -440,7 +440,7 @@ class SegOneMem(SegBase):
             **dict(
                 fitness_rthresh=fitness_fthresh*d_mem,
                 factor_eval=factor_eval,
-                voxel_size_nm=voxel_size_nm
+                pixel_nm=pixel_nm
             )
         )
         zyx, mpopz = SegSteps.evomsac(self.steps["detect"]["zyx"], **params_extend)
