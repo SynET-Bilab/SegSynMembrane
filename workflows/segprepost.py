@@ -116,17 +116,6 @@ class SegPrePost(SegBase):
     #=========================
     # io
     #=========================
-    
-    def output_tomo(self, filename):
-        """ output clipped tomo
-            filename: filename(.mrc) for saving
-        """
-        self.check_steps(["tomo"], raise_error=True)
-        io.write_tomo(
-            tomo=self.steps["tomo"]["I"],
-            tomo_file=filename,
-            voxel_size=self.steps["tomo"]["pixel_nm"]*10
-        )
 
     def output_model(self, step, filename, clipped=False):
         """ output results to a model file
@@ -149,7 +138,7 @@ class SegPrePost(SegBase):
         # write model
         io.write_model(zyx_arr=zyx_arr, model_file=filename)
     
-    def output_seg(self, filename, clipped=False):
+    def output_seg(self, filename):
         """ output final seg, including points and normals
             filename: filename(.npz) for saving
             clipped: if coordinates are for the clipped data
@@ -157,10 +146,9 @@ class SegPrePost(SegBase):
         self.check_steps(["tomo", "meshrefine"], raise_error=True)
         steps = self.steps
 
-        if not clipped:
-            zyx_shift = self.steps["tomo"]["zyx_shift"]
-        else:
-            zyx_shift = np.zeros(3)
+
+        zyx_shift = self.steps["tomo"]["zyx_shift"]
+
         np.savez(
             filename,
             tomo_file=steps["tomo"]["tomo_file"],
@@ -621,10 +609,7 @@ class SegPrePost(SegBase):
         nxyz2 = -nxyz2
 
         # distance to the other membrane
-        pcdref1 = utils.points2pointcloud(zyxref1)
-        pcdref2 = utils.points2pointcloud(zyxref2)
-        dist1 = np.asarray(pcdref1.compute_point_cloud_distance(pcdref2))
-        dist2 = np.asarray(pcdref2.compute_point_cloud_distance(pcdref1))
+        dist1, dist2 = pcdutils.points_distance(zyxref1, zyxref2)
         
         # save parameters and results
         self.steps["meshrefine"].update(dict(

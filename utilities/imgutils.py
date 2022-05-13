@@ -164,6 +164,7 @@ def symmetric_image(H_elems):
 def orient_absdiff(O1, O2):
     """ Absolute differences between two orientations.
 
+    This function duplicates that in pcdutils, to remove dependencies between these two submodules.
     dO = mod(O2-O1,pi), then wrapped to [0,pi/2) by taking values>pi/2 to pi-values.
 
     Args:
