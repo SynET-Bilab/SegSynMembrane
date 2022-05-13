@@ -12,7 +12,7 @@ __all__ = [
     # hessians
     "hessian2d", "hessian3d", "symmetric_image",
     # orientations
-    "orient_absdiff",
+    "orients_absdiff",
     # morphology
     "connected_components", "component_contour",
     # sparse
@@ -161,7 +161,7 @@ def symmetric_image(H_elems):
 # orientation tools
 #=========================
 
-def orient_absdiff(O1, O2):
+def orients_absdiff(O1, O2):
     """ Absolute differences between two orientations.
 
     This function duplicates that in pcdutils, to remove dependencies between these two submodules.

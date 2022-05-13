@@ -8,10 +8,11 @@ __all__ = [
     "divide_spectral", "divide_two_auto"
 ]
 
-def divide_spectral(zyx, orients, r_thresh, sigma_dO, n_clusts=2):
+def divide_spectral(zyx, orients, r_thresh, sigma_dO=np.pi/4, n_clusts=2):
     """ Divide connected pixels into clusters using Leiden and spectral methods.
     
     The constructed graph is weighted by orientational differences.
+        weight(dO) = exp(-0.5*(dO/sigma_dO)**2)
     Leiden clustering is applied to aggregate the graph of points and reduce the number of nodes.
     Spectral clustering is applied to cut the aggregated graph into n_clusts parts.
 

@@ -2,15 +2,19 @@
 """
 
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import napari
+import open3d
 from etsynseg import pcdutils
 
 __all__ = [
     # matplotlib: 2d plot
     "imshow", "scatter", "imoverlay",
     # napari: 3d viewer
-    "imshow3d"
+    "imshow3d",
+    # open3d: visualize
+    "visualize_pcds"
 ]
 
 
@@ -371,3 +375,52 @@ def imshow3d(
         )
     return viewer
 
+
+#=========================
+# open3d
+#=========================
+
+def visualize_pcds(pts_arr, normals_arr=None, saturation="random"):
+    """ Visualize pointclouds using open3d.
+
+    Construct pointcloud from points (and optionally normals).
+    Color at equal spacings on hsv.
+    Plot using open3d.
+
+    Args:
+        pts_arr (list of np.ndarray): List of points, each with shape=(npts_i,dim).
+        normals_arr (list of np.ndarray, optional): List of normals, each with shape=(npts_i,dim).
+        saturation (str or float): method 
+    
+    Returns:
+        pcd_arr (list of open3d.geometry.PointCloud): List of pointcloud with points, colors, and optional normals.
+    """
+    # setup saturation
+    if saturation == "random":
+        func_sat = np.random.rand
+    elif isinstance(saturation, (int, float)):
+        func_sat = lambda: saturation
+    else:
+        raise ValueError()
+    
+    # setup normals
+    n_pcds = len(pts_arr)
+    if normals_arr is None:
+        normals_arr = [None]*n_pcds
+
+    # construct pcds
+    pcd_arr = []
+    for i in range(n_pcds):
+        pcd_i = pcdutils.points2pointcloud(
+            pts_arr[i], normals=normals_arr[i]
+        )
+        pcd_i.paint_uniform_color(
+            matplotlib.colors.hsv_to_rgb(
+                (i/n_pcds, func_sat(), 1)
+            )
+        )
+        pcd_arr.append(pcd_i)
+    
+    # visualize
+    open3d.visualization.draw_geometries(pcd_arr)
+    return pcd_arr

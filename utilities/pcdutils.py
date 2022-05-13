@@ -9,14 +9,16 @@ import igraph
 __all__ = [
     # conversion
     "pixels2points", "points2pixels", "reverse_coord", "points2pointcloud",
+    # misc
+    "points_range", "points_deduplicate", "points_distance", "orients_absdiff", "wireframe_length",
     # normals
     "normals_gen_ref", "normals_pointcloud", "normals_points",
     # convex hull
     "convex_hull", "points_in_hull",
     # mesh
     "reconstruct_mesh", "subdivide_mesh", "meshpoints_surround",
-    # misc
-    "points_range", "points_deduplicate", "points_distance", "wireframe_length",
+    # graph
+    "neighbors_graph",
 ]
 
 
@@ -95,6 +97,104 @@ def points2pointcloud(pts, normals=None):
     if normals is not None:
         pcd.normals = o3d.utility.Vector3dVector(normals)
     return pcd
+
+
+#=========================
+# misc
+#=========================
+
+def points_range(pts, margin=0):
+    """ Calculate the range of points.
+
+    Args:
+        pts (np.ndarray): Array of points with shape=(npts,dim).
+        margin (float or tuple): Margin in each direction to be added to the range.
+
+    Returns:
+        low (np.ndarray): Point at the lowest end, with shape=(dim,).
+        high (np.ndarray): Point at the highest end, with shape=(dim,).
+        shape (tuple): Shape of image that can contain the points, high-low+1.
+    """
+    margin = np.ceil(np.asarray(margin)).astype(int)
+    low = np.floor(np.min(pts, axis=0)).astype(int) - margin
+    high = np.ceil(np.max(pts, axis=0)).astype(int) + margin
+    shape = tuple(high - low + 1)
+    return low, high, shape
+
+
+def points_deduplicate(pts, round2int=True):
+    """ Deduplicate points while retaining the order.
+
+    Remove points that duplicate previous ones. Optionally round the points to integers first.
+
+    Args:
+        pts (np.ndarray): Array of points with shape=(npts,dim).
+        round2int (bool): If round to integer first.
+
+    Returns:
+        pts_dedup (np.ndarray): Deduplicated array of points, with shape=(npts_dedup,dim).
+    """
+    if round2int:
+        pts = np.round(pts).astype(int)
+    diff = np.abs(np.diff(pts, axis=0)).max(axis=1)
+    pts_dedup = np.concatenate([pts[:1], pts[1:][diff > 0]])
+    return pts_dedup
+
+
+def points_distance(pts1, pts2):
+    """ Calculate distances between two pointclouds.
+
+    Args:
+        pts1, pts2 (np.ndarray): Two pointclouds, each with shape=(nptsi,dim), i=1,2.
+    
+    Returns:
+        dist1 (np.ndarray): Distance of each point in pts1 to its nearest point in pts2, shape=(npts1,dim).
+        dist2 (np.ndarray): Likewise for pts2, shape=(npts2,dim).
+    """
+    pcd1 = points2pointcloud(pts1)
+    pcd2 = points2pointcloud(pts2)
+    dist1 = np.asarray(pcd1.compute_point_cloud_distance(pcd2))
+    dist2 = np.asarray(pcd2.compute_point_cloud_distance(pcd1))
+    return dist1, dist2
+
+
+def orients_absdiff(orient1, orient2):
+    """ Absolute differences between two orientation arrays.
+ 
+    This function duplicates that in imgutils, to remove dependencies between these two submodules.
+    dO = mod(orient2-orient1,pi), then wrapped to [0,pi/2) by taking values>pi/2 to pi-values.
+
+    Args:
+        orient1, orient2 (np.ndarray): Two orientations, with values in (-pi/2,pi/2)+n*pi.
+    
+    Returns:
+        dO (np.ndarray): Absolute difference, with the same shape as orient1 (or orient2).
+    """
+    dO = np.mod(orient2-orient1, np.pi)
+    dO = np.where(dO <= np.pi/2, dO, np.pi-dO)
+    return dO
+
+
+def wireframe_length(pts_net, axis=0):
+    """ Calculate total lengths of wireframe along one axis.
+
+    Input can be either net-shaped points or flattened points.
+
+    Args:
+        pts_net (np.ndarray): Net-shaped nu*nv points arranged in net-shape, with shape=(nu,nv,dim). Or flattened points with shape=(nu,dim).
+        axis (int): 0 for u-direction, 1 for v-direction.
+
+    Returns:
+        wires (np.ndarray): [len0,len1,...]. nv elements if axis=u, nu elements if axis=v.
+    """
+    # A, B - axes
+    # [dz,dy,dx] along A for each B
+    diff_zyx = np.diff(pts_net, axis=axis)
+    # len of wire segments along A for each B
+    segments = np.linalg.norm(diff_zyx, axis=-1)
+    # len of wire along A for each B
+    wires = np.sum(segments, axis=axis)
+    return wires
 
 
 #=========================
@@ -325,23 +425,6 @@ def meshpoints_surround(mesh, idx_center):
 # graph
 #=========================
 
-def orient_absdiff(orient1, orient2):
-    """ Absolute differences between two orientation arrays.
- 
-    This function duplicates that in imgutils, to remove dependencies between these two submodules.
-    dO = mod(orient2-orient1,pi), then wrapped to [0,pi/2) by taking values>pi/2 to pi-values.
-
-    Args:
-        orient1, orient2 (np.ndarray): Two orientations, with values in (-pi/2,pi/2)+n*pi.
-    
-    Returns:
-        dO (np.ndarray): Absolute difference, with the same shape as orient1 (or orient2).
-    """
-    dO = np.mod(orient2-orient1, np.pi)
-    dO = np.where(dO <= np.pi/2, dO, np.pi-dO)
-    return dO
-
-
 def neighbors_graph(pts, r_thresh=1, orients=None):
     """ Construct neighbors graph from points.
     
@@ -382,87 +465,30 @@ def neighbors_graph(pts, r_thresh=1, orients=None):
 
     # if orientations are provided, add orientational differences
     if orients is not None:
-        dO = orient_absdiff(orients[e1], orients[e2])
+        dO = orients_absdiff(orients[e1], orients[e2])
         g.vs["orients"] = orients
         g.es["dorients"] = dO
     return g
 
-#=========================
-# misc
-#=========================
-
-def points_range(pts, margin=0):
-    """ Calculate the range of points.
+def neighboring_components(pts, r_thresh=1, n_keep=None):
+    """ Extract n_keep largest connected components. An iterator.
 
     Args:
-        pts (np.ndarray): Array of points with shape=(npts,dim).
-        margin (float or tuple): Margin in each direction to be added to the range.
+        B (np.ndarray): Binary image, with shape=(ny,nx) or (nz,ny,nx).
+        n_keep (int): The number of components to keep.
+        connectivity (int): Defines neighboring. E.g. 1 for -|, 2 for -|\/. Range from 1 to B.ndim.
 
-    Returns:
-        low (np.ndarray): Point at the lowest end, with shape=(dim,).
-        high (np.ndarray): Point at the highest end, with shape=(dim,).
-        shape (tuple): Shape of image that can contain the points, high-low+1.
+    Yields:
+        (size_i, B_i): The size (size_i, int) and binary image (B_i, np.ndarray, shape=B.shape) of each component.
     """
-    margin = np.ceil(np.asarray(margin)).astype(int)
-    low = np.floor(np.min(pts, axis=0)).astype(int) - margin
-    high = np.ceil(np.max(pts, axis=0)).astype(int) + margin
-    shape = tuple(high - low + 1)
-    return low, high, shape
-
-
-def points_deduplicate(pts, round2int=True):
-    """ Deduplicate points while retaining the order.
-
-    Remove points that duplicate previous ones. Optionally round the points to integers first.
-
-    Args:
-        pts (np.ndarray): Array of points with shape=(npts,dim).
-        round2int (bool): If round to integer first.
-
-    Returns:
-        pts_dedup (np.ndarray): Deduplicated array of points, with shape=(npts_dedup,dim).
-    """
-    if round2int:
-        pts = np.round(pts).astype(int)
-    diff = np.abs(np.diff(pts, axis=0)).max(axis=1)
-    pts_dedup = np.concatenate([pts[:1], pts[1:][diff > 0]])
-    return pts_dedup
-
-
-def points_distance(pts1, pts2):
-    """ Calculate distances between two pointclouds.
-
-    Args:
-        pts1, pts2 (np.ndarray): Two pointclouds, each with shape=(nptsi,dim), i=1,2.
-    
-    Returns:
-        dist1 (np.ndarray): Distance of each point in pts1 to its nearest point in pts2, shape=(npts1,dim).
-        dist2 (np.ndarray): Likewise for pts2, shape=(npts2,dim).
-    """
-    pcd1 = points2pointcloud(pts1)
-    pcd2 = points2pointcloud(pts2)
-    dist1 = np.asarray(pcd1.compute_point_cloud_distance(pcd2))
-    dist2 = np.asarray(pcd2.compute_point_cloud_distance(pcd1))
-    return dist1, dist2
-
-
-def wireframe_length(pts_net, axis=0):
-    """ Calculate total lengths of wireframe along one axis.
-
-    Input can be either net-shaped points or flattened points.
-
-    Args:
-        pts_net (np.ndarray): Net-shaped nu*nv points arranged in net-shape, with shape=(nu,nv,dim). Or flattened points with shape=(nu,dim).
-        axis (int): 0 for u-direction, 1 for v-direction.
-
-    Returns:
-        wires (np.ndarray): [len0,len1,...]. nv elements if axis=u, nu elements if axis=v.
-    """
-    # A, B - axes
-    # [dz,dy,dx] along A for each B
-    diff_zyx = np.diff(pts_net, axis=axis)
-    # len of wire segments along A for each B
-    segments = np.linalg.norm(diff_zyx, axis=-1)
-    # len of wire along A for each B
-    wires = np.sum(segments, axis=axis)
-    return wires
+    # label
+    L = skimage.measure.label(B, connectivity=connectivity)
+    # count
+    df = (pd.Series(L[L > 0])
+          .value_counts(sort=True, ascending=False)
+          .to_frame("size").reset_index()
+          )
+    # yield
+    for item in df.iloc[:n_keep].itertuples():
+        B_i = B * (L == item.index)
+        yield (item.size, B_i)

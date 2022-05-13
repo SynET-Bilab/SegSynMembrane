@@ -306,7 +306,7 @@ def suppress_by_orient(B, O, sigma, dO_thresh=np.pi/4):
     # apply strong tv field
     Stv, Otv = stick3d(B, O, sigma)
     # calculate change in O
-    dO = imgutils.orient_absdiff(Otv, O)
+    dO = imgutils.orients_absdiff(Otv, O)
     # mask of pixels with small dO
     Bsupp = B*(dO<dO_thresh)
     return Bsupp, Stv
