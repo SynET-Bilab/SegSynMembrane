@@ -1,10 +1,11 @@
 """ Utilities for dealing with pointcloud-like data.
 """
 import numpy as np
+import pandas as pd
 from scipy import spatial
 from sklearn import decomposition
-import open3d as o3d
 import igraph
+import open3d as o3d
 
 __all__ = [
     # conversion
@@ -18,7 +19,7 @@ __all__ = [
     # mesh
     "reconstruct_mesh", "subdivide_mesh", "meshpoints_surround",
     # graph
-    "neighbors_graph",
+    "neighbors_graph", "graph_components", "neighboring_components"
 ]
 
 
@@ -141,21 +142,27 @@ def points_deduplicate(pts, round2int=True):
     return pts_dedup
 
 
-def points_distance(pts1, pts2):
-    """ Calculate distances between two pointclouds.
+def points_distance(pts1, pts2, return_2to1=False):
+    """ Calculate distances between two point arrays.
 
     Args:
         pts1, pts2 (np.ndarray): Two pointclouds, each with shape=(nptsi,dim), i=1,2.
+        return_2to1 (bool): Whether to return the distance from pts2 to pts1.
+            If True, returns dist1, dist2.
+            If False, returns dist1.
     
     Returns:
         dist1 (np.ndarray): Distance of each point in pts1 to its nearest point in pts2, shape=(npts1,dim).
-        dist2 (np.ndarray): Likewise for pts2, shape=(npts2,dim).
+        dist2 (np.ndarray, optional): Likewise for pts2, shape=(npts2,dim).
     """
     pcd1 = points2pointcloud(pts1)
     pcd2 = points2pointcloud(pts2)
     dist1 = np.asarray(pcd1.compute_point_cloud_distance(pcd2))
-    dist2 = np.asarray(pcd2.compute_point_cloud_distance(pcd1))
-    return dist1, dist2
+    if not return_2to1:
+        return dist1
+    else:
+        dist2 = np.asarray(pcd2.compute_point_cloud_distance(pcd1))
+        return dist1, dist2
 
 
 def orients_absdiff(orient1, orient2):
@@ -470,25 +477,45 @@ def neighbors_graph(pts, r_thresh=1, orients=None):
         g.es["dorients"] = dO
     return g
 
-def neighboring_components(pts, r_thresh=1, n_keep=None):
-    """ Extract n_keep largest connected components. An iterator.
+def graph_components(g, n_keep=None):
+    """ Extract n_keep largest components in the graph. An iterator.
 
     Args:
-        B (np.ndarray): Binary image, with shape=(ny,nx) or (nz,ny,nx).
+        g (igraph.Graph): The neighbor graph.
         n_keep (int): The number of components to keep.
-        connectivity (int): Defines neighboring. E.g. 1 for -|, 2 for -|\/. Range from 1 to B.ndim.
-
+        
     Yields:
-        (size_i, B_i): The size (size_i, int) and binary image (B_i, np.ndarray, shape=B.shape) of each component.
+        (size_i, gsub_i): Component i's size, subgraph.
     """
-    # label
-    L = skimage.measure.label(B, connectivity=connectivity)
+    # get components
+    comps = g.components(mode="weak")
+
     # count
-    df = (pd.Series(L[L > 0])
-          .value_counts(sort=True, ascending=False)
-          .to_frame("size").reset_index()
-          )
-    # yield
+    df = pd.Series(comps.membership).value_counts(
+        sort=True, ascending=False
+    ).to_frame("size").reset_index()
+
+    # iteration
     for item in df.iloc[:n_keep].itertuples():
-        B_i = B * (L == item.index)
-        yield (item.size, B_i)
+        size_i = item.size
+        gsub_i = comps.subgraph(item.index)
+        yield (size_i, gsub_i)
+
+def neighboring_components(pts, r_thresh=1, n_keep=None):
+    """ Extract n_keep largest components in the neighbors graph. An iterator.
+
+    Args:
+        pts (np.ndarray): Points with shape=(npts,dim).
+        r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
+        n_keep (int): The number of components to keep.
+        
+    Yields:
+        (size_i, pts_i, gsub_i): Component i's size, points, subgraph.
+    """
+    # construct graph
+    g = neighbors_graph(pts, r_thresh=r_thresh)
+
+    # iteration
+    for size_i, gsub_i in graph_components(g, n_keep):
+        pts_i = np.asarray(gsub_i.vs["coords"])
+        yield (size_i, pts_i, gsub_i)
