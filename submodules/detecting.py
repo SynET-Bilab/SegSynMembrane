@@ -98,23 +98,28 @@ def detect_memlike(I, mask_guide, mask_bound, sigma_gauss, sigma_tv, factor_filt
     B = B_bound*nonmaxsup.nms3d(S, O)
 
     # tensor voting, nms
+    # tv on B rather than S gives less scattered results
     Stv, Otv = dtvoting.stick3d(B, B*O, sigma=sigma_tv)
     Btv = B_bound*nonmaxsup.nms3d(Stv, Otv)
 
     # filter by value
+    # filter on S*Stv rather than Stv, adds info from the original image
     Btv_filt = filter_by_value(
-        Btv, Stv, B_guide, factor=factor_filt
+        Btv, S*Stv, B_guide, factor=factor_filt
     )
+
+    # recalculate orientation of the filtered pixels
+    _, Oref = features.ridgelike3d(Btv_filt, sigma=sigma_gauss)
 
     # normal suppression
     # sigma is set to 0.5 * length of the guide
     sigma_supp = 0.5*len(mask_guide)/shape[0]
     Bsupp, _ = suppress_by_orient(
-        Btv_filt, Otv*Btv_filt, sigma=sigma_supp
+        Btv_filt, Oref*Btv_filt, sigma=sigma_supp
     )
 
     # final assignment
     B_detect = Bsupp
-    O_detect = Otv * Bsupp
+    O_detect = Oref * Bsupp
 
     return B_detect, O_detect
