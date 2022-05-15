@@ -1,0 +1,208 @@
+
+import numpy as np
+import sklearn.cluster
+import pandas as pd
+from etsynseg import pcdutils, features
+
+__all__ = [
+    # division
+    "divide_spectral_graph", "divide_spectral_points",
+    # components
+    "extract_components_one", "extract_components_two"
+]
+
+
+#=========================
+# division
+#=========================
+
+def divide_spectral_graph(g, n_clusts=2):
+    """ Divide a connected graph into subgraphs using Leiden and spectral methods.
+    
+    The input graph consists of one vertex for each point. Should contain "weights" in edge attributes.
+    The edge weights are use for clustering.
+    Leiden clustering is applied to aggregate the graph of points and reduce the number of nodes.
+    Spectral clustering is applied to cut the aggregated graph into n_clusts parts.
+
+    Args:
+        g (igraph.Graph): The input graph.
+        n_clusts (int): The number of output clusters.
+
+    Returns:
+        gsub_arr (list of igraph.Graph): A list of n_clusts subgraphs, one for each cluster. Subgraphs are sorted by decreasing size (the number of vertices).
+    """
+    # partition points using leiden
+    community = g.community_leiden(
+        objective_function="modularity",
+        weights=g.es["weights"]
+    )
+
+    # aggregate points to get graph for groups
+    g_grps = community.cluster_graph(
+        combine_edges={"weights": "sum"}
+    )
+    mat_grps = g_grps.get_adjacency_sparse(attribute="weights")
+
+    # spectral clustering on groups
+    clust_grps = sklearn.cluster.SpectralClustering(
+        n_clusters=n_clusts,
+        affinity="precomputed",
+        assign_labels="discretize"
+    )
+    clust_grps.fit(mat_grps)
+
+    # assign cluster label to each point
+    # membership[i] gives group index (i_grp) of point i
+    # clust_grps.labels_[i_grp] gives cluster index of group i_grp
+    # then label_pts[i] is the cluster index of points i
+    label_pts = clust_grps.labels_[community.membership]
+
+    # sort cluster labels by size
+    label_clusts = list(
+        pd.Series(label_pts).value_counts(
+            sort=True, ascending=False
+        ).index
+    )
+
+    # output clusters in the order of decreasing size
+    gsub_arr = []
+    for i in label_clusts:
+        gsub_i = g.subgraph(np.nonzero(label_pts == i)[0])
+        gsub_arr.append(gsub_i)
+
+    return gsub_arr
+
+
+def divide_spectral_points(zyx, orients, r_thresh, sigma_dO=np.pi/4, n_clusts=2):
+    """ Divide neighboring points into clusters using Leiden and spectral methods.
+    
+    The constructed graph is weighted by orientational differences.
+        weight(dO) = exp(-0.5*(dO/sigma_dO)**2)
+    Leiden clustering is applied to aggregate the graph of points and reduce the number of nodes.
+    Spectral clustering is applied to cut the aggregated graph into n_clusts parts.
+
+    Args:
+        zyx (np.ndarray): Points with shape=(npts,dim) and in format [[zi,yi,xi],...].
+        orients (np.ndarray): Orientation at each point, ranged in [0,pi/2], shape=(npts,).
+        r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
+        sigma_dO (float): Sigma of orientational difference for edge weighting.
+        n_clusts (int): The number of output clusters.
+
+    Returns:
+        zyx_clusts (list of np.ndarray): Points for each cluster, sorted from the largest in size.
+            [zyx1,zyx2,...], where zyxi are points with shape=(npts,3) for cluster i.
+    """
+    # build graph for points
+    g_pts = pcdutils.neighbors_graph(
+        zyx, orients=orients, r_thresh=r_thresh
+    )
+    dorients = np.asarray(g_pts.es["dorients"])
+    g_pts.es["weights"] = np.exp(-0.5*(dorients/sigma_dO)**2)
+
+    # partition into subgraphs
+    gsub_arr = divide_spectral_graph(g_pts, n_clusts)
+
+    # output points
+    zyx_clusts = [
+        np.asarray(g_i.vs["coords"])
+        for g_i in gsub_arr
+    ]
+    return zyx_clusts
+
+
+#=========================
+# components
+#=========================
+
+def extract_components_one(zyx, r_thresh=1, mask=None):
+    """ Extract the largest component in the neighboring graph of the points.
+
+    Args:
+        zyx (np.ndarray): Points with shape=(npts,dim) and in format [[zi,yi,xi],...].
+        r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
+        mask (np.ndarray, optional): Mask points with shape=(npts_mask,dim).
+            zyx-points not in the mask (dist>0) are ignored.
+    
+    Returns:
+        zyx1 (np.ndarray): Points in the largest component. Shape=(npts1,dim).
+    """
+    # mask out points
+    if mask is not None:
+        dist2mask = pcdutils.points_distance(
+            zyx, mask, return_2to1=False
+        )
+        zyx = zyx[np.isclose(dist2mask, 0)]
+
+    # extract largest
+    _, zyx1, _ = next(pcdutils.neighboring_components(
+        zyx, r_thresh, n_keep=1
+    ))
+    return zyx1
+
+def extract_components_two(zyx, r_thresh=1, orients=None, sigma_dO=np.pi/4, mask=None, min_size=0):
+    """ Extract the largest two components by the neighboring graph of the points.
+
+    A min_size can be provided.
+    If the size of the largest component < min_size, raise error.
+    If the size of the 2nd largest component < min_size, then divide the largest one into two, until the criteria is met.
+
+    Args:
+        zyx (np.ndarray): Points with shape=(npts,dim) and in format [[zi,yi,xi],...].
+        r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
+        orients (np.ndarray): Orientation at each point, ranged in [0,pi/2], shape=(npts,).
+            If None, will calculate using features.
+        sigma_dO (float): Sigma of orientational difference for edge weighting.
+        mask (np.ndarray, optional): Mask points with shape=(npts_mask,dim).
+            zyx-points not in the mask (dist>0) are ignored.
+        min_size (int): The minimum size of components.
+    
+    Returns:
+        zyx1, zyx2 (np.ndarray): Points in the largest two component.  Shape=(nptsi,dim), i=1,2.
+    """
+    # mask out points
+    if mask is not None:
+        dist2mask = pcdutils.points_distance(
+            zyx, mask, return_2to1=False
+        )
+        zyx = zyx[np.isclose(dist2mask, 0)]
+
+    # calculate orientation if not provided
+    if orients is None:
+        _, _, shape = pcdutils.points_range(zyx, margin=2*r_thresh)
+        Bzyx = pcdutils.points2pixels(zyx, shape)
+        _, O = features.ridgelike3d(Bzyx, sigma=r_thresh)
+        orients = O[tuple(zyx.T)]
+
+    # construct neighbors graph
+    g = pcdutils.neighbors_graph(
+        zyx, r_thresh=r_thresh, orients=orients
+    )
+
+    # initial extraction of the larges two components
+    comps_iter = pcdutils.graph_components(g, n_keep=2)
+    size1, gsub1 = next(comps_iter)
+    size2, gsub2 = next(comps_iter)
+
+    # setup the test for termination
+    def terminate_division(size1, size2):
+        print(size1, size2)
+        if size1 < min_size:
+            raise RuntimeError(
+                f"The largest component (size={size1}) is smaller than min_size ({min_size}).")
+        elif size2 >= min_size:
+            return True
+        else:
+            return False
+
+    # iterative division until the termination criteria is met
+    while not terminate_division(size1, size2):
+        gsub_arr = divide_spectral_graph(gsub1, sigma_dO=sigma_dO, n_clusts=2)
+        gsub1, gsub2 = gsub_arr[:2]
+        size1 = gsub1.vcount()
+        size2 = gsub2.vcount()
+
+    # get points from subgraphs
+    zyx1 = np.asarray(gsub1.vs["coords"])
+    zyx2 = np.asarray(gsub2.vs["coords"])
+
+    return zyx1, zyx2

@@ -5,7 +5,7 @@ import time
 import numpy as np
 import mrcfile
 from etsynseg import io, plot
-from submodules import dividing
+from submodules import components
 from etsynseg.workflows import SegBase, SegSteps
 from utilities import utils
 
@@ -423,7 +423,7 @@ class SegPrePost(SegBase):
         obj_divide = self.steps["tomo"]["obj_divide"]
         model = self.steps["tomo"]["model"]
         if (obj_divide in model["object"].values):
-            zyx_comps = dividing.divide_two_mask(
+            zyx_comps = components.divide_two_mask(
                 zyx,
                 zyx_mod_divide=(model[model["object"]==obj_divide][["z", "y", "x"]].values),
                 zyx_bound=self.steps["tomo"]["zyx_bound"],
@@ -434,7 +434,7 @@ class SegPrePost(SegBase):
         else:
             d_mem = self.steps["tomo"]["d_mem"]
             d_cleft = self.steps["tomo"]["d_cleft"]
-            zyx_comps = dividing.divide_two_auto(
+            zyx_comps = components.divide_two_auto(
                 zyx,
                 group_rthresh=d_mem,
                 group_size=int(d_cleft),
