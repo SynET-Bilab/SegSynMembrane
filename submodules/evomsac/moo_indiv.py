@@ -279,8 +279,10 @@ class MOOTools:
         Returns:
             fitness (float): Fitness of the individual.
         """
-        # deduplicate to reduce the number of points (in v/xy-direction)
-        zyx_fit = pcdutils.points_deduplicate(zyx_fit)
+        # deduplicate to reduce the number of points
+        zyx_fit = np.round(zyx_fit).astype(int)
+        zyx_fit = np.unique(zyx_fit, axis=0)
+        # convert to pointcloud
         pcd_fit = pcdutils.points2pointcloud(zyx_fit)
         
         # coverage of zyx by fit
