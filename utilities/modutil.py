@@ -4,7 +4,6 @@
 import numpy as np
 import scipy as sp
 import pandas as pd
-# import skimage
 import tslearn.metrics
 from etsynseg import pcdutil, bspline
 
@@ -224,7 +223,7 @@ def interpolate_contours_alongxy(zyx, degree=2):
 # regions from contour
 #=========================
 
-def region_surround_contour_slice(yx, nyx, shape, probe_end=10):
+def region_surround_contour_slice(yx, nyx, shape, probe_end=5):
     """ Generate regions surrounding a 2d open contour, e.g. a line.
 
     Args:
@@ -242,7 +241,7 @@ def region_surround_contour_slice(yx, nyx, shape, probe_end=10):
     pos_yx = tuple(yx.astype(int).T)
     Y, X = np.mgrid[:shape[0], :shape[1]]
 
-    # assign values to positions
+    # assign normals to positions
     Iny = np.zeros(shape)
     Iny[pos_yx] = nyx[:, 0]
     Inx = np.zeros(shape)
@@ -279,6 +278,7 @@ def region_surround_contour_slice(yx, nyx, shape, probe_end=10):
         Returns:
             mask_in (np.ndarray): Shape=shape, True for pixels inside.
         """
+        # mask_out by shift direction
         # each pixel's shift relative to the endpoint
         dYend = Y - yx[i_end, 0]
         dXend = X - yx[i_end, 1]
@@ -286,8 +286,18 @@ def region_surround_contour_slice(yx, nyx, shape, probe_end=10):
         d_probe = yx[i_end] - yx[i_probe]
         nyx_end = nyx[i_end] / np.linalg.norm(nyx[i_end])
         d_out = d_probe - np.dot(d_probe, nyx_end)*nyx_end
-        # pixels inside determined by the dot product
-        mask_in = (dYend*d_out[0] + dXend*d_out[1]) <= 0
+        # pixels outside determined by the dot product
+        mask_dir = (dYend*d_out[0] + dXend*d_out[1]) >= 0
+
+        # mask_out by closest point
+        # only consider points whose closest point is in [i_end, i_probe)
+        mask_closest = np.zeros(shape, dtype=bool)
+        for i in range(i_end, i_probe, np.sign(i_probe-i_end)):
+            mask_closest[(idxY==yx[i, 0])&(idxX==yx[i, 1])] = True
+        
+        # combine masks, reverse to get inside
+        mask_out = mask_dir & mask_closest
+        mask_in = ~mask_out
         return mask_in
 
     # setup probe

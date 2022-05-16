@@ -61,14 +61,13 @@ def filter_by_value(B, V, B_guide, factor):
         B_filt[i] = B[i]*(V[i] >= v_thresh)
     return B_filt
 
-def detect_memlike(I, mask_guide, mask_bound, sigma_gauss, sigma_tv, factor_filt):
+def detect_memlike(I, mask_guide, mask_bound, sigma_gauss, sigma_tv, factor_filt=3, factor_supp=0.5):
     """ Detect membrane-like pixels from the image.
 
     First calculate ridge-like features using hessian.
     Then perform tensor voting (TV) for enhancement in the tangential direction.
     Filter out pixels by values after TV.
-    Normal suppression 
-
+    Normal suppression to suppress short lines nearby mem-like structures.
 
     Args:
         I (np.ndarray): Image (bright-field, membranes appear dark). Shape=(nz,ny,nx).
@@ -80,6 +79,8 @@ def detect_memlike(I, mask_guide, mask_bound, sigma_gauss, sigma_tv, factor_filt
             Can be set to be larger than the membrane thickness but smaller than the cleft width.
         factor_filt (float): Factor for filtering out pixel by values. See filter_by_value's doc.
             Can be set to 1.5 * the number of membranes
+        factor_supp (float): Factor for normal suppression.
+            The decay lengthscale of the suppression field = factor_supp * avg len of mask_guide in each slice.
 
     Returns:
         B_detect (np.ndarray): Binary image with detected pixels, shape=(nz,ny,nx).
@@ -112,8 +113,8 @@ def detect_memlike(I, mask_guide, mask_bound, sigma_gauss, sigma_tv, factor_filt
     _, Oref = features.ridgelike3d(Btv_filt, sigma=sigma_gauss)
 
     # normal suppression
-    # sigma is set to 0.5 * length of the guide
-    sigma_supp = 0.5*len(mask_guide)/shape[0]
+    # sigma is set to factor_supp*length of the guide
+    sigma_supp = factor_supp*len(mask_guide)/shape[0]
     Bsupp, _ = suppress_by_orient(
         Btv_filt, Oref*Btv_filt, sigma=sigma_supp
     )
