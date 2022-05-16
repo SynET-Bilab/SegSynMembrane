@@ -252,7 +252,7 @@ def region_surround_contour_slice(yx, nyx, shape, probe_end=5):
     Iyx = np.ones(shape)
     Iyx[pos_yx] = 0
     # dist(ny,nx): each pixel's distance to bg
-    # idx(2,ny,nx): index of closest bg point, which is also the coordinate
+    # idxY, idxX (ny,nx): index of closest bg point, which is also the coordinate
     dist, (idxY, idxX) = sp.ndimage.distance_transform_edt(
         Iyx, return_indices=True
     )

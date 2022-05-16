@@ -2,7 +2,7 @@
 """
 import numpy as np
 import pandas as pd
-from scipy import spatial
+import scipy as sp
 from sklearn import decomposition
 import igraph
 import open3d as o3d
@@ -11,7 +11,7 @@ __all__ = [
     # conversion
     "pixels2points", "points2pixels", "reverse_coord", "points2pointcloud",
     # misc
-    "points_range", "points_deduplicate", "points_distance", "sort_distance_ref",
+    "points_range", "points_deduplicate", "points_distance",
     "points_in_mask", "orients_absdiff", "wireframe_length",
     # normals
     "normals_gen_ref", "normals_pointcloud", "normals_points",
@@ -20,7 +20,9 @@ __all__ = [
     # mesh
     "reconstruct_mesh", "subdivide_mesh", "meshpoints_surround",
     # graph
-    "neighbors_graph", "graph_components", "neighboring_components"
+    "neighbors_graph", "graph_components", "neighboring_components",
+    # sorting
+    "sort_pcds_by_ref", "sort_pts_by_guide"
 ]
 
 
@@ -123,23 +125,22 @@ def points_range(pts, margin=0):
     shape = tuple(high - low + 1)
     return low, high, shape
 
-
-def points_deduplicate(pts, round2int=True):
-    """ Deduplicate points while retaining the order.
-
-    Remove points that duplicate previous ones. Optionally round the points to integers first.
+def points_deduplicate(pts):
+    """ Deduplicate int points while retaining the order according to the first appearances.
 
     Args:
         pts (np.ndarray): Array of points with shape=(npts,dim).
-        round2int (bool): If round to integer first.
 
     Returns:
         pts_dedup (np.ndarray): Deduplicated array of points, with shape=(npts_dedup,dim).
     """
-    if round2int:
-        pts = np.round(pts).astype(int)
-    diff = np.abs(np.diff(pts, axis=0)).max(axis=1)
-    pts_dedup = np.concatenate([pts[:1], pts[1:][diff > 0]])
+    # round
+    pts = np.round(pts).astype(int)
+    # convert to tuple, deduplicate using dict
+    pts = [tuple(pt) for pt in pts]
+    pts_dedup = dict.fromkeys(pts).keys()
+    # convert to np.ndarray
+    pts_dedup = np.array(list(pts_dedup))
     return pts_dedup
 
 
@@ -164,29 +165,6 @@ def points_distance(pts1, pts2, return_2to1=False):
     else:
         dist2 = np.asarray(pcd2.compute_point_cloud_distance(pcd1))
         return dist1, dist2
-
-def sort_distance_ref(pts_arr, pt_ref):
-    """ Sort a list of pointclouds by their min distance to a reference point in ascending order.
-
-    Args:
-        pts_arr (list of np.ndarray): A list of pointcloud, each with shape=(nptsi,dim).
-        pt_ref (np.ndarray): The reference point, shape=(dim,).
-
-    Returns:
-        pts_sorted (list of np.ndarray): The sorted list of pointclouds.
-    """
-    # compare components' distance to ref
-    pt_ref = np.asarray(pt_ref).reshape((1, -1))
-    dist_arr = [
-        np.sum((pts-pt_ref)**2, axis=1).min()
-        for pts in pts_arr
-    ]
-
-    # sort index, get points
-    idx_sorted = np.argsort(dist_arr)
-    pts_sorted = [pts_arr[i] for i in idx_sorted]
-
-    return pts_sorted
 
 def points_in_mask(pts, pts_mask):
     """ Select points inside a mask.
@@ -348,7 +326,7 @@ def convex_hull(pts, normals=None, sigma=1):
         sigma (float): Shift points along normals by + and - sigma before calculating the hull, to allow for some margin.
     
     Returns:
-        hull (scipy.spatial.ConvexHull): The convex hull.
+        hull (sp.spatial.ConvexHull): The convex hull.
     """
     pts = np.asarray(pts)
     if (sigma > 0) and (normals is not None):
@@ -357,7 +335,7 @@ def convex_hull(pts, normals=None, sigma=1):
         pts_ext = np.concatenate([pts, pts+fnormals, pts-fnormals])
     else:
         pts_ext = pts
-    hull = spatial.ConvexHull(pts_ext)
+    hull = sp.spatial.ConvexHull(pts_ext)
     return hull
 
 def points_in_hull(pts, hull):
@@ -365,7 +343,7 @@ def points_in_hull(pts, hull):
 
     Args:
         pts (np.ndarray): Array of points with shape=(npts,dim).
-        hull (scipy.spatial.ConvexHull): The convex hull.
+        hull (sp.spatial.ConvexHull): The convex hull.
 
     Returns:
         index (np.ndarray): Array indexes of points in the hull.
@@ -419,7 +397,7 @@ def subdivide_mesh(mesh, target_spacing=1):
 
     # max nearest neighbor distance
     pts = np.asarray(mesh_div.vertices)
-    kdtree = spatial.KDTree(pts)
+    kdtree = sp.spatial.KDTree(pts)
     dists = kdtree.query(pts, k=2, p=1)[0][:, 1]
     max_dist = np.max(dists)
 
@@ -493,7 +471,7 @@ def neighbors_graph(pts, r_thresh=1, orients=None):
         g (igraph.Graph): The neighbor graph.
     """
     # get pairs within r_thresh
-    kdtree = spatial.KDTree(pts)
+    kdtree = sp.spatial.KDTree(pts)
     edges = kdtree.query_pairs(r=r_thresh)
     edges = np.asarray(tuple(edges))
 
@@ -557,3 +535,69 @@ def neighboring_components(pts, r_thresh=1, n_keep=None):
     for size_i, gsub_i in graph_components(g, n_keep):
         pts_i = np.asarray(gsub_i.vs["coords"])
         yield (size_i, pts_i, gsub_i)
+
+#=========================
+# sorting
+#=========================
+
+def sort_pcds_by_ref(pts_arr, pt_ref):
+    """ Sort a list of pointclouds by their min distance to a reference point in ascending order.
+
+    Args:
+        pts_arr (list of np.ndarray): A list of pointcloud, each with shape=(nptsi,dim).
+        pt_ref (np.ndarray): The reference point, shape=(dim,).
+
+    Returns:
+        pts_sorted (list of np.ndarray): The sorted list of pointclouds.
+    """
+    # compare components' distance to ref
+    pt_ref = np.asarray(pt_ref).reshape((1, -1))
+    dist_arr = [
+        np.sum((pts-pt_ref)**2, axis=1).min()
+        for pts in pts_arr
+    ]
+
+    # sort index, get points
+    idx_sorted = np.argsort(dist_arr)
+    pts_sorted = [pts_arr[i] for i in idx_sorted]
+
+    return pts_sorted
+
+
+def sort_pts_by_guide(pts, guide):
+    """ Sort 2d points by guide line.
+
+    Guide line points are assumed sorted.
+    Sort the points first by the index of their nearest guide then by the distance.
+    Return index of sorted points.
+
+    Args:
+        pts (np.ndarray): 2d points to be sorted, with shape=(npts,2).
+        guide (np.ndarray): 2d guide line points which are sorted, with shape=(npts_guide,2).
+
+    Returns:
+        idx_pts (np.ndarray): Index of sorted points, with shape=(npts,).
+            pts[idx_pts] gives sorted points.
+    """
+    # setup array formats
+    guide = points_deduplicate(guide)
+    pts = np.asarray(pts, dtype=int)
+
+    # query dist and idx2guide using KDTree
+    kdtree = sp.spatial.KDTree(guide)
+    dist, idx_guide = kdtree.query(pts, k=1)
+
+    # sort by first the guide index then the distance
+    df = pd.DataFrame(
+        data=np.transpose([
+            np.arange(len(pts)),
+            idx_guide,
+            dist
+        ]),
+        columns=["idx_pts", "idx_guide", "dist"]
+    )
+    df = df.sort_values(by=["idx_guide", "dist"])
+
+    # get the sorted index for points
+    idx_pts = df["idx_pts"].values.astype(int)
+    return idx_pts
