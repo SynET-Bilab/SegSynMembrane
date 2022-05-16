@@ -14,10 +14,10 @@ __version__ = "0.2"
 # ]
 
 # auxiliary functions
-from .utilities import imgutils, pcdutils
+from .utilities import imgutil, pcdutil
 from .utilities import io, plot
 from .utilities import bspline
-from .utilities import modutils
+from .utilities import modutil
 
 from .submodules import features, nonmaxsup, dtvoting
 from .submodules import tracing

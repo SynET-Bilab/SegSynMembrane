@@ -3,7 +3,7 @@
 
 import numpy as np
 import skimage
-from etsynseg import imgutils
+from etsynseg import imgutil
 from etsynseg import features, dtvoting, tracing
 
 __all__ = [
@@ -186,7 +186,7 @@ def match_spatial_orient(Bseg, Oseg, Bfit, sigma_hessian, sigma_tv):
     mask = (mask_fit*Bseg).astype(bool)
 
     # difference in orientation
-    dO = imgutils.orients_absdiff(Oseg, Ofit_tv)
+    dO = imgutil.orients_absdiff(Oseg, Ofit_tv)
 
     # estimate dO threshold using GMM
     gmm = GMMFixed(means_fixed=(0, np.pi/2))

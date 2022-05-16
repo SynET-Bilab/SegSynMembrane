@@ -6,7 +6,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import napari
 import open3d
-from etsynseg import pcdutils
+from etsynseg import pcdutil
 
 __all__ = [
     # matplotlib: 2d plot
@@ -275,7 +275,7 @@ def imoverlay(im_dict, shape=None,
         # overlaying images
         # yx to im, set zero pixels to alpha=0
         for i, yx in enumerate(item["yxs"]):
-            im_i = pcdutils.points2pixels(yx, item["I"].shape)
+            im_i = pcdutil.points2pixels(yx, item["I"].shape)
             axes[idx2d].imshow(
                 # set vmax=2 so that midpoint of cmap is shown
                 im_i, vmin=0, vmax=2,
@@ -411,7 +411,7 @@ def visualize_pcds(pts_arr, normals_arr=None, saturation="random"):
     # construct pcds
     pcd_arr = []
     for i in range(n_pcds):
-        pcd_i = pcdutils.points2pointcloud(
+        pcd_i = pcdutil.points2pointcloud(
             pts_arr[i], normals=normals_arr[i]
         )
         pcd_i.paint_uniform_color(

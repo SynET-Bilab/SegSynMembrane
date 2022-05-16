@@ -1,7 +1,7 @@
 import collections
 import numpy as np
 import sklearn.decomposition
-from etsynseg import pcdutils
+from etsynseg import pcdutil
 
 __all__ = [
     "Tracing"
@@ -45,7 +45,7 @@ class Tracing:
         """ Set pca for projected yx. Align O to axis pc1.
         """
         # calc pca
-        zyx = pcdutils.pixels2points(self.B)
+        zyx = pcdutil.pixels2points(self.B)
         self.pca = sklearn.decomposition.PCA(n_components=1)
         self.pca.fit(zyx[:, 1:])
         

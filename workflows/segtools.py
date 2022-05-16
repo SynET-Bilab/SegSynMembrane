@@ -5,7 +5,7 @@ import numpy as np
 import multiprocessing.dummy
 
 from etsynseg import matching, meshrefine, nonmaxsup, tracing
-from etsynseg import imgutils, pcdutils, modutils, io
+from etsynseg import imgutil, pcdutil, modutil, io
 from etsynseg import features, dtvoting
 from etsynseg import evomsac
 
@@ -137,7 +137,7 @@ class SegSteps:
             normal_ref = None
 
         # generate mask from guide line
-        mask_guide, mask_plus, mask_minus, normal_ref = modutils.mask_from_model(
+        mask_guide, mask_plus, mask_minus, normal_ref = modutil.mask_from_model(
             model_guide,
             width=width_nm/pixel_nm,
             normal_ref=normal_ref,
@@ -149,7 +149,7 @@ class SegSteps:
         mask_bound = np.unique(mask_bound, axis=0)
         
         # get clip range and raw shape from the mask
-        clip_low, _, shape = pcdutils.points_range(mask_bound, margin=0)
+        clip_low, _, shape = pcdutil.points_range(mask_bound, margin=0)
         
         # clip coordinates
         mask_guide -= clip_low
@@ -259,7 +259,7 @@ class SegSteps:
         # retuls
         zyx_nofilt = utils.pixels2points(Bref)
         zyx = utils.pixels2points(Bdetect)
-        Oz = imgutils.sparsify3d(Odetect)
+        Oz = imgutil.sparsify3d(Odetect)
         return zyx_nofilt, zyx, Oz
 
     @staticmethod
@@ -368,7 +368,7 @@ class SegSteps:
             Stv, Otv = dtvoting.stick3d(B, O, sigma=sigma_tv)
             mask_tv = Stv > np.exp(-1/2)
             Btv = nonmaxsup.nms3d(Stv*mask_tv, Otv)
-            Btv = next(iter(imgutils.connected_components(Btv)))[1]
+            Btv = next(iter(imgutil.connected_components(Btv)))[1]
         else:
             Btv = B
             Otv = O

@@ -609,7 +609,7 @@ class SegPrePost(SegBase):
         nxyz2 = -nxyz2
 
         # distance to the other membrane
-        dist1, dist2 = pcdutils.points_distance(zyxref1, zyxref2)
+        dist1, dist2 = pcdutil.points_distance(zyxref1, zyxref2)
         
         # save parameters and results
         self.steps["meshrefine"].update(dict(

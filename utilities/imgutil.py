@@ -164,7 +164,7 @@ def symmetric_image(H_elems):
 def orients_absdiff(O1, O2):
     """ Absolute differences between two orientations.
 
-    This function duplicates that in pcdutils, to remove dependencies between these two submodules.
+    This function duplicates that in pcdutil, to remove dependencies between these two submodules.
     dO = mod(O2-O1,pi), then wrapped to [0,pi/2) by taking values>pi/2 to pi-values.
 
     Args:
@@ -264,7 +264,7 @@ def densify3d(I_sparse):
     """ Recover 3d image from its sparsified format.
 
     Args:
-        I_sparse (np.ndarray of sp.sparse.coo_matrix): Sparsified stack of images, which can be produced from imgutils.sparsify3d.
+        I_sparse (np.ndarray of sp.sparse.coo_matrix): Sparsified stack of images, which can be produced from imgutil.sparsify3d.
 
     Returns:
         I (np.ndarray): 3d image.

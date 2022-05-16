@@ -6,7 +6,7 @@ import scipy as sp
 import pandas as pd
 # import skimage
 import tslearn.metrics
-from etsynseg import pcdutils, bspline
+from etsynseg import pcdutil, bspline
 
 __all__ = [
     # conversions
@@ -51,7 +51,7 @@ def points2model(zyx_arr, break_contour=None):
 
         # iterate over xy planes
         for z in np.unique(z_obj):
-            xyz_z = pcdutils.reverse_coord(zyx_obj[z_obj == z])
+            xyz_z = pcdutil.reverse_coord(zyx_obj[z_obj == z])
             ones = np.ones((len(xyz_z), 1), dtype=int)
 
             # assign all points into one contour
@@ -193,7 +193,7 @@ def interpolate_contours_alongxy(zyx, degree=2):
         zyx_interp (np.ndarray): Points in the interpolated contour, with shape=(npts_interp,3).
     """
     # deduplicate
-    zyx = pcdutils.points_deduplicate(zyx)
+    zyx = pcdutil.points_deduplicate(zyx)
     
     # iterate over z's
     z_arr = zyx[:, 0]
@@ -204,9 +204,9 @@ def interpolate_contours_alongxy(zyx, degree=2):
         fit = bspline.Curve(degree).interpolate(yx_i)
 
         # evaluate at dense parameters, then deduplicate
-        n_eval = int(2*pcdutils.wireframe_length(yx_i))
+        n_eval = int(2*pcdutil.wireframe_length(yx_i))
         yx_interp_i = fit(np.linspace(0, 1, n_eval))
-        yx_interp_i = pcdutils.points_deduplicate(yx_interp_i)
+        yx_interp_i = pcdutil.points_deduplicate(yx_interp_i)
 
         # stack yx with z
         z_ones_i = z_i*np.ones((len(yx_interp_i), 1))
@@ -323,7 +323,7 @@ def region_surround_contour(zyx, nzyx, width, cut_end=True):
 
     # calculate yx ranges for later clipping
     zyx = np.round(zyx).astype(int)
-    yx_low, _, yx_shape = pcdutils.points_range(zyx[:, 1:], margin=int(max(width))+1)
+    yx_low, _, yx_shape = pcdutil.points_range(zyx[:, 1:], margin=int(max(width))+1)
 
     # generate regions for each slice
     zyx_plus = []
@@ -348,8 +348,8 @@ def region_surround_contour(zyx, nzyx, width, cut_end=True):
             mask_minus = mask_minus & mask_in
 
         # convert pixels to points, add back the shift
-        yx_plus = pcdutils.pixels2points(mask_plus) + yx_low
-        yx_minus = pcdutils.pixels2points(mask_minus) + yx_low
+        yx_plus = pcdutil.pixels2points(mask_plus) + yx_low
+        yx_minus = pcdutil.pixels2points(mask_minus) + yx_low
 
         # concat with z
         zyx_plus_z = np.concatenate([
@@ -383,7 +383,7 @@ def mask_from_model(zyx_mod, width, normal_ref=None, interp_degree=2, cut_end=Tr
         width (float or 2-tuple): Width to extend in normal's plus and minus direction, (width+,width-), or a float for equal widths.
         interp_degree (int): Degree for bspline interpolation in the xy direction.
         normal_ref (np.ndarray or None): Reference point 'inside' for orienting the normals, [z_ref,y_ref,x_ref].
-            If None, then generate from pcdutils.normals_gen_ref.
+            If None, then generate from pcdutil.normals_gen_ref.
         cut_end (bool): Whether the region near the endpoints is round-headed (False) or will be cut beyond their normals (True).
 
     Returns:
@@ -397,16 +397,16 @@ def mask_from_model(zyx_mod, width, normal_ref=None, interp_degree=2, cut_end=Tr
     # interpolate along z and xy
     zyx = interpolate_contours_alongz(zyx, closed=False)
     zyx = interpolate_contours_alongxy(zyx, degree=interp_degree)
-    zyx = pcdutils.points_deduplicate(zyx)
+    zyx = pcdutil.points_deduplicate(zyx)
 
     # estimate normals
     if normal_ref is None:
-        normal_ref = pcdutils.normals_gen_ref(zyx)
+        normal_ref = pcdutil.normals_gen_ref(zyx)
     else:
         normal_ref = np.asarray(normal_ref)
     # sigma is set to the range in z: bsplines may not be smooth along z
     normal_sigma = np.ptp(zyx[:, 0])/2
-    nzyx = pcdutils.normals_points(
+    nzyx = pcdutil.normals_points(
         zyx, sigma=normal_sigma, pt_ref=normal_ref
     )
 

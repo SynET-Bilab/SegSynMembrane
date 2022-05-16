@@ -3,7 +3,7 @@
 
 import numpy as np
 import multiprocessing.dummy
-from etsynseg import imgutils
+from etsynseg import imgutil
 
 __all__ = [
     "ridgelike2d", "ridgelike3d",
@@ -23,7 +23,7 @@ def ridgelike2d(I, sigma):
         O (np.ndarray): Orientation of the sticks. Ranged within (-pi,pi]. The same shape as I.
     """
     # hessian 2d
-    Hxx, Hxy, Hyy = imgutils.hessian2d(I, sigma)
+    Hxx, Hxy, Hyy = imgutil.hessian2d(I, sigma)
     # hessian*hessian
     H2xx = Hxx*Hxx + Hxy*Hxy
     H2xy = (Hxx+Hyy)*Hxy
@@ -53,7 +53,7 @@ def ridgelike3d(I, sigma):
         O (np.ndarray): Orientation of the sticks. Ranged within (-pi,pi]. The same shape as I.
     """
     # gaussian on 3d image
-    Ig = imgutils.gaussian(I.astype(np.float_), sigma)
+    Ig = imgutil.gaussian(I.astype(np.float_), sigma)
 
     # create arrays
     S = np.zeros(Ig.shape, dtype=np.float_)

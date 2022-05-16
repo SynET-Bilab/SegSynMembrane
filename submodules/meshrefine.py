@@ -1,5 +1,5 @@
 import numpy as np
-from etsynseg import pcdutils
+from etsynseg import pcdutil
 
 __all__ = [
     "refine_surface",
@@ -24,41 +24,41 @@ def refine_surface(
         zyx_refine (np.ndarray): Points for the refined surface.
     """
     # create mesh
-    pcd = pcdutils.normals_pointcloud(
-        pcd=pcdutils.points2pointcloud(zyx),
+    pcd = pcdutil.normals_pointcloud(
+        pcd=pcdutil.points2pointcloud(zyx),
         sigma=sigma_normal
     )
-    mesh = pcdutils.reconstruct_mesh(
+    mesh = pcdutil.reconstruct_mesh(
         pcd, target_width=sigma_mesh
     )
 
     # convex hull
-    hull = pcdutils.convex_hull(
+    hull = pcdutil.convex_hull(
         pts=pcd.points,
         normals=pcd.normals,
         sigma=sigma_hull
     )
 
     # select center+surround region of the mesh
-    iv_center = pcdutils.points_in_hull(mesh.vertices, hull)
-    iv_surround = pcdutils.meshpoints_surround(mesh, iv_center)
+    iv_center = pcdutil.points_in_hull(mesh.vertices, hull)
+    iv_surround = pcdutil.meshpoints_surround(mesh, iv_center)
     mesh = mesh.select_by_index(iv_surround)
 
     # subdivide to pixel scale
-    mesh = pcdutils.subdivide_mesh(mesh, target_spacing=target_spacing)
+    mesh = pcdutil.subdivide_mesh(mesh, target_spacing=target_spacing)
     
     # remove duplicates
     pts = np.round(np.asarray(mesh.vertices)).astype(int)
     pts = np.unique(pts, axis=0)  # np.unique also sorts the points
 
     # constrain points in the convex hull
-    idx_inhull = pcdutils.points_in_hull(pts, hull)
+    idx_inhull = pcdutil.points_in_hull(pts, hull)
     zyx_refine = pts[idx_inhull]
 
     # constrain in mask_bound if provided
     if mask_bound is not None:
         shape = mask_bound.shape
-        B_refine = mask_bound * pcdutils.points2pixels(zyx_refine, shape)
-        zyx_refine = pcdutils.pixels2points(B_refine)
+        B_refine = mask_bound * pcdutil.points2pixels(zyx_refine, shape)
+        zyx_refine = pcdutil.pixels2points(B_refine)
 
     return zyx_refine

@@ -2,7 +2,7 @@
 import numpy as np
 import sklearn.cluster
 import pandas as pd
-from etsynseg import pcdutils, features
+from etsynseg import pcdutil, features
 
 __all__ = [
     # division
@@ -93,7 +93,7 @@ def divide_spectral_points(zyx, orients, r_thresh, sigma_dO=np.pi/4, n_clusts=2)
             [zyx1,zyx2,...], where zyxi are points with shape=(npts,3) for cluster i.
     """
     # build graph for points
-    g_pts = pcdutils.neighbors_graph(
+    g_pts = pcdutil.neighbors_graph(
         zyx, orients=orients, r_thresh=r_thresh
     )
     dorients = np.asarray(g_pts.es["dorients"])
@@ -128,13 +128,13 @@ def extract_components_one(zyx, r_thresh=1, mask=None):
     """
     # mask out points
     if mask is not None:
-        dist2mask = pcdutils.points_distance(
+        dist2mask = pcdutil.points_distance(
             zyx, mask, return_2to1=False
         )
         zyx = zyx[np.isclose(dist2mask, 0)]
 
     # extract largest
-    _, zyx1, _ = next(pcdutils.neighboring_components(
+    _, zyx1, _ = next(pcdutil.neighboring_components(
         zyx, r_thresh, n_keep=1
     ))
     return zyx1
@@ -161,25 +161,25 @@ def extract_components_two(zyx, r_thresh=1, orients=None, sigma_dO=np.pi/4, mask
     """
     # mask out points
     if mask is not None:
-        dist2mask = pcdutils.points_distance(
+        dist2mask = pcdutil.points_distance(
             zyx, mask, return_2to1=False
         )
         zyx = zyx[np.isclose(dist2mask, 0)]
 
     # calculate orientation if not provided
     if orients is None:
-        _, _, shape = pcdutils.points_range(zyx, margin=2*r_thresh)
-        Bzyx = pcdutils.points2pixels(zyx, shape)
+        _, _, shape = pcdutil.points_range(zyx, margin=2*r_thresh)
+        Bzyx = pcdutil.points2pixels(zyx, shape)
         _, O = features.ridgelike3d(Bzyx, sigma=r_thresh)
         orients = O[tuple(zyx.T)]
 
     # construct neighbors graph
-    g = pcdutils.neighbors_graph(
+    g = pcdutil.neighbors_graph(
         zyx, r_thresh=r_thresh, orients=orients
     )
 
     # initial extraction of the larges two components
-    comps_iter = pcdutils.graph_components(g, n_keep=2)
+    comps_iter = pcdutil.graph_components(g, n_keep=2)
     size1, gsub1 = next(comps_iter)
     size2, gsub2 = next(comps_iter)
 

@@ -4,7 +4,7 @@
 import numpy as np
 import deap, deap.base, deap.tools
 
-from etsynseg import pcdutils, bspline
+from etsynseg import pcdutil, bspline
 from .grid import Grid
 
 
@@ -103,8 +103,8 @@ class MOOTools:
         # bspline
         self.surf_meta = bspline.Surface(degree=2)
         # pointcloud
-        self.pcd = pcdutils.points2pointcloud(
-            pcdutils.points_deduplicate(self.zyx)
+        self.pcd = pcdutil.points2pointcloud(
+            pcdutil.points_deduplicate(self.zyx)
         )
     
     def get_config(self):
@@ -259,10 +259,10 @@ class MOOTools:
         # set eval points
         # default: max wireframe length
         if u_eval is None:
-            nu_eval = int(np.max(pcdutils.wireframe_length(sample_net, axis=0)))
+            nu_eval = int(np.max(pcdutil.wireframe_length(sample_net, axis=0)))
             u_eval = np.linspace(0, 1, nu_eval)
         if v_eval is None:
-            nv_eval = int(np.max(pcdutils.wireframe_length(sample_net, axis=1)))
+            nv_eval = int(np.max(pcdutil.wireframe_length(sample_net, axis=1)))
             v_eval = np.linspace(0, 1, nv_eval)
 
         # convert fitted surface to binary image
@@ -283,7 +283,7 @@ class MOOTools:
         zyx_fit = np.round(zyx_fit).astype(int)
         zyx_fit = np.unique(zyx_fit, axis=0)
         # convert to pointcloud
-        pcd_fit = pcdutils.points2pointcloud(zyx_fit)
+        pcd_fit = pcdutil.points2pointcloud(zyx_fit)
         
         # coverage of zyx by fit
         dist = np.asarray(self.pcd.compute_point_cloud_distance(pcd_fit))

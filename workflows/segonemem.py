@@ -4,7 +4,7 @@
 import time
 import numpy as np
 import mrcfile
-from etsynseg import io, imgutils, plot
+from etsynseg import io, imgutil, plot
 from etsynseg.workflows import SegBase, SegSteps
 from utilities import utils
 
@@ -384,9 +384,9 @@ class SegOneMem(SegBase):
 
         # extract connected
         B_raw = self.points2pixels(zyx_raw)
-        B_c = next(imgutils.connected_components(B_raw, n_keep=1, connectivity=3))[1]
+        B_c = next(imgutil.connected_components(B_raw, n_keep=1, connectivity=3))[1]
         zyx = utils.pixels2points(B_c)
-        Oz = imgutils.sparsify3d(utils.densify3d(Oz_raw)*B_c)
+        Oz = imgutil.sparsify3d(utils.densify3d(Oz_raw)*B_c)
 
         # save parameters and results
         self.steps["detect"].update(dict(

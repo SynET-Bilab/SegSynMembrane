@@ -2,7 +2,7 @@
 """
 
 import numpy as np
-from etsynseg import imgutils, pcdutils
+from etsynseg import imgutil, pcdutil
 from etsynseg import features, nonmaxsup, dtvoting
 
 __all__ = [
@@ -25,7 +25,7 @@ def suppress_by_orient(B, O, sigma, dO_thresh=np.pi/4):
     # apply strong tv field
     Stv, Otv = dtvoting.stick3d(B, O, sigma)
     # calculate change in O
-    dO = imgutils.orients_absdiff(Otv, O)
+    dO = imgutil.orients_absdiff(Otv, O)
     # mask of pixels with small dO
     Bsupp = B*(dO < dO_thresh)
     return Bsupp, Stv
@@ -87,11 +87,11 @@ def detect_memlike(I, mask_guide, mask_bound, sigma_gauss, sigma_tv, factor_filt
     """
     # setup
     # negate so that membrane pixels have larger values
-    Ineg = -imgutils.scale_zscore(I)
+    Ineg = -imgutil.scale_zscore(I)
     # mask for bound, guide
     shape = Ineg.shape
-    B_bound = pcdutils.points2pixels(mask_bound, shape)
-    B_guide = pcdutils.points2pixels(mask_guide, shape)
+    B_bound = pcdutil.points2pixels(mask_bound, shape)
+    B_guide = pcdutil.points2pixels(mask_guide, shape)
     
     # detect ridgelike features, nms
     S, O = features.ridgelike3d(Ineg, sigma=sigma_gauss)

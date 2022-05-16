@@ -168,7 +168,7 @@ def points_distance(pts1, pts2, return_2to1=False):
 def orients_absdiff(orient1, orient2):
     """ Absolute differences between two orientation arrays.
  
-    This function duplicates that in imgutils, to remove dependencies between these two submodules.
+    This function duplicates that in imgutil, to remove dependencies between these two submodules.
     dO = mod(orient2-orient1,pi), then wrapped to [0,pi/2) by taking values>pi/2 to pi-values.
 
     Args:
@@ -281,7 +281,7 @@ def normals_pointcloud(pcd, sigma, pt_ref=None):
 def normals_points(pts, sigma, pt_ref=None):
     """ Estimate normals for points.
     
-    Wraps pcdutils.normals_pointcloud.
+    Wraps pcdutil.normals_pointcloud.
 
     Args:
         pts (np.ndarray): Array of points with shape=(npts,dim).
