@@ -11,7 +11,8 @@ __all__ = [
     # conversion
     "pixels2points", "points2pixels", "reverse_coord", "points2pointcloud",
     # misc
-    "points_range", "points_deduplicate", "points_distance", "orients_absdiff", "wireframe_length",
+    "points_range", "points_deduplicate", "points_distance", "sort_distance_ref",
+    "points_in_mask", "orients_absdiff", "wireframe_length",
     # normals
     "normals_gen_ref", "normals_pointcloud", "normals_points",
     # convex hull
@@ -164,6 +165,44 @@ def points_distance(pts1, pts2, return_2to1=False):
         dist2 = np.asarray(pcd2.compute_point_cloud_distance(pcd1))
         return dist1, dist2
 
+def sort_distance_ref(pts_arr, pt_ref):
+    """ Sort a list of pointclouds by their min distance to a reference point in ascending order.
+
+    Args:
+        pts_arr (list of np.ndarray): A list of pointcloud, each with shape=(nptsi,dim).
+        pt_ref (np.ndarray): The reference point, shape=(dim,).
+
+    Returns:
+        pts_sorted (list of np.ndarray): The sorted list of pointclouds.
+    """
+    # compare components' distance to ref
+    pt_ref = np.asarray(pt_ref).reshape((1, -1))
+    dist_arr = [
+        np.sum((pts-pt_ref)**2, axis=1).min()
+        for pts in pts_arr
+    ]
+
+    # sort index, get points
+    idx_sorted = np.argsort(dist_arr)
+    pts_sorted = [pts_arr[i] for i in idx_sorted]
+
+    return pts_sorted
+
+def points_in_mask(pts, pts_mask):
+    """ Select points inside a mask.
+
+    Args:
+        pts (np.ndarray): Points with shape=(npts,dim).
+        pts_mask (np.ndarray): The mask region, represented by all points inside it, with shape=(npts_mask,dim).
+
+    Returns:
+        pts_in (np.ndarray): Points in the mask region, with shape=(npts_in,dim).
+    """
+    dist2mask = points_distance(
+        pts, pts_mask, return_2to1=False
+    )
+    pts_in = pts[np.isclose(dist2mask, 0)]
+    return pts_in
 
 def orients_absdiff(orient1, orient2):
     """ Absolute differences between two orientation arrays.
@@ -180,7 +219,6 @@ def orients_absdiff(orient1, orient2):
     dO = np.mod(orient2-orient1, np.pi)
     dO = np.where(dO <= np.pi/2, dO, np.pi-dO)
     return dO
-
 
 def wireframe_length(pts_net, axis=0):
     """ Calculate total lengths of wireframe along one axis.

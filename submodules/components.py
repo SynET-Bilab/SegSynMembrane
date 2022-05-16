@@ -114,32 +114,37 @@ def divide_spectral_points(zyx, orients, r_thresh, sigma_dO=np.pi/4, n_clusts=2)
 # components
 #=========================
 
-def extract_components_one(zyx, r_thresh=1, mask=None):
+def points_orientation(zyx, sigma):
+    """ Calculate the orientation of points.
+
+    Args:
+        zyx (np.ndarray): Points with shape=(npts,dim) and in format [[zi,yi,xi],...].
+        sigma (float): Sigma for gaussian smoothing.
+
+    Returns:
+        orients (np.ndarray): Orientation at each point, ranged in [0,pi/2], shape=(npts,).
+    """
+    Bzyx = pcdutil.points2pixels(zyx)
+    _, O = features.ridgelike3d(Bzyx, sigma=sigma)
+    orients = O[tuple(zyx.T)]
+    return orients
+
+def extract_components_one(zyx, r_thresh=1):
     """ Extract the largest component in the neighboring graph of the points.
 
     Args:
         zyx (np.ndarray): Points with shape=(npts,dim) and in format [[zi,yi,xi],...].
         r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
-        mask (np.ndarray, optional): Mask points with shape=(npts_mask,dim).
-            zyx-points not in the mask (dist>0) are ignored.
     
     Returns:
         zyx1 (np.ndarray): Points in the largest component. Shape=(npts1,dim).
     """
-    # mask out points
-    if mask is not None:
-        dist2mask = pcdutil.points_distance(
-            zyx, mask, return_2to1=False
-        )
-        zyx = zyx[np.isclose(dist2mask, 0)]
-
-    # extract largest
     _, zyx1, _ = next(pcdutil.neighboring_components(
         zyx, r_thresh, n_keep=1
     ))
     return zyx1
 
-def extract_components_two(zyx, r_thresh=1, orients=None, sigma_dO=np.pi/4, mask=None, min_size=0):
+def extract_components_two(zyx, r_thresh=1, orients=None, sigma_dO=np.pi/4, min_size=0):
     """ Extract the largest two components by the neighboring graph of the points.
 
     A min_size can be provided.
@@ -159,33 +164,28 @@ def extract_components_two(zyx, r_thresh=1, orients=None, sigma_dO=np.pi/4, mask
     Returns:
         zyx1, zyx2 (np.ndarray): Points in the largest two component.  Shape=(nptsi,dim), i=1,2.
     """
-    # mask out points
-    if mask is not None:
-        dist2mask = pcdutil.points_distance(
-            zyx, mask, return_2to1=False
-        )
-        zyx = zyx[np.isclose(dist2mask, 0)]
-
     # calculate orientation if not provided
     if orients is None:
-        _, _, shape = pcdutil.points_range(zyx, margin=2*r_thresh)
-        Bzyx = pcdutil.points2pixels(zyx, shape)
-        _, O = features.ridgelike3d(Bzyx, sigma=r_thresh)
-        orients = O[tuple(zyx.T)]
+        orients = features.calc_orientation(zyx, sigma=r_thresh)
 
     # construct neighbors graph
     g = pcdutil.neighbors_graph(
         zyx, r_thresh=r_thresh, orients=orients
     )
+    dorients = np.asarray(g.es["dorients"])
+    g.es["weights"] = np.exp(-0.5*(dorients/sigma_dO)**2)
 
     # initial extraction of the larges two components
     comps_iter = pcdutil.graph_components(g, n_keep=2)
     size1, gsub1 = next(comps_iter)
-    size2, gsub2 = next(comps_iter)
+    # case when there is no 2nd largest component
+    try:
+        size2, gsub2 = next(comps_iter)
+    except StopIteration:
+        size2 = min(0, min_size-1)
 
     # setup the test for termination
     def terminate_division(size1, size2):
-        print(size1, size2)
         if size1 < min_size:
             raise RuntimeError(
                 f"The largest component (size={size1}) is smaller than min_size ({min_size}).")
@@ -196,7 +196,7 @@ def extract_components_two(zyx, r_thresh=1, orients=None, sigma_dO=np.pi/4, mask
 
     # iterative division until the termination criteria is met
     while not terminate_division(size1, size2):
-        gsub_arr = divide_spectral_graph(gsub1, sigma_dO=sigma_dO, n_clusts=2)
+        gsub_arr = divide_spectral_graph(gsub1, n_clusts=2)
         gsub1, gsub2 = gsub_arr[:2]
         size1 = gsub1.vcount()
         size2 = gsub2.vcount()

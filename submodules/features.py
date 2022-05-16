@@ -3,10 +3,10 @@
 
 import numpy as np
 import multiprocessing.dummy
-from etsynseg import imgutil
+from etsynseg import imgutil, pcdutil
 
 __all__ = [
-    "ridgelike2d", "ridgelike3d",
+    "ridgelike2d", "ridgelike3d", "calc_orientation"
 ]
 
 def ridgelike2d(I, sigma):
@@ -68,3 +68,22 @@ def ridgelike3d(I, sigma):
     pool.map(calc_one, range(nz))
     pool.close()
     return S, O
+
+def calc_orientation(zyx, sigma):
+    """ Calculate the orientation of points.
+
+    Args:
+        zyx (np.ndarray): Points with shape=(npts,dim) and in format [[zi,yi,xi],...].
+        sigma (float): Sigma for gaussian smoothing.
+
+    Returns:
+        orients (np.ndarray): Orientation at each point, ranged in [0,pi/2], shape=(npts,).
+    """
+    # convert to image, add margins
+    zyx_low, _, shape = pcdutil.points_range(zyx, margin=2*sigma)
+    zyx_clip = zyx - zyx_low
+    B = pcdutil.points2pixels(zyx_clip, shape)
+    # calc orientation
+    _, O = ridgelike3d(B, sigma=sigma)
+    orients = O[tuple(zyx_clip.T)]
+    return orients
