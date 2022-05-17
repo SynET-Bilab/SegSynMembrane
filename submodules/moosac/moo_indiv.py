@@ -81,7 +81,7 @@ class MOOTools:
         """ Initialize attributes from Grid object.
 
         Args:
-            grid (Grid): The grid object. See etsynseg.evomsac.Grid.
+            grid (Grid): The grid object. See etsynseg.moosac.Grid.
             fitness_rthresh (float): Distance threshold for fitness calculation.
 
         Returns:
@@ -299,16 +299,16 @@ class MOOTools:
             surf_fit (splipy.surface.Surface): Fitted surface.
         """
         # fit
-        sample_net = self.get_coords_net(indiv)
-        surf_fit = self.surf_meta.interpolate(sample_net)
+        pts_net = self.get_coords_net(indiv)
+        surf_fit = self.surf_meta.interpolate(pts_net)
 
         # set eval points
         # default: max wireframe length
         if u_eval is None:
-            nu_eval = int(np.max(pcdutil.wireframe_length(sample_net, axis=0)))
+            nu_eval = int(np.max(pcdutil.wireframe_length(pts_net, axis=0)))
             u_eval = np.linspace(0, 1, nu_eval)
         if v_eval is None:
-            nv_eval = int(np.max(pcdutil.wireframe_length(sample_net, axis=1)))
+            nv_eval = int(np.max(pcdutil.wireframe_length(pts_net, axis=1)))
             v_eval = np.linspace(0, 1, nv_eval)
 
         # convert fitted surface to points

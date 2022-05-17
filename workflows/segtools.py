@@ -7,7 +7,7 @@ import multiprocessing.dummy
 from etsynseg import matching, meshrefine, nonmaxsup, tracing
 from etsynseg import imgutil, pcdutil, modutil, io
 from etsynseg import features, dtvoting
-from etsynseg import evomsac
+from etsynseg import moosac
 
 __all__ = [
     "SegBase", "SegSteps"
@@ -88,7 +88,7 @@ class SegSteps:
     #     return zyx_sorted
 
     @staticmethod
-    def read_tomo_model(tomo_file, model_file, width_nm, pixel_nm=None, interp_degree=2):
+    def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degree=2):
         """ Read tomo and model.
 
         Read model: object 1 for guide lines, object 2 for reference point.
@@ -99,7 +99,7 @@ class SegSteps:
         Args:
             tomo_file (str): Filename of tomo mrc.
             model_file (str): Filename of imod model.
-            width_nm (float): Extend from guide lines by this width (in nm) to get the bound.
+            extend_nm (float): Extend from guide lines by this width (in nm) to get the bound.
             pixel_nm (float): Pixel size in nm. If None then read from tomo.
             interp_degree (int): Degree of bspline interpolation of the model.
                 2 for most cases.
@@ -139,7 +139,7 @@ class SegSteps:
         # generate mask from guide line
         mask_guide, mask_plus, mask_minus, normal_ref = modutil.mask_from_model(
             model_guide,
-            width=width_nm/pixel_nm,
+            width=extend_nm/pixel_nm,
             normal_ref=normal_ref,
             interp_degree=interp_degree,
             cut_end=True
@@ -296,12 +296,12 @@ class SegSteps:
         n_vxy = max(3, int(np.round(n_vxy)+1))
 
         # setup mootools, moopop
-        mtools = evomsac.MOOTools(
+        mtools = moosac.MOOTools(
             zyx, n_vxy=n_vxy, n_uz=n_uz, nz_eachu=1,
             fitness_rthresh=fitness_rthresh,
             shrink_sidegrid=shrink_sidegrid
         )
-        mpop = evomsac.MOOPop(mtools, pop_size=pop_size)
+        mpop = moosac.MOOPop(mtools, pop_size=pop_size)
 
         # evolve
         mpop.init_pop()
@@ -345,7 +345,7 @@ class SegSteps:
         """
         if zyx is not None:
             mpopz["mootools_config"]["zyx"] = zyx
-        mpop = evomsac.MOOPop(state=mpopz)
+        mpop = moosac.MOOPop(state=mpopz)
         return mpop
 
     @staticmethod
