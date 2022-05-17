@@ -20,7 +20,6 @@ from .utilities import bspline
 from .utilities import modutil
 
 from .submodules import features, nonmaxsup, dtvoting
-from .submodules import tracing
 from .submodules import detecting, components
 from .submodules import moosac, matching, meshrefine
 

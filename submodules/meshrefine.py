@@ -6,19 +6,18 @@ __all__ = [
 ]
 
 def refine_surface(
-        zyx,
-        sigma_normal, sigma_mesh, sigma_hull,
-        target_spacing=1, mask_bound=None, return_mesh=False
+        zyx, sigma_normal, sigma_mesh, sigma_hull,
+        target_spacing=1, mask_bound=None
     ):
     """ Refine surface using mesh-based methods, mainly poisson reconstruction
 
     Args:
-        zyx (np.ndarray): Points with shape=(npts, ndim) and in format [[z0,y0,x0],...].
+        zyx (np.ndarray): Points to be refined. Shape=(npts,dim), format [[z0,y0,x0],...].
         sigma_normal (float): Neighborhood radius for normal calculation
         sigma_mesh (float): Target spatial resolution for poisson reconstruction.
         sigma_hull (float): Length to extend in the normal direction when computing hull.
         target_spacing (float): Target spacing of points.
-        mask_bound (np.ndarray, optional): Mask for boundary, with shape=(nz,ny,nx).
+        mask_bound (np.ndarray): The mask region with shape=(npts_bound,dim). Surface will be constrained inside.
 
     Returns:
         zyx_refine (np.ndarray): Points for the refined surface.
@@ -40,25 +39,24 @@ def refine_surface(
     )
 
     # select center+surround region of the mesh
-    iv_center = pcdutil.points_in_hull(mesh.vertices, hull)
+    mask_center = pcdutil.points_in_hull(mesh.vertices, hull)
+    iv_center = np.nonzero(mask_center)[0]
     iv_surround = pcdutil.meshpoints_surround(mesh, iv_center)
     mesh = mesh.select_by_index(iv_surround)
 
     # subdivide to pixel scale
-    mesh = pcdutil.subdivide_mesh(mesh, target_spacing=target_spacing)
+    mesh_div = pcdutil.subdivide_mesh(mesh, target_spacing=target_spacing)
     
     # remove duplicates
-    pts = np.round(np.asarray(mesh.vertices)).astype(int)
-    pts = np.unique(pts, axis=0)  # np.unique also sorts the points
+    zyx_div = pcdutil.points_deduplicate(np.asarray(mesh_div.vertices))
 
     # constrain points in the convex hull
-    idx_inhull = pcdutil.points_in_hull(pts, hull)
-    zyx_refine = pts[idx_inhull]
+    mask_inhull = pcdutil.points_in_hull(zyx_div, hull)
+    zyx_refine = zyx_div[mask_inhull]
 
     # constrain in mask_bound if provided
     if mask_bound is not None:
-        shape = mask_bound.shape
-        B_refine = mask_bound * pcdutil.points2pixels(zyx_refine, shape)
-        zyx_refine = pcdutil.pixels2points(B_refine)
+        mask_inside = pcdutil.points_in_region(zyx_refine, mask_bound)
+        zyx_refine = zyx_refine[mask_inside]
 
     return zyx_refine

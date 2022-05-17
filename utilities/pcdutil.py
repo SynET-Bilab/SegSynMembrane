@@ -12,7 +12,7 @@ __all__ = [
     "pixels2points", "points2pixels", "reverse_coord", "points2pointcloud",
     # misc
     "points_range", "points_deduplicate", "points_distance",
-    "points_in_mask", "orients_absdiff", "wireframe_length",
+    "points_in_region", "orients_absdiff", "wireframe_length",
     # normals
     "normals_gen_ref", "normals_pointcloud", "normals_points",
     # convex hull
@@ -166,21 +166,22 @@ def points_distance(pts1, pts2, return_2to1=False):
         dist2 = np.asarray(pcd2.compute_point_cloud_distance(pcd1))
         return dist1, dist2
 
-def points_in_mask(pts, pts_mask):
-    """ Select points inside a mask.
+def points_in_region(pts, pts_region):
+    """ Select points inside a region.
 
     Args:
         pts (np.ndarray): Points with shape=(npts,dim).
-        pts_mask (np.ndarray): The mask region, represented by all points inside it, with shape=(npts_mask,dim).
+        pts_region (np.ndarray): The region represented by all points inside it, with shape=(npts_region,dim).
 
     Returns:
-        pts_in (np.ndarray): Points in the mask region, with shape=(npts_in,dim).
+        mask (np.ndarray): Array bools indicating whether each point is in the region, shape=(npts,).
+            pts[mask] gives points in the region.
     """
     dist2mask = points_distance(
-        pts, pts_mask, return_2to1=False
+        pts, pts_region, return_2to1=False
     )
-    pts_in = pts[np.isclose(dist2mask, 0)]
-    return pts_in
+    mask = np.isclose(dist2mask, 0)
+    return mask
 
 def orients_absdiff(orient1, orient2):
     """ Absolute differences between two orientation arrays.
@@ -346,7 +347,8 @@ def points_in_hull(pts, hull):
         hull (sp.spatial.ConvexHull): The convex hull.
 
     Returns:
-        index (np.ndarray): Array indexes of points in the hull.
+        mask (np.ndarray): Array bools indicating whether each point is in the hull, shape=(npts,).
+            pts[mask] gives points in the hull.
 
     References:
         method: https://stackoverflow.com/questions/31404658/check-if-points-lies-inside-a-convex-hull
@@ -355,8 +357,7 @@ def points_in_hull(pts, hull):
     A = hull.equations[:, :-1]
     b = hull.equations[:, -1:]
     mask = np.all(np.asarray(pts) @ A.T + b.T < eps, axis=1)
-    index = np.nonzero(mask)[0]
-    return index
+    return mask
 
 
 #=========================

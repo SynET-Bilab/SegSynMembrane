@@ -3,11 +3,14 @@
 
 import numpy as np
 import skimage
-from etsynseg import imgutil
-from etsynseg import features, dtvoting, tracing
+from etsynseg import imgutil, pcdutil
+from etsynseg import features, dtvoting
 
 __all__ = [
-    "GMMFixed", "fill_broken", "match_spatial_orient"
+    "GMMFixed",
+    "match_by_closeness",
+    "bridge_gaps_2d", "bridge_gaps_3d",
+    "match_candidate_to_ref"
 ]
 
 #=========================
@@ -114,89 +117,175 @@ class GMMFixed:
 
 
 #=========================
-# match by orientation
+# match by spatial and orientational closeness
 #=========================
 
-def fill_broken(Bseg, Oseg, Bmatch):
-    """ Fill broken segments of the matched image.
-
-    For a connected line segment of a 2d slice,
-    if two of its regions are matched but their middle part is missed,
-    this function will fill the missing parts.
-
-    Args:
-        Bseg, Oseg (np.ndarray): Detected binary image and orientation, with shape=(nz,ny,nx).
-        Bmatch (np.ndarray): Matched parts of the detected image, with shape=(nz,ny,nx).
-
-    Returns:
-        Bfill (np.ndarray): Filled image, with shape=(nz,ny,nx).
-    """
-    # setup
-    tr = tracing.Tracing(Bseg, Oseg)
-    Bfill = np.zeros(Bseg.shape, dtype=np.int_)
-
-    # fix one slice
-    def calc_one(iz):
-        # get traces using depth-first scan
-        yx_trs, _ = tr.dfs2d(iz)
-        for yx_tr_i in yx_trs:
-            # positions of pixels in the trace
-            pos = tuple(np.transpose(yx_tr_i))
-            # corresponding pixels in matched image
-            b_match = Bmatch[iz][pos]
-            i_match = np.nonzero(b_match)[0]
-            # fill zeros inside the matched image
-            if len(i_match) > 0:
-                tr_filled = np.zeros(len(pos[0]), dtype=np.int_)
-                tr_filled[np.min(i_match):np.max(i_match)+1] = 1
-                Bfill[iz][pos] = tr_filled
-
-    # fix all slices
-    for iz in range(Bseg.shape[0]):
-        calc_one(iz)
-
-    return Bfill
-
-def match_spatial_orient(Bseg, Oseg, Bfit, sigma_hessian, sigma_tv):
-    """ Match the detected image with the fitted one by spatial and orientational closeness.
+def match_by_closeness(Bcand, Ocand, Bref, Oref, sigma_tv):
+    """ Match the candidate image to the reference one by spatial and orientational closeness.
     
-    First apply hessian+TV to the fitted surface to extend it to nearby regions.
-    Compare the orientations between the extended fitted surface and the detected image, and threshold by GMM.
-    Raw matched pixels in the detected image are spatially and orientationally close to the fitted one.
-    Fill broken segments and get the final matched image.
+    First apply hessian+TV to the reference surface to extend it to nearby regions.
+    Compare the orientations between the extended reference and the candidate, and threshold by GMM.
+    Raw matched pixels in the candidate image are spatially and orientationally close to the reference.
     
     Args:
-        Bseg, Oseg (np.ndarray): Detected binary image and orientation, with shape=(nz,ny,nx).
-        Bfit (np.ndarray): Binary image of the surface from EvoMSAC fitting.
-        sigma_hessian (float): Sigma for ridgelike feature calculation of the fitted surface.
-            Can set to the same value as the one used for detection.
-        sigma_tv (float): Sigma for TV of the fitted surface.
+        Bcand, Ocand (np.ndarray): Candidate binary image and orientation, with shape=(nz,ny,nx).
+        Bref, Oref (np.ndarray): Reference binary image and orientation, with shape=(nz,ny,nx).
+        sigma_tv (float): Sigma for TV of the reference surface.
     
     Returns:
         Bmatch (np.ndarray): Matched binary image, with shape=(nz,ny,nx).
     """
     # spatial closeness: TV for fit
-    _, Ofit = features.ridgelike3d(Bfit, sigma=sigma_hessian)
-    Sfit_tv, Ofit_tv = dtvoting.stick3d(Bfit, Ofit*Bfit, sigma=sigma_tv)
+    Sfit_tv, Oref_tv = dtvoting.stick3d(Bref, Oref*Bref, sigma=sigma_tv)
 
     # mask: belongs to B and close to Bfit
     # e^(-1/2) = e^(-r^2/(2*sigma_tv^2)) at r=sigma_tv, close to fill holes
-    mask_fit = Sfit_tv > np.exp(-1/2)
-    mask_fit = skimage.morphology.binary_closing(mask_fit)
-    mask = (mask_fit*Bseg).astype(bool)
+    Bmask = Sfit_tv > np.exp(-1/2)
+    Bmask = skimage.morphology.binary_closing(Bmask)
+    Bmask = (Bmask*Bcand).astype(bool)
 
     # difference in orientation
-    dO = imgutil.orients_absdiff(Oseg, Ofit_tv)
+    dO = imgutil.orients_absdiff(Ocand, Oref_tv)
 
     # estimate dO threshold using GMM
     gmm = GMMFixed(means_fixed=(0, np.pi/2))
-    dO_thresh = gmm.fit_threshold(dO[mask])
+    dO_thresh = gmm.fit_threshold(dO[Bmask])
 
     # match by threshold
-    Bmatch = Bseg * (dO < dO_thresh) * mask
-
-    # fill broken parts
-    Bmatch = fill_broken(Bseg, Oseg, Bmatch)
+    Bmatch = Bmask * (dO < dO_thresh)
 
     return Bmatch
 
+def bridge_gaps_2d(pts_cand, pts_gapped, orients_cand, r_thresh):
+    """ Bridge gaps for a 2d slice.
+
+    Gapped points is a subset of candidate points.
+    If separate components in gapped points can be connected in the candidate
+    (both in the sense of neighbors graph),
+    then build the bridge as the shortest path in the connection.
+
+    Args:
+        pts_cand (np.ndarray): Candidate points, with shape=(npts_cand,dim). Assumed sorted.
+        pts_gapped (np.ndarray): Gapped points, with shape=(npts_gapped,dim).
+        orients_cand (np.ndarray): Orientation of each point in candidate, with shape=(npts_cand,).
+        r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
+
+    Returns:
+        pts_bridge (np.ndarray): Bridged points, with shape=(npts_bridged,dim).
+    """
+    # build neighbors graph for candidate points
+    g_cand = pcdutil.neighbors_graph(
+        pts_cand, r_thresh=r_thresh, orients=orients_cand
+    )
+    # mask for candidate points that are also gapped points
+    mask_ingapped = pcdutil.points_in_region(pts_cand, pts_gapped)
+
+    # iterate for each component in g_cand
+    pts_bridge = []
+    membership = np.asarray(g_cand.components(mode="weak").membership)
+    for i in np.unique(membership):
+        # index of points in the current component that are also part of gapped points
+        mask_comp_i = (membership == i)
+        idx_comp_ingapped = np.nonzero(mask_comp_i & mask_ingapped)[0]
+        
+        # path from the 1st occurrence of gapped points in the component to the last
+        # this path covers the middle part in candidate points, thus a bridge
+        if len(idx_comp_ingapped) > 0:
+            idx_path = g_cand.get_shortest_paths(
+                min(idx_comp_ingapped), max(idx_comp_ingapped),
+                weights=g_cand.es["dorients"]
+            )[0]
+            pts_bridge.append(pts_cand[idx_path])
+
+    pts_bridge = np.concatenate(pts_bridge, axis=0)
+    return pts_bridge
+
+def bridge_gaps_3d(zyx_cand, zyx_gapped, orients_cand, r_thresh):
+    """ Bridge gaps slice by slice.
+
+    Gapped points is a subset of candidate points.
+    For each slice, if separate components in gapped points can be connected in the candidate
+    (both in the sense of neighbors graph),
+    then build the bridge as the shortest path in the connection.
+
+    Args:
+        zyx_cand (np.ndarray): Candidate points, with shape=(npts_cand,3). Assumed sorted.
+        zyx_gapped (np.ndarray): Gapped points, with shape=(npts_gapped,3).
+        orients_cand (np.ndarray): Orientation of each point in candidate, with shape=(npts_cand,).
+        r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
+
+    Returns:
+        zyx_bridge (np.ndarray): Bridged points, with shape=(npts_bridged,3).
+    """
+    # obtain bridge points slice by slice
+    zyx_bridged = []
+    for z in np.unique(zyx_cand[:, 0]):
+        # extract points in slice-z
+        mask_cand_z = zyx_cand[:, 0] == z
+        zyx_cand_z = zyx_cand[mask_cand_z]
+        orients_cand_z = orients_cand[mask_cand_z]
+        zyx_gapped_z = zyx_gapped[zyx_gapped[:, 0] == z]
+
+        # bridge gap
+        zyx_bridged_z = bridge_gaps_2d(
+            zyx_cand_z, zyx_gapped_z,
+            orients_cand=orients_cand_z,
+            r_thresh=r_thresh
+        )
+        zyx_bridged.append(zyx_bridged_z)
+
+    # bridged points: concat, sort
+    zyx_bridged = np.concatenate(zyx_bridged, axis=0)
+    return zyx_bridged
+
+def match_candidate_to_ref(zyx_cand, zyx_ref, guide, r_thresh):
+    """ Match the candidate image to the reference one.
+    
+    First match by spatial and orientational closeness.
+    Then bridge the gaps.
+    The result is a subset of candidate points that match the reference.
+
+    Args:
+        zyx_cand (np.ndarray): Candidate points, with shape=(npts_cand,3). Assumed sorted.
+        zyx_ref (np.ndarray): Reference points, with shape=(npts_gapped,3).
+        guide (np.ndarray): Guideline points which are sorted, with shape=(npts_guide,3).
+        r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
+
+    Returns:
+        zyx_match (np.ndarray): Matched points, with shape=(npts_match,3). Sorted by guide.
+    """
+    # match by spatial-orientational closeness
+    
+    # setup shape, add margin in high boundary
+    _, range_high, _ = pcdutil.points_range(
+        np.concatenate([zyx_cand, zyx_ref], axis=0)
+    )
+    margin_high = np.ceil([1, 2*r_thresh, 2*r_thresh])
+    shape = (range_high + margin_high).astype(int)
+
+
+    # convert points to pixels
+    Bcand = pcdutil.points2pixels(zyx_cand, shape)
+    _, Ocand = features.ridgelike3d(Bcand, sigma=r_thresh)
+    Bref = pcdutil.points2pixels(zyx_ref, shape)
+    _, Oref = features.ridgelike3d(Bref, sigma=r_thresh)
+    
+    # match
+    Bclose = match_by_closeness(Bcand, Ocand, Bref, Oref, sigma_tv=r_thresh)
+    zyx_close = pcdutil.pixels2points(Bclose)
+
+
+    # bridge gaps
+
+    # sort points
+    zyx_cand = pcdutil.sort_pts_by_guide_3d(zyx_cand, guide)
+    # extract orientation
+    orients_cand = Ocand[tuple(zyx_cand.T)]
+    
+    # bridge
+    zyx_match = bridge_gaps_3d(
+        zyx_cand, zyx_close, orients_cand, r_thresh=r_thresh
+    )
+    # sort
+    zyx_match = pcdutil.sort_pts_by_guide_3d(zyx_match, guide)
+    return zyx_match
