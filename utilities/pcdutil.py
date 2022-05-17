@@ -22,7 +22,7 @@ __all__ = [
     # graph
     "neighbors_graph", "graph_components", "neighboring_components",
     # sorting
-    "sort_pcds_by_ref", "sort_pts_by_guide"
+    "sort_pcds_by_ref", "sort_pts_by_guide_2d", "sort_pts_by_guide_3d"
 ]
 
 
@@ -563,8 +563,7 @@ def sort_pcds_by_ref(pts_arr, pt_ref):
 
     return pts_sorted
 
-
-def sort_pts_by_guide(pts, guide):
+def sort_pts_by_guide_2d(pts, guide):
     """ Sort 2d points by guide line.
 
     Guide line points are assumed sorted.
@@ -572,16 +571,16 @@ def sort_pts_by_guide(pts, guide):
     Return index of sorted points.
 
     Args:
-        pts (np.ndarray): 2d points to be sorted, with shape=(npts,2).
-        guide (np.ndarray): 2d guide line points which are sorted, with shape=(npts_guide,2).
+        pts (np.ndarray): Points to be sorted, with shape=(npts,dim).
+        guide (np.ndarray): Guideline points which are sorted, with shape=(npts_guide,dim).
 
     Returns:
         idx_pts (np.ndarray): Index of sorted points, with shape=(npts,).
             pts[idx_pts] gives sorted points.
     """
     # setup array formats
-    guide = points_deduplicate(guide)
     pts = np.asarray(pts, dtype=int)
+    guide = points_deduplicate(guide)
 
     # query dist and idx2guide using KDTree
     kdtree = sp.spatial.KDTree(guide)
@@ -601,3 +600,33 @@ def sort_pts_by_guide(pts, guide):
     # get the sorted index for points
     idx_pts = df["idx_pts"].values.astype(int)
     return idx_pts
+
+def sort_pts_by_guide_3d(zyx, guide):
+    """ Sort 3d points by guidelines slice by slice.
+
+    Guide line points are assumed sorted in each xy-slice.
+    Sort the points in each slice first by the index of their nearest guide then by the distance.
+    Return sorted points.
+
+    Args:
+        zyx (np.ndarray): 3d points, with shape=(npts,3). Each point is [zi,yi,xi].
+        guide (np.ndarray): 3d guideline points sorted in each slice, with shape=(npts_guide,3). Each point is [zi,yi,xi].
+
+    Returns:
+        zyx_sorted (np.ndarray): Points sorted in each slice, with shape=(npts,3).
+    """
+    # setup array formats
+    zyx = np.asarray(zyx, dtype=int)
+    guide = np.asarray(guide, dtype=int)
+
+    # sort points slice by slice
+    zyx_sorted = []
+    for z in sorted(np.unique(zyx[:, 0])):
+        zyx_i = zyx[zyx[:, 0]==z]
+        guide_i = guide[guide[:, 0]==z]
+        idx_i = sort_pts_by_guide_2d(zyx_i, guide_i)
+        zyx_sorted.append(zyx_i[idx_i])
+    
+    # collect slices
+    zyx_sorted = np.concatenate(zyx_sorted, axis=0)
+    return zyx_sorted
