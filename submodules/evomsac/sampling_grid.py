@@ -10,8 +10,8 @@ class Grid:
         grid.generate_grid()
 
     Attributes:
-        uv_size: uv_size[(iu,iv)] is the number of elements in the grid.
-        uv_zyx: uv_zyx[(iu,iv)] is the list of [z,y,x] of points in the grid.
+        uv_size: uv_size[(iu,iv)] is the number of points in the grid.
+        uv_zyx: uv_zyx[(iu,iv)] is the array of point coordinates (in [z,y,x]) in the grid.
     """
     def __init__(self, zyx, guide, shrink_sidegrid=0.2, nz_eachu=1):
         """ Initialization.
@@ -85,7 +85,7 @@ class Grid:
         """ Generate uv_size, uv_zyx for grids.
 
         Returns:
-            self (Grid): Self object with set number of grids.   
+            self (Grid): Self object whose grids are set.   
         """
         # info of each bin[iu]: indexes of z, coordinates
         self.ubin_iz = self.get_ubin_iz()

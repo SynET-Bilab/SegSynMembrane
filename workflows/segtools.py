@@ -18,7 +18,7 @@ class SegBase:
     attribute formats:
         binary images: save coordinates (utils.pixels2points, self.coord_to_binary)
         sparse images (O): save as sparse (utils.sparsify3d, utils.densify3d)
-        MOOPop: save state (MOOPop().dump_state, MOOPop(state=state))
+        MOOPop: save state (MOOPop().save_state, MOOPop(state=state))
     """
     def __init__(self):
         self.steps = {}
@@ -310,10 +310,10 @@ class SegSteps:
         # fit surface
         # indiv = mpop.select_by_hypervolume(mpop.log_front[-1])
         indiv = mpop.log_front[-1][0]
-        pts_net = mpop.mootools.get_coord_net(indiv)
+        pts_net = mpop.mootools.get_coords_net(indiv)
         nu_eval = np.max(utils.wireframe_length(pts_net, axis=0))
         nv_eval = np.max(utils.wireframe_length(pts_net, axis=1))
-        zyx_sac, _ = mpop.mootools.fit_surface_eval(
+        zyx_sac, _ = mpop.mootools.fit_surface(
             indiv,
             u_eval=np.linspace(0, 1, factor_eval*int(nu_eval)),
             v_eval=np.linspace(0, 1, factor_eval*int(nv_eval))
@@ -331,7 +331,7 @@ class SegSteps:
         Returns: mpopz
             mpopz: state of mpop
         """
-        mpopz = mpop.dump_state()
+        mpopz = mpop.save_state()
         if not save_zyx:
             mpopz["mootools_config"]["zyx"] = None
         return mpopz

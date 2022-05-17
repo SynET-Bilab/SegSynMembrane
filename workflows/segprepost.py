@@ -15,7 +15,7 @@ class SegPrePost(SegBase):
     attribute formats:
         binary images: save coordinates (utils.pixels2points, utils.points2pixels)
         sparse images (O): save as sparse (utils.sparsify3d, utils.densify3d)
-        MOOPop: save state (MOOPop().dump_state, MOOPop(state=state))
+        MOOPop: save state (MOOPop().save_state, MOOPop(state=state))
     
     workflow:
         see bin/segprepost_run.py

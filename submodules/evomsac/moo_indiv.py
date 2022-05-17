@@ -3,9 +3,7 @@
 
 import numpy as np
 import deap, deap.base, deap.tools
-
 from etsynseg import pcdutil, bspline
-from .grid import Grid
 
 
 class MOOFitness(deap.base.Fitness):
@@ -18,7 +16,11 @@ class MOOFitness(deap.base.Fitness):
 class MOOIndiv(list):
     """ DEAP individuals.
 
-    Each instance contains sampling points on the grid, [[pt_u0v0, pt_u0v1,...],[pt_u1v0,...],...].
+    Each instance contains indexes of sampling points on the grids,
+    [[i_u0v0,i_u0v1,...],[i_u1v0,i_u1v0,...],...].
+
+    Attributes:
+        fitness (MOOFitness): 
     """
     def __init__(self, iterable=()):
         super().__init__(iterable)
@@ -29,102 +31,120 @@ class MOOTools:
     """ Tools for individuals.
 
     Examples:
-        # setup
-        mootools = MOOTools(zyx, n_vxy, n_uz, nz_eachu, degree, fitness_rthresh)
+        # init
+        mtools = MOOTools().init_from_grid(grid, fitness_rthresh)
+        config = mtools.save_config()
+        mtools_new = MOOTools().init_from_confiv(config)
         # generate individuals
-        indiv = mootools.indiv_random()
+        indiv = mtools.gen_random()
         # evolution
-        mootools.mutate(indiv)
-        indiv.fitness.values = mootools.evaluate(indiv)
+        mtools.mutate(indiv)
+        indiv.fitness.values = mtools.evaluate(indiv)
         # save/load
-        config = mootools.get_config()
-        mootools_new = MOOTools(config=config)
-        sample_list, fitness = mootools.to_list_fitness(indiv)
-        indiv = mootools.from_list_fitness(sample_list, fitness)
-        # surface fut
-        zyx_fit, surf_fit = mootools.fit_surface_eval(indiv, u_evals, v_evals)
+        sample_list, fitness = mtools.indiv_to_simple(indiv)
+        indiv = mtools.indiv_from_simple(sample_list, fitness)
+        # evaluation
+        zyx_fit, surf_fit = mtools.fit_surface(indiv, u_evals, v_evals)
+        fitness = mtools.evaluate(indiv, u_evals, v_evals)
     
+    Attributes:
+        zyx (np.ndarray): 3d points to be fit. Shape=(npts,3), and each point is [zi,yi,xi].
+        n_uz, n_vxy (int): The number of grids in u(z),v(xy) directions.
+        uv_size: uv_size[(iu,iv)] is the number of points in the grid.
+        uv_zyx: uv_zyx[(iu,iv)] is the array of point coordinates (in [z,y,x]) in the grid.
+        fitness_rthresh (float): Distance threshold for fitness calculation. Beyond which the loss becomes constant.
+
     Methods:
+        # init
+        init_from_grid, init_from_config
         # io
-        get_config, to_list_fitness, from_list_fitness
+        save_config, indiv_to_simple, indiv_from_simple
+        # get coordinates
+        flatten_net, get_coords_net, get_coords_flat
         # indiv generation
-        indiv_random, indiv_uniform, indiv_middle
+        gen_random, gen_uniform, gen_middle
         # operations
         mutate
-        # get coordinates
-        get_coord_net, flatten_net
         # evaluate
-        fit_surface_eval, calc_fitness, evaluate
+        fit_surface, calc_fitness, evaluate
     """
-    def __init__(self, zyx=None, n_uz=3, n_vxy=3, nz_eachu=1, shrink_sidegrid=1, fitness_rthresh=1, config=None):
-        """ Initialization.
+    #=========================
+    # init, save/load
+    #=========================
+    
+    def __init__(self):
+        """ Actual init is done by self.init_from_grid or self.init_from_config.
+        """
+        pass
+    
+    def init_from_grid(self, grid, fitness_rthresh):
+        """ Initialize attributes from Grid object.
 
         Args:
-            zyx (np.ndarray): Points with shape=(npts,3).
-            n_vxy, n_uz (int): The number of sampling grids in v(xy) and u(z) directions.
-            nz_eachu (int): The number of z-direction slices contained in each grid.
-            shrink_sidegrid (float): Grids close to the sides in xy are shrinked to this ratio.
-                A smaller ratio facilitates the coverage of sampling.
-            fitness_rthresh (float): Distance threshold for fitness evaluation. Points outside this threshold contribute constant loss.
-            config (dict): Config from self.get_config().
+            grid (Grid): The grid object. See etsynseg.evomsac.Grid.
+            fitness_rthresh (float): Distance threshold for fitness calculation.
+
+        Returns:
+            self (MOOTools): Self object whose attributes are set.
         """
-        # read config
-        # if config is provided as args
-        if zyx is not None:
-            self.zyx = zyx
-            self.n_vxy = n_vxy
-            self.n_uz = n_uz
-            self.nz_eachu = nz_eachu
-            self.shrink_sidegrid = shrink_sidegrid
-            self.fitness_rthresh = fitness_rthresh
-        # if config is provided as a dict
-        elif config is not None:
-            self.zyx = config["zyx"]
-            self.n_vxy = config["n_vxy"]
-            self.n_uz = config["n_uz"]
-            self.nz_eachu = config["nz_eachu"]
-            self.shrink_sidegrid = config["shrink_sidegrid"]
-            self.fitness_rthresh = config["fitness_rthresh"]
-        else:
-            raise ValueError("Should provide either zyx or config.")
+        self.zyx = grid.zyx
+        self.n_uz = grid.n_uz
+        self.n_vxy = grid.n_vxy
+        self.uv_size = grid.uv_size
+        self.uv_zyx = grid.uv_zyx
+        self.fitness_rthresh = fitness_rthresh
+        self.init_common()
+        return self
 
-        # image shape, grid
-        self.grid = Grid(
-            self.zyx,
-            n_vxy=self.n_vxy, n_uz=self.n_uz,
-            nz_eachu=self.nz_eachu,
-            shrink_sidegrid=self.shrink_sidegrid
-        )
-        # update nv, nu from grid: where there are additional checks
-        self.n_vxy = self.grid.n_vxy
-        self.n_uz = self.grid.n_uz
+    def init_from_config(self, config):
+        """ Initialize attributes from config.
 
-        # fitness
+        Args:
+            config (dict): Config generated by self.save_config. Contains attributes.
+
+        Returns:
+            self (MOOTools): Self object whose attributes are set.
+        """
+        self.zyx = config["zyx"]
+        self.n_uz = config["n_uz"]
+        self.n_vxy = config["n_vxy"]
+        self.uv_size = config["uv_size"]
+        self.uv_zyx = config["uv_zyx"]
+        self.fitness_rthresh = config["fitness_rthresh"]
+        self.init_common()
+        return self
+
+    def init_common(self):
+        """ Common initializations in addition to the attributes.
+        """
         # bspline
         self.surf_meta = bspline.Surface(degree=2)
         # pointcloud
         self.pcd = pcdutil.points2pointcloud(
             pcdutil.points_deduplicate(self.zyx)
         )
-    
-    def get_config(self):
-        """ Get config as dict. Convenient for dumping and loading.
+
+    def save_config(self):
+        """ Convert attributes to dict.
+        
+        Convenient for dumping and loading.
 
         Returns:
-            config (dict): {zyx,shape,n_vxy,n_uz,nz_eachu}.
+            config (dict): Dict of attributes.
+                {zyx,n_vxy,n_uz,uv_size,uv_zyx,fitness_rthresh}.
         """
         config = dict(
             zyx=self.zyx,
-            n_vxy=self.n_vxy,
             n_uz=self.n_uz,
-            nz_eachu=self.nz_eachu,
-            shrink_sidegrid=self.shrink_sidegrid,
+            n_vxy=self.n_vxy,
+            uv_size=self.uv_size,
+            uv_zyx=self.uv_zyx,
             fitness_rthresh=self.fitness_rthresh
         )
         return config
 
-    def to_list_fitness(self, indiv):
-        """ Convert individual to sample list and fitness. For easier dumping and loading.
+    def indiv_to_simple(self, indiv):
+        """ Convert individual to simple formats for easier dumping and loading.
 
         Args:
             indiv (MOOIndiv): Individual.
@@ -137,7 +157,7 @@ class MOOTools:
         fitness = indiv.fitness.values
         return sample_list, fitness
 
-    def from_list_fitness(self, sample_list, fitness=None):
+    def indiv_from_simple(self, sample_list, fitness=None):
         """ Generate individual from sample list and fitness.
 
         Args:
@@ -152,7 +172,54 @@ class MOOTools:
             indiv.fitness.values = fitness
         return indiv
 
-    def indiv_random(self):
+    #=========================
+    # conversion: indiv, points
+    #=========================
+
+    def flatten_net(self, net):
+        """ Flatten net-shaped sampling points.
+        
+        Args:
+            net (np.ndarray): Points with shape=(n_uz, n_vxy, 3).
+        Returns: flat
+            flat: shape=(n_uz*n_vxy, 3)
+        """
+        return net.reshape((-1, 3))
+
+    def get_coords_net(self, indiv):
+        """ Get sample coordinates in a net-shaped form from individual.
+
+        Args:
+            indiv (MOOIndiv): Individual.
+
+        Returns:
+            zyx_net (np.ndarray): Sample points arranged in a net shape, with shape=(n_uz,n_vxy,3).
+        """
+        zyx_net = np.zeros((self.n_uz, self.n_vxy, 3))
+        for iu in range(self.n_uz):
+            for iv in range(self.n_vxy):
+                lb_i = indiv[iu][iv]
+                zyx_net[iu][iv] = self.uv_zyx[(iu, iv)][lb_i]
+        return zyx_net
+
+    def get_coords_flat(self, indiv):
+        """ Get sample coordinates in a flattened form from individual.
+
+        Args:
+            indiv (MOOIndiv): Individual.
+
+        Returns:
+            zyx_flat (np.ndarray): Sample points with shape=(n_uz*n_vxy,3).
+        """
+        zyx_net = self.get_coords_net(indiv)
+        zyx_flat = self.flatten_net(zyx_net)
+        return zyx_flat
+
+    #=========================
+    # indiv generation
+    #=========================
+    
+    def gen_random(self):
         """ Generate individual with random sampling in each grid.
 
         Returns:
@@ -162,12 +229,12 @@ class MOOTools:
         for iu in range(self.n_uz):
             indiv_u = []
             for iv in range(self.n_vxy):
-                indiv_uv = np.random.randint(self.grid.uv_size[(iu, iv)])
+                indiv_uv = np.random.randint(self.uv_size[(iu, iv)])
                 indiv_u.append(indiv_uv)
             indiv.append(indiv_u)
         return indiv
 
-    def indiv_uniform(self, index=0):
+    def gen_uniform(self, index=0):
         """ Generate individual with uniform index in each grid.
 
         Args:
@@ -180,12 +247,12 @@ class MOOTools:
         for iu in range(self.n_uz):
             indiv_u = []
             for iv in range(self.n_vxy):
-                indiv_uv = np.clip(index, 0, self.grid.uv_size[(iu, iv)]-1)
+                indiv_uv = np.clip(index, 0, self.uv_size[(iu, iv)]-1)
                 indiv_u.append(indiv_uv)
             indiv.append(indiv_u)
         return indiv
     
-    def indiv_middle(self):
+    def gen_middle(self):
         """ Generate individual with the middle point in each grid.
 
         Returns:
@@ -195,13 +262,17 @@ class MOOTools:
         for iu in range(self.n_uz):
             indiv_u = []
             for iv in range(self.n_vxy):
-                size_uv = self.grid.uv_size[(iu, iv)]
+                size_uv = self.uv_size[(iu, iv)]
                 index = int((size_uv-1)/2)
                 indiv_uv = np.clip(index, 0, size_uv-1)
                 indiv_u.append(indiv_uv)
             indiv.append(indiv_u)
         return indiv
 
+    #=========================
+    # mutation, evaluation
+    #=========================
+    
     def mutate(self, indiv):
         """ Mutate individual in-place. Randomly resample one of the grids.
 
@@ -212,48 +283,23 @@ class MOOTools:
         # select one grid to mutate
         iu = np.random.randint(0, self.n_uz)
         iv = np.random.randint(0, self.n_vxy)
-        # randomly select one sample from the rest
-        indiv[iu][iv] = np.random.randint(self.grid.uv_size[(iu, iv)])
-
-    def get_coord_net(self, indiv):
-        """ Get coordinates from individual in a net-shaped form.
-
-        Args:
-            indiv (MOOIndiv): Individual.
-
-        Returns:
-            zyx_net (np.ndarray): Sample points arranged in a net shape, with shape=(n_uz,n_vxy,3).
-        """
-        zyx_net = np.zeros((self.n_uz, self.n_vxy, 3))
-        for iu in range(self.n_uz):
-            for iv in range(self.n_vxy):
-                lb_i = indiv[iu][iv]
-                zyx_net[iu][iv] = self.grid.uv_zyx[(iu, iv)][lb_i]
-        return zyx_net
-    
-    def flatten_net(self, net):
-        """ Flatten net-shaped sampling points.
-        
-        Args:
-            net (np.ndarray): Points with shape=(n_uz, n_vxy, 3).
-        Returns: flat
-            flat: shape=(n_uz*n_vxy, 3)
-        """
-        return net.reshape((-1, 3))
+        # randomly select one sample from the grid
+        indiv[iu][iv] = np.random.randint(self.uv_size[(iu, iv)])
   
-    def fit_surface_eval(self, indiv, u_eval=None, v_eval=None):
+    def fit_surface(self, indiv, u_eval=None, v_eval=None):
         """ Fit surface from individual, evaluate at net.
 
         Args:
             indiv (MOOIndiv): Individual.
-            u_eval, v_eval (np.ndarray): 1d arrays of u(z) and v(xy) to evaluate at, which range from [0,1]. Defaults to the max length of wireframes.
+            u_eval, v_eval (np.ndarray): 1d arrays of u(z) and v(xy) to evaluate at, which range from [0,1].
+                Defaults to sample the max length of wireframes.
 
         Returns:
             zyx_fit (np.ndarray): Evaluated points on the fitted surface, with shape=(npts,3).
             surf_fit (splipy.surface.Surface): Fitted surface.
         """
         # fit
-        sample_net = self.get_coord_net(indiv)
+        sample_net = self.get_coords_net(indiv)
         surf_fit = self.surf_meta.interpolate(sample_net)
 
         # set eval points
@@ -265,8 +311,7 @@ class MOOTools:
             nv_eval = int(np.max(pcdutil.wireframe_length(sample_net, axis=1)))
             v_eval = np.linspace(0, 1, nv_eval)
 
-        # convert fitted surface to binary image
-        # evaluate at dense points
+        # convert fitted surface to points
         zyx_fit = self.flatten_net(surf_fit(u_eval, v_eval))
         return zyx_fit, surf_fit
 
@@ -279,22 +324,20 @@ class MOOTools:
         Returns:
             fitness (float): Fitness of the individual.
         """
-        # deduplicate to reduce the number of points
-        zyx_fit = np.round(zyx_fit).astype(int)
-        zyx_fit = np.unique(zyx_fit, axis=0)
-        # convert to pointcloud
+        # deduplicate, convert to pointcloud
+        zyx_fit = pcdutil.points_deduplicate(zyx_fit)
         pcd_fit = pcdutil.points2pointcloud(zyx_fit)
         
         # coverage of zyx by fit
         dist = np.asarray(self.pcd.compute_point_cloud_distance(pcd_fit))
         fitness_coverage = np.sum(np.clip(dist, 0, self.fitness_rthresh)**2)
 
-        # extra pixels of fit compared with zyx
+        # excess pixels of fit compared with zyx
         dist_fit = np.asarray(pcd_fit.compute_point_cloud_distance(self.pcd))
-        fitness_extra = np.sum(dist_fit>self.fitness_rthresh)
+        fitness_excess = np.sum(dist_fit>self.fitness_rthresh)
 
         # moo fitness
-        fitness = (fitness_coverage, fitness_extra)
+        fitness = (fitness_coverage, fitness_excess)
         return fitness
 
     def evaluate(self, indiv, u_eval=None, v_eval=None):
@@ -302,12 +345,12 @@ class MOOTools:
 
         Args:
             indiv (MOOIndiv): Individual.
-            u_eval, v_eval (np.ndarray): 1d arrays of u(z) and v(xy) to evaluate at, which range from [0,1]. Defaults to the max length of wireframes.
+            u_eval, v_eval (np.ndarray): 1d arrays of u(z) and v(xy) to evaluate at, which range from [0,1].
+                The default number of points corresponds to the max length of wireframes.
 
         Returns:
             fitness (float): Fitness of the individual.
         """
-        zyx_fit, _ = self.fit_surface_eval(indiv, u_eval=u_eval, v_eval=v_eval)
+        zyx_fit, _ = self.fit_surface(indiv, u_eval=u_eval, v_eval=v_eval)
         fitness = self.calc_fitness(zyx_fit)
         return fitness
-

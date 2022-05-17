@@ -1,6 +1,6 @@
 
 # auxiliary functions
-from .grid import Grid
+from .sampling_grid import Grid
 
 # multi-objective optimization
 from .moo_indiv import MOOFitness, MOOIndiv, MOOTools
