@@ -9,6 +9,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import deap, deap.base, deap.tools
 
+from etsynseg import pcdutil
 from .moo_indiv import MOOTools
 
 class MOOPop:
@@ -34,7 +35,10 @@ class MOOPop:
         pop_size (int): Population size.
         pop (list of MOOIndiv): List of individuals in the current generation.
         log_front (list of list of MOOIndiv): Log of Pareto fronts in past generations.
+            Each Pareto front consists of a number of individuals.
         log_indicator (list of dict): Log of indicators (coverage,change_ratio) in past generations.
+            coverage: the coverage loss.
+            change_ratio: the ratio of one-step change in the coverage, 1-current_coverage/prev_coverage.
 
     Methods:
         # setup
@@ -210,11 +214,8 @@ class MOOPop:
         self.log_front = []
         self.log_indicator = []
 
-    def logging_pop(self, n_back=None):
-        """ Log front and indicator.
-
-        Args:
-            n_back (int): Consider this number of previous steps when calculating indicator changes.
+    def logging_pop(self):
+        """ Log log_front and log_indicator.
         """
         # pareto front
         front = self.toolbox.sort_fronts(self.pop, self.pop_size, first_front_only=True)[0]
@@ -225,20 +226,16 @@ class MOOPop:
         self.log_front.append([self.toolbox.clone(indiv) for indiv in front])
         
         # log indicators
-        # calc coverage
+        # calc coverage loss
         coverage = front[0].fitness.values[0]
-        indicator = {"coverage": coverage}
-        self.log_indicator.append(indicator)
-        # calc change_ratio
-        if (n_back is None) or (len(self.log_indicator) < n_back):
+        # calc change_ratio between curr and prev coverages
+        if len(self.log_indicator) < 1:
             change_ratio = np.nan
         else:
-            ind_nback = [ind["coverage"] for ind in self.log_indicator[-n_back:]]
-            if np.max(ind_nback) <= 0:
-                change_ratio = 0
-            else:
-                change_ratio = 1 - np.mean(ind_nback) / np.max(ind_nback)
-        self.log_indicator[-1]["change_ratio"] = change_ratio
+            change_ratio = 1 - coverage / self.log_indicator[-1]["coverage"]
+        # collect indicators
+        indicator = {"coverage": coverage, "change_ratio": change_ratio}
+        self.log_indicator.append(indicator)
 
     def evaluate_pop(self, pop):
         """ Evaluate population. Assign fitness to individuals.
@@ -260,7 +257,7 @@ class MOOPop:
     def evolve_one_gen(self, variation):
         """ Evolve for one generation. Perform either crossover or mutation.
         
-        Updates self.pop, self.log_stats, self.log_front.
+        Updates self.pop, self.log_front, self.log_indicator.
 
         Args:
             variation (int): Variation to perform. 0 for crossover, 1 for mutation.
@@ -291,14 +288,14 @@ class MOOPop:
         # select next generation
         self.pop = self.toolbox.select_best(self.pop+offspring, self.pop_size)
 
-    def evolve(self, var_cycle=(0, 1), tol=(0.01, 10), max_iter=200):
+    def evolve(self, var_cycle=(0, 1), tol=(0.005, 10), max_iter=200):
         """ Evolve multiple steps.
 
-        Updates self.pop, self.log_stats, self.log_front.
+        Updates self.pop, self.log_front, self.log_indicators.
 
         Args:
             var_cycle (tuple): Sequence of variations to cycle. 0 for crossover, 1 for mutation.
-            tol (2-tuple): (tol_value, n_back). Terminate if change_ratio < tol_value within the last n_back steps.
+            tol (2-tuple): (tol_value, n_back). Terminate if max change_ratio within the last n_back steps < tol_value.
             max_iter (int): The max number of generations.
         """
         # setup: pool, map
@@ -306,14 +303,18 @@ class MOOPop:
         self.register_map(pool.map)
 
         # run
-        for _, var in zip(range(max_iter), itertools.cycle(var_cycle)):
+        for i, var in zip(range(max_iter), itertools.cycle(var_cycle)):
             # evolve
             self.evolve_one_gen(variation=var)
-            self.logging_pop(n_back=tol[1])
+            self.logging_pop()
             
             # termination criteria
-            if self.log_indicator[-1]["change_ratio"] < tol[0]:
-                break
+            if len(self.log_indicator) > tol[1]:
+                max_change = np.max([ind["change_ratio"]
+                    for ind in self.log_indicator[-tol[1]:]
+                ])
+                if max_change < tol[0]:
+                    break
 
         # clean-up: map, pool
         self.register_map()
@@ -358,12 +359,12 @@ class MOOPop:
                 *np.array(front).T,
                 marker="o", alpha=0.5, c=cmapper.to_rgba(i)
             )
-        axes[0].set(xlabel=f"fitness: coverage", ylabel=f"fitness: excess")
+        axes[0].set(xlabel=f"fitness: coverage loss", ylabel=f"fitness: excess")
 
         # plot indicators
         # indicator
         axes[1].plot([ind["coverage"] for ind in log_indicator], c="C0")
-        axes[1].set(xlabel="generation", ylabel="coverage")
+        axes[1].set(xlabel="generation", ylabel="coverage loss")
         axes[1].tick_params(axis='y', labelcolor="C0")
         # change ratio
         axes1_twin = axes[1].twinx()
@@ -377,7 +378,7 @@ class MOOPop:
         return fig, axes
     
     def fit_surface_pop(self, pop, u_eval=None, v_eval=None):
-        """ Fit surfaces of individuals.
+        """ Fit surface of individuals.
 
         Args:
             pop (list of MOOIndiv): Individuals to fit.
@@ -396,3 +397,29 @@ class MOOPop:
             zyx_sample = self.mootools.get_coords_flat(indiv)
             zyx_arr.extend([zyx_sample, zyx_surf])
         return zyx_arr
+
+    def fit_surface_best(self, indiv=None):
+        """ Fit surface of the best individual.
+
+        Args:
+            indiv (MOOIndiv): Individual to fit.
+        
+        Returns:
+            zyx_fit (np.ndarray): Points of the fitted surface, with shape=(npts,3).
+        """
+        # defaults to the best indiv in the front
+        if indiv is None:
+            indiv = self.log_front[-1][0]
+        
+        # fit surface
+        pts_net = self.mootools.get_coords_net(indiv)
+        nu_eval = int(np.max(pcdutil.wireframe_length(pts_net, axis=0)))
+        nv_eval = int(np.max(pcdutil.wireframe_length(pts_net, axis=1)))
+        zyx_fit, _ = self.mootools.fit_surface(
+            indiv,
+            u_eval=np.linspace(0, 1, 2*nu_eval),
+            v_eval=np.linspace(0, 1, 2*nv_eval)
+        )
+        # deduplicate
+        zyx_fit = pcdutil.points_deduplicate(zyx_fit)
+        return zyx_fit

@@ -1,8 +1,6 @@
 
 """ MOOSAC: RANSAC + Multi-objective optimization for robust fitting of surface to points.
 """
-import numpy as np
-from etsynseg import pcdutil
 from .sampling_grid import Grid
 from .moo_indiv import MOOFitness, MOOIndiv, MOOTools
 from .moo_pop import MOOPop
@@ -16,7 +14,7 @@ def robust_fitting(
         zyx, guide,
         len_grids=(50, 100), shrink_sidegrid=0.25,
         fitness_rthresh=1,
-        pop_size=4, tol=(0.01, 10), max_iter=200
+        pop_size=4, tol=(0.005, 10), max_iter=200
     ):
     """ Robust fitting of a surface to points.
 
@@ -63,18 +61,8 @@ def robust_fitting(
     mpop.init_pop()
     mpop.evolve(tol=tol, max_iter=max_iter)
 
-    # get the best individual
-    indiv_best = mpop.log_front[-1][0]
-    pts_net = mpop.mootools.get_coords_net(indiv_best)
-    # fit surface
-    nu_eval = int(np.max(pcdutil.wireframe_length(pts_net, axis=0)))
-    nv_eval = int(np.max(pcdutil.wireframe_length(pts_net, axis=1)))
-    zyx_fit, _ = mpop.mootools.fit_surface(
-        indiv_best,
-        u_eval=np.linspace(0, 1, 2*nu_eval),
-        v_eval=np.linspace(0, 1, 2*nv_eval)
-    )
-    zyx_fit = pcdutil.points_deduplicate(zyx_fit)
+    # get the best individual and fit surface
+    zyx_fit = mpop.fit_surface_best(indiv=mpop.log_front[-1][0])
 
     # get mpop state
     mpop_state = mpop.save_state()
