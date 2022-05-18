@@ -23,7 +23,4 @@ from .submodules import features, nonmaxsup, dtvoting
 from .submodules import detecting, components
 from .submodules import moosac, matching, meshrefine
 
-# workflows
-# from etsynseg import workflows
-
 from .submodules import membranogram

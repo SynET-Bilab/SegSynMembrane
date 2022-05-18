@@ -6,7 +6,7 @@ import multiprocessing.dummy
 from etsynseg import imgutil, pcdutil
 
 __all__ = [
-    "ridgelike2d", "ridgelike3d", "calc_orientation"
+    "ridgelike2d", "ridgelike3d", "points_orientation"
 ]
 
 def ridgelike2d(I, sigma):
@@ -69,7 +69,7 @@ def ridgelike3d(I, sigma):
     pool.close()
     return S, O
 
-def calc_orientation(zyx, sigma):
+def points_orientation(zyx, sigma):
     """ Calculate the orientation of points.
 
     Args:

@@ -1,6 +1,7 @@
 """ Utilities for dealing with imod model.
 """
 
+import pathlib
 import numpy as np
 import scipy as sp
 import pandas as pd
@@ -388,13 +389,13 @@ def region_surround_contour(zyx, nzyx, width, cut_end=True):
 #=========================
 
 def regions_from_guide(guide_mod, width, normal_ref=None, interp_degree=2, cut_end=True):
-    """ Convert imod model with guide lines to regions surrounding it.
+    """ Convert imod model with guiding lines to regions surrounding it.
 
     First interpolate the model along z and xy, to make dense contours.
     Then generate the region surrounding the contours.
 
     Args:
-        guide_mod (np.ndarray): Model points of guide lines, ordered in each z.
+        guide_mod (np.ndarray): Model points of guiding lines, ordered in each z.
         width (float or 2-tuple): Width to extend in normal's plus and minus direction, (width+,width-), or a float for equal widths.
         interp_degree (int): Degree for bspline interpolation in the xy direction.
         normal_ref (np.ndarray or None): Reference point 'inside' for orienting the normals, [z_ref,y_ref,x_ref].
@@ -402,7 +403,7 @@ def regions_from_guide(guide_mod, width, normal_ref=None, interp_degree=2, cut_e
         cut_end (bool): Whether the region near the endpoints is round-headed (False) or will be cut beyond their normals (True).
 
     Returns:
-        guide (np.ndarray): Points of the interpolated guide lines, with shape=(npts,3).
+        guide (np.ndarray): Points of the interpolated guiding lines, with shape=(npts,3).
         bound_plus (np.ndarray): Points of the bounding region in the normal+ direction, with shape=(npts_plus,3).
         bound_minus (np.ndarray): Points of the bounding region in the normal- direction, with shape=(npts_minus,3).
         normal_ref (np.ndarray): Reference point 'inside' for orienting the normals.
@@ -434,15 +435,15 @@ def regions_from_guide(guide_mod, width, normal_ref=None, interp_degree=2, cut_e
 def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degree=2):
     """ Read tomo and model.
 
-    Read model: object 1 for guide lines, object 2 for reference point.
-    Generate region mask surrounding the guide lines.
+    Read model: object 1 for guiding lines, object 2 for reference point.
+    Generate region mask surrounding the guiding lines.
     Decide clip range from the region mask.
     Read tomo, clip.
 
     Args:
         tomo_file (str): Filename of tomo mrc.
         model_file (str): Filename of imod model.
-        extend_nm (float): Extend from guide lines by this width (in nm) to get the bound.
+        extend_nm (float): Extend from guiding lines by this width (in nm) to get the bound.
         pixel_nm (float): Pixel size in nm. If None then read from tomo.
         interp_degree (int): Degree of bspline interpolation of the model.
             2 for most cases.
@@ -455,9 +456,15 @@ def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degr
             pixel_nm: pixel size in nm
             model: model DataFrame, in the original coordinates
             clip_low: [z,y,x] at the lower corner for clipping
-            mask_bound, guide, mask_plus, mask_minus: zyx-points in the masks generated from the guide lines
+            mask_bound, guide, mask_plus, mask_minus: zyx-points in the masks generated from the guiding lines
             normal_ref: reference point inside for normal orientation
     """
+    # check file existence
+    if not pathlib.Path(tomo_file).is_file():
+        raise FileNotFoundError(f"Tomo file not found: {tomo_file}")
+    if not pathlib.Path(model_file).is_file():
+        raise FileNotFoundError(f"Model file not found: {model_file}")
+
     # read tomo
     I, pixel_A = io.read_tomo(tomo_file, mode="mmap")
     # get pixel size in nm
@@ -466,18 +473,18 @@ def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degr
 
     # read model
     model = io.read_model(model_file)
-    # object: guide lines
+    # object: guiding lines
     if 1 in model["object"].values:
         model_guide = model[model["object"] == 1][['z', 'y', 'x']].values
     else:
-        raise ValueError(f"The object for guide lines (id=1) is not found in the model file.")
+        raise ValueError(f"The object for guiding lines (id=1) is not found in the model file.")
     # object: normal ref point
     if 2 in model["object"].values:
         normal_ref = model[model["object"] == 2][['z', 'y', 'x']].values[0]
     else:
         normal_ref = None
 
-    # generate bounding regions from guide line
+    # generate bounding regions from guiding line
     guide, bound_plus, bound_minus, normal_ref = regions_from_guide(
         model_guide,
         width=extend_nm/pixel_nm,

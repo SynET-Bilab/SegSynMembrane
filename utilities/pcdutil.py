@@ -565,7 +565,7 @@ def sort_pcds_by_ref(pts_arr, pt_ref):
     return pts_sorted
 
 def sort_pts_by_guide_2d(pts, guide):
-    """ Sort 2d points by guide line.
+    """ Sort 2d points by guiding line.
 
     Guide line points are assumed sorted.
     Sort the points first by the index of their nearest guide then by the distance.

@@ -61,7 +61,7 @@ def filter_by_value(B, V, B_guide, factor):
         B_filt[i] = B[i]*(V[i] >= v_thresh)
     return B_filt
 
-def detect_memlike(I, guide, bound, sigma_gauss, sigma_tv, factor_filt=3, factor_supp=0.5):
+def detect_memlike(I, guide, bound, sigma_gauss, sigma_tv, factor_filt=3, factor_supp=0.5, return_nofilt=False):
     """ Detect membrane-like pixels from the image.
 
     First calculate ridge-like features using hessian.
@@ -70,7 +70,7 @@ def detect_memlike(I, guide, bound, sigma_gauss, sigma_tv, factor_filt=3, factor
     Normal suppression to suppress short lines nearby mem-like structures.
 
     Args:
-        I (np.ndarray): Image (bright-field, membranes appear dark). Shape=(nz,ny,nx).
+        I (np.ndarray): Image (bright-field, membranes appear black). Shape=(nz,ny,nx).
         guide (np.ndarray): Points in the guide surface, shape=(npts_guide,3). Assumed sorted.
         bound (np.ndarray): Points in the bounding region, shape=(npts_bound,3).
         sigma_gauss (float): Decay lengthscale for gaussian smoothing.
@@ -81,10 +81,12 @@ def detect_memlike(I, guide, bound, sigma_gauss, sigma_tv, factor_filt=3, factor
             Can be set to 1.5 * the number of membranes
         factor_supp (float): Factor for normal suppression.
             The decay lengthscale of the suppression field = factor_supp * avg len of guide in each slice.
+        return_nofilt (bool): Whether to return the binary image before filtering.
 
     Returns:
         B_detect (np.ndarray): Binary image with detected pixels, shape=(nz,ny,nx).
         O_detect (np.ndarray): Orientation of the detected pixels, shape=(nz,ny,nx).
+        B_nofilt (np.ndarray, optional): Return the binary image before filtering if return_nofilt=True, with shape=(nz,ny,nx).
     """
     # setup
     # negate so that membrane pixels have larger values
@@ -123,4 +125,8 @@ def detect_memlike(I, guide, bound, sigma_gauss, sigma_tv, factor_filt=3, factor
     B_detect = Bsupp
     O_detect = Oref * Bsupp
 
-    return B_detect, O_detect
+    if return_nofilt:
+        B_nofilt = Btv
+        return B_detect, O_detect, B_nofilt
+    else:
+        return B_detect, O_detect

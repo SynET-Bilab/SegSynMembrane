@@ -8,7 +8,7 @@ __all__ = [
     # division
     "divide_spectral_graph", "divide_spectral_points",
     # components
-    "extract_components_one", "extract_components_two"
+    "extract_components_one", "extract_components_two", "extract_components_regions"
 ]
 
 
@@ -114,21 +114,6 @@ def divide_spectral_points(zyx, orients, r_thresh, sigma_dO=np.pi/4, n_clusts=2)
 # components
 #=========================
 
-def points_orientation(zyx, sigma):
-    """ Calculate the orientation of points.
-
-    Args:
-        zyx (np.ndarray): Points with shape=(npts,dim) and in format [[zi,yi,xi],...].
-        sigma (float): Sigma for gaussian smoothing.
-
-    Returns:
-        orients (np.ndarray): Orientation at each point, ranged in [0,pi/2], shape=(npts,).
-    """
-    Bzyx = pcdutil.points2pixels(zyx)
-    _, O = features.ridgelike3d(Bzyx, sigma=sigma)
-    orients = O[tuple(zyx.T)]
-    return orients
-
 def extract_components_one(zyx, r_thresh=1):
     """ Extract the largest component in the neighboring graph of the points.
 
@@ -166,7 +151,7 @@ def extract_components_two(zyx, r_thresh=1, orients=None, sigma_dO=np.pi/4, min_
     """
     # calculate orientation if not provided
     if orients is None:
-        orients = features.calc_orientation(zyx, sigma=r_thresh)
+        orients = features.points_orientation(zyx, sigma=r_thresh)
 
     # construct neighbors graph
     g = pcdutil.neighbors_graph(
@@ -206,3 +191,21 @@ def extract_components_two(zyx, r_thresh=1, orients=None, sigma_dO=np.pi/4, min_
     zyx2 = np.asarray(gsub2.vs["coords"])
 
     return zyx1, zyx2
+
+def extract_components_regions(zyx, region_arr, r_thresh=1):
+    """ Extract the largest components in each region.
+
+    Args:
+        zyx (np.ndarray): Points with shape=(npts,dim) and in format [[zi,yi,xi],...].
+        region_arr (list of np.ndarray): List of regions. Each is an array of points in that region, with shape=(npts_i,dim).
+        r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
+
+    Returns:
+        zyx_arr (list of np.ndarray): List of points in each region. Each has shape (npts_in_region_i,dim).
+    """
+    zyx_arr = []
+    for region_i in region_arr:
+        mask_i = pcdutil.points_in_region(zyx, region_i)
+        zyx_i = extract_components_one(zyx[mask_i], r_thresh)
+        zyx_arr.append(zyx_i)
+    return zyx_arr
