@@ -5,7 +5,7 @@ import numpy as np
 import scipy as sp
 import pandas as pd
 import tslearn.metrics
-from etsynseg import pcdutil, bspline
+from etsynseg import pcdutil, bspline, io
 
 __all__ = [
     # conversions
@@ -14,15 +14,15 @@ __all__ = [
     "match_two_contours", "interpolate_contours_alongz", "interpolate_contours_alongxy",
     # regions from contour
     "region_surround_contour_slice", "region_surround_contour",
-    # mask
-    "mask_from_model"
+    # read tomo model
+    "regions_from_guide", "read_tomo_model"
 ]
 
 #=========================
 # conversions
 #=========================
 
-def points2model(zyx_arr, break_contour=None):
+def points2model(zyx_arr, break_contour=None, save=None):
     """ Convert points to model DataFrame.
     
     Each element in the point array is one object.
@@ -34,7 +34,8 @@ def points2model(zyx_arr, break_contour=None):
         zyx_arr (list of np.ndarray): Array of points.
             zyx_arr = [zyx_0,zyx_1,...],
             zyx_i=[[z0,y0,x0],...], with shape=(npts_i,3).
-        break_contour (float or None): When to break points into different contours.
+        break_contour (float, optional): When to break points into different contours.
+        save (str, optional): Filename to save the model.
 
     Returns:
         model (pd.DataFrame): Dataframe object for the points, with columns=[object,contour,x,y,z].
@@ -86,6 +87,10 @@ def points2model(zyx_arr, break_contour=None):
         cols[i]: pd.Series(data[:, i], dtype=dtypes[i])
         for i in range(5)
     })
+
+    # save model
+    if save is not None:
+        io.write_model(save, model)
     return model
 
 
@@ -379,17 +384,17 @@ def region_surround_contour(zyx, nzyx, width, cut_end=True):
 
 
 #=========================
-# model to mask
+# read tomo, model
 #=========================
 
-def mask_from_model(zyx_mod, width, normal_ref=None, interp_degree=2, cut_end=True):
-    """ Convert imod model (sparsely-sampled surface) to mask of regions surrounding it.
+def regions_from_guide(guide_mod, width, normal_ref=None, interp_degree=2, cut_end=True):
+    """ Convert imod model with guide lines to regions surrounding it.
 
     First interpolate the model along z and xy, to make dense contours.
     Then generate the region surrounding the contours.
 
     Args:
-        zyx_mod (np.ndarray): Model points, ordered in each z.
+        guide_mod (np.ndarray): Model points of guide lines, ordered in each z.
         width (float or 2-tuple): Width to extend in normal's plus and minus direction, (width+,width-), or a float for equal widths.
         interp_degree (int): Degree for bspline interpolation in the xy direction.
         normal_ref (np.ndarray or None): Reference point 'inside' for orienting the normals, [z_ref,y_ref,x_ref].
@@ -397,32 +402,119 @@ def mask_from_model(zyx_mod, width, normal_ref=None, interp_degree=2, cut_end=Tr
         cut_end (bool): Whether the region near the endpoints is round-headed (False) or will be cut beyond their normals (True).
 
     Returns:
-        zyx (np.ndarray): 3d points of the interpolated normal, with shape=(npts,3).
-        zyx_plus (np.ndarray): 3d points of the mask in the normal+ direction, with shape=(npts_plus,3).
-        zyx_minus (np.ndarray): 3d points of the mask in the normal- direction, with shape=(npts_minus,3).
+        guide (np.ndarray): Points of the interpolated guide lines, with shape=(npts,3).
+        bound_plus (np.ndarray): Points of the bounding region in the normal+ direction, with shape=(npts_plus,3).
+        bound_minus (np.ndarray): Points of the bounding region in the normal- direction, with shape=(npts_minus,3).
         normal_ref (np.ndarray): Reference point 'inside' for orienting the normals.
     """
-    zyx = np.round(zyx_mod).astype(int)
-
-    # interpolate along z and xy
-    zyx = interpolate_contours_alongz(zyx, closed=False)
-    zyx = interpolate_contours_alongxy(zyx, degree=interp_degree)
-    zyx = pcdutil.points_deduplicate(zyx)
+    # guidelines interpolation along z and xy
+    guide = pcdutil.points_deduplicate(guide_mod)
+    guide = interpolate_contours_alongz(guide, closed=False)
+    guide = interpolate_contours_alongxy(guide, degree=interp_degree)
+    guide = pcdutil.points_deduplicate(guide)
 
     # estimate normals
     if normal_ref is None:
-        normal_ref = pcdutil.normals_gen_ref(zyx)
+        normal_ref = pcdutil.normals_gen_ref(guide)
     else:
         normal_ref = np.asarray(normal_ref)
     # sigma is set to the range in z: bsplines may not be smooth along z
-    normal_sigma = np.ptp(zyx[:, 0])/2
-    nzyx = pcdutil.normals_points(
-        zyx, sigma=normal_sigma, pt_ref=normal_ref
+    normal_sigma = np.ptp(guide[:, 0])/2
+    normals = pcdutil.normals_points(
+        guide, sigma=normal_sigma, pt_ref=normal_ref
     )
 
     # generate regions
-    zyx_plus, zyx_minus = region_surround_contour(
-        zyx, nzyx, width=width, cut_end=cut_end
+    bound_plus, bound_minus = region_surround_contour(
+        guide, normals, width=width, cut_end=cut_end
     )
 
-    return zyx, zyx_plus, zyx_minus, normal_ref
+    return guide, bound_plus, bound_minus, normal_ref
+
+def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degree=2):
+    """ Read tomo and model.
+
+    Read model: object 1 for guide lines, object 2 for reference point.
+    Generate region mask surrounding the guide lines.
+    Decide clip range from the region mask.
+    Read tomo, clip.
+
+    Args:
+        tomo_file (str): Filename of tomo mrc.
+        model_file (str): Filename of imod model.
+        extend_nm (float): Extend from guide lines by this width (in nm) to get the bound.
+        pixel_nm (float): Pixel size in nm. If None then read from tomo.
+        interp_degree (int): Degree of bspline interpolation of the model.
+            2 for most cases.
+            1 for finely-drawn model to preserve the original contours.
+
+    Returns:
+        tomod (dict): Tomo, model, and relevant info. See below for fields in the dict.
+            I: clipped tomo
+            shape: I.shape
+            pixel_nm: pixel size in nm
+            model: model DataFrame, in the original coordinates
+            clip_low: [z,y,x] at the lower corner for clipping
+            mask_bound, guide, mask_plus, mask_minus: zyx-points in the masks generated from the guide lines
+            normal_ref: reference point inside for normal orientation
+    """
+    # read tomo
+    I, pixel_A = io.read_tomo(tomo_file, mode="mmap")
+    # get pixel size in nm
+    if pixel_nm is None:
+        pixel_nm = pixel_A / 10
+
+    # read model
+    model = io.read_model(model_file)
+    # object: guide lines
+    if 1 in model["object"].values:
+        model_guide = model[model["object"] == 1][['z', 'y', 'x']].values
+    else:
+        raise ValueError(f"The object for guide lines (id=1) is not found in the model file.")
+    # object: normal ref point
+    if 2 in model["object"].values:
+        normal_ref = model[model["object"] == 2][['z', 'y', 'x']].values[0]
+    else:
+        normal_ref = None
+
+    # generate bounding regions from guide line
+    guide, bound_plus, bound_minus, normal_ref = regions_from_guide(
+        model_guide,
+        width=extend_nm/pixel_nm,
+        normal_ref=normal_ref,
+        interp_degree=interp_degree,
+        cut_end=True
+    )
+    # combine all parts of the bound
+    bound = np.concatenate([guide, bound_plus, bound_minus], axis=0)
+    bound = pcdutil.points_deduplicate(bound)
+
+    # get clip range and raw shape from the mask
+    clip_low, _, shape = pcdutil.points_range(bound, margin=0)
+
+    # clip coordinates
+    guide -= clip_low
+    bound_plus -= clip_low
+    bound_minus -= clip_low
+    bound -= clip_low
+    normal_ref -= clip_low
+
+    # clip tomo
+    sub = tuple(slice(ci, ci+si) for ci, si in zip(clip_low, shape))
+    I = np.asarray(I[sub])
+    shape = I.shape
+
+    # save parameters and results
+    tomod = dict(
+        I=I,
+        shape=shape,
+        pixel_nm=pixel_nm,
+        model=model,
+        clip_low=clip_low,
+        bound=bound,
+        normal_ref=normal_ref,
+        guide=guide,
+        bound_plus=bound_plus,
+        bound_minus=bound_minus
+    )
+    return tomod

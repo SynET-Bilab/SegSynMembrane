@@ -137,7 +137,7 @@ class SegSteps:
             normal_ref = None
 
         # generate mask from guide line
-        guide, mask_plus, mask_minus, normal_ref = modutil.mask_from_model(
+        guide, mask_plus, mask_minus, normal_ref = modutil.regions_from_guide(
             model_guide,
             width=extend_nm/pixel_nm,
             normal_ref=normal_ref,
