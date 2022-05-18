@@ -61,7 +61,7 @@ def filter_by_value(B, V, B_guide, factor):
         B_filt[i] = B[i]*(V[i] >= v_thresh)
     return B_filt
 
-def detect_memlike(I, mask_guide, mask_bound, sigma_gauss, sigma_tv, factor_filt=3, factor_supp=0.5):
+def detect_memlike(I, guide, bound, sigma_gauss, sigma_tv, factor_filt=3, factor_supp=0.5):
     """ Detect membrane-like pixels from the image.
 
     First calculate ridge-like features using hessian.
@@ -71,8 +71,8 @@ def detect_memlike(I, mask_guide, mask_bound, sigma_gauss, sigma_tv, factor_filt
 
     Args:
         I (np.ndarray): Image (bright-field, membranes appear dark). Shape=(nz,ny,nx).
-        mask_guide (np.ndarray): Points in the guide surface, shape=(npts_guide,3).
-        mask_bound (np.ndarray): Points in the bounding region, shape=(npts_bound,3).
+        guide (np.ndarray): Points in the guide surface, shape=(npts_guide,3). Assumed sorted.
+        bound (np.ndarray): Points in the bounding region, shape=(npts_bound,3).
         sigma_gauss (float): Decay lengthscale for gaussian smoothing.
             Can be set to the membrane thickness.
         sigma_tv (float): Decay lengthscale for stick tensor voting.
@@ -80,7 +80,7 @@ def detect_memlike(I, mask_guide, mask_bound, sigma_gauss, sigma_tv, factor_filt
         factor_filt (float): Factor for filtering out pixel by values. See filter_by_value's doc.
             Can be set to 1.5 * the number of membranes
         factor_supp (float): Factor for normal suppression.
-            The decay lengthscale of the suppression field = factor_supp * avg len of mask_guide in each slice.
+            The decay lengthscale of the suppression field = factor_supp * avg len of guide in each slice.
 
     Returns:
         B_detect (np.ndarray): Binary image with detected pixels, shape=(nz,ny,nx).
@@ -91,8 +91,8 @@ def detect_memlike(I, mask_guide, mask_bound, sigma_gauss, sigma_tv, factor_filt
     Ineg = -imgutil.scale_zscore(I)
     # mask for bound, guide
     shape = Ineg.shape
-    B_bound = pcdutil.points2pixels(mask_bound, shape)
-    B_guide = pcdutil.points2pixels(mask_guide, shape)
+    B_bound = pcdutil.points2pixels(bound, shape)
+    B_guide = pcdutil.points2pixels(guide, shape)
     
     # detect ridgelike features, nms
     S, O = features.ridgelike3d(Ineg, sigma=sigma_gauss)
@@ -114,7 +114,7 @@ def detect_memlike(I, mask_guide, mask_bound, sigma_gauss, sigma_tv, factor_filt
 
     # normal suppression
     # sigma is set to factor_supp*length of the guide
-    sigma_supp = factor_supp*len(mask_guide)/shape[0]
+    sigma_supp = factor_supp*len(guide)/shape[0]
     Bsupp, _ = suppress_by_orient(
         Btv_filt, Oref*Btv_filt, sigma=sigma_supp
     )

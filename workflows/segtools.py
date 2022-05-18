@@ -113,7 +113,7 @@ class SegSteps:
                 pixel_nm: pixel size in nm
                 model: model DataFrame, in the original coordinates
                 clip_low: [z,y,x] at the lower corner for clipping
-                mask_bound, mask_guide, mask_plus, mask_minus: zyx-points in the masks generated from the guide lines
+                mask_bound, guide, mask_plus, mask_minus: zyx-points in the masks generated from the guide lines
                 normal_ref: reference point inside for normal orientation
                 }
         """
@@ -137,7 +137,7 @@ class SegSteps:
             normal_ref = None
 
         # generate mask from guide line
-        mask_guide, mask_plus, mask_minus, normal_ref = modutil.mask_from_model(
+        guide, mask_plus, mask_minus, normal_ref = modutil.mask_from_model(
             model_guide,
             width=extend_nm/pixel_nm,
             normal_ref=normal_ref,
@@ -145,14 +145,14 @@ class SegSteps:
             cut_end=True
         )
         # combine all parts of the mask
-        mask_bound = np.concatenate([mask_guide, mask_plus, mask_minus], axis=0)
+        mask_bound = np.concatenate([guide, mask_plus, mask_minus], axis=0)
         mask_bound = np.unique(mask_bound, axis=0)
         
         # get clip range and raw shape from the mask
         clip_low, _, shape = pcdutil.points_range(mask_bound, margin=0)
         
         # clip coordinates
-        mask_guide -= clip_low
+        guide -= clip_low
         mask_plus -= clip_low
         mask_minus -= clip_low
         mask_bound -= clip_low
@@ -176,7 +176,7 @@ class SegSteps:
             clip_low=clip_low,
             mask_bound=mask_bound,
             normal_ref=normal_ref,
-            mask_guide=mask_guide,
+            guide=guide,
             mask_plus=mask_plus,
             mask_minus=mask_minus
         )
