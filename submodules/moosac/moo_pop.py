@@ -298,12 +298,7 @@ class MOOPop:
             tol (2-tuple): (tol_value, n_back). Terminate if max change_ratio within the last n_back steps < tol_value.
             max_iter (int): The max number of generations.
         """
-        # setup: pool, map
-        pool = multiprocessing.dummy.Pool()
-        self.register_map(pool.map)
-
-        # run
-        for i, var in zip(range(max_iter), itertools.cycle(var_cycle)):
+        for _, var in zip(range(max_iter), itertools.cycle(var_cycle)):
             # evolve
             self.evolve_one_gen(variation=var)
             self.logging_pop()
@@ -315,10 +310,6 @@ class MOOPop:
                 ])
                 if max_change < tol[0]:
                     break
-
-        # clean-up: map, pool
-        self.register_map()
-        pool.close()
     
     #=========================
     # misc: plot, fit

@@ -143,7 +143,6 @@ def points_deduplicate(pts):
     pts_dedup = np.array(list(pts_dedup))
     return pts_dedup
 
-
 def points_distance(pts1, pts2, return_2to1=False):
     """ Calculate distances between two point arrays.
 
@@ -157,13 +156,13 @@ def points_distance(pts1, pts2, return_2to1=False):
         dist1 (np.ndarray): Distance of each point in pts1 to its nearest point in pts2, shape=(npts1,dim).
         dist2 (np.ndarray, optional): Likewise for pts2, shape=(npts2,dim).
     """
-    pcd1 = points2pointcloud(pts1)
-    pcd2 = points2pointcloud(pts2)
-    dist1 = np.asarray(pcd1.compute_point_cloud_distance(pcd2))
+    kdtree2 = sp.spatial.KDTree(pts2)
+    dist1, _ = kdtree2.query(pts1, workers=-1)
     if not return_2to1:
         return dist1
     else:
-        dist2 = np.asarray(pcd2.compute_point_cloud_distance(pcd1))
+        kdtree1 = sp.spatial.KDTree(pts1)
+        dist2, _ = kdtree1.query(pts2, workers=-1)
         return dist1, dist2
 
 def points_in_region(pts, pts_region):
@@ -396,10 +395,11 @@ def subdivide_mesh(mesh, target_spacing=1):
     mesh_div.vertices = mesh.vertices
     mesh_div.triangles = mesh.triangles
 
-    # max nearest neighbor distance
+    # max nearest neighbor distance except self
     pts = np.asarray(mesh_div.vertices)
     kdtree = sp.spatial.KDTree(pts)
-    dists = kdtree.query(pts, k=2, p=1)[0][:, 1]
+    dists, _ = kdtree.query(pts, k=2, p=1, workers=-1)
+    dists = dists[:, 1]
     max_dist = np.max(dists)
 
     # niter-round subdivision
@@ -585,7 +585,7 @@ def sort_pts_by_guide_2d(pts, guide):
 
     # query dist and idx2guide using KDTree
     kdtree = sp.spatial.KDTree(guide)
-    dist, idx_guide = kdtree.query(pts, k=1)
+    dist, idx_guide = kdtree.query(pts, k=1, workers=-1)
 
     # sort by first the guide index then the distance
     df = pd.DataFrame(
