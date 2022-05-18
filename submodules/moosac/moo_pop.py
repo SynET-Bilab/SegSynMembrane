@@ -2,7 +2,6 @@
 """
 
 import pickle
-import multiprocessing.dummy
 import itertools
 import numpy as np
 import matplotlib
@@ -69,9 +68,10 @@ class MOOPop:
     def register_map(self, func_map=map):
         """ Register map function to self.toolbox.
 
-        For multithreading,
-        pool = multiprocessing.dummy.Pool()
+        For multiprocessing (inside __main__):
+        pool = multiprocessing.Pool()
         func_map = pool.map
+        pool.close()
 
         Args:
             func_map (Callable): Function for mapping.
@@ -187,12 +187,11 @@ class MOOPop:
     # population: init, log, eval
     #=========================
     
-    def init_pop(self, pop=None, n_proc=None):
+    def init_pop(self, pop=None):
         """ Initialize population, logbook, evaluate.
 
         Args:
             pop (list of MOOIndiv): Population. Random init if not provided.
-            n_proc (int): The number of processors for multithreading.
         """
         # generation population
         if pop is None:
@@ -201,12 +200,8 @@ class MOOPop:
             self.pop = pop
 
         # evaluate
-        pool = multiprocessing.dummy.Pool(n_proc)
-        self.register_map(pool.map)
         self.evaluate_pop(self.pop)
-        self.register_map()
-        pool.close()
-
+        
         # sort
         self.pop = self.toolbox.select_best(self.pop, self.pop_size)
 

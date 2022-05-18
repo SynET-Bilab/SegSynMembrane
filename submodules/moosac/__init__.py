@@ -14,7 +14,8 @@ def robust_fitting(
         zyx, guide,
         len_grids=(50, 100), shrink_sidegrid=0.25,
         fitness_rthresh=1,
-        pop_size=4, tol=(0.005, 10), max_iter=200
+        pop_size=4, tol=(0.005, 10), max_iter=200,
+        func_map=map
     ):
     """ Robust fitting of a surface to points.
 
@@ -29,6 +30,12 @@ def robust_fitting(
     Evolution:
         pop_size: Population size.
         tol, max_iter: Termination criteria.
+    Multiprocessing:
+        func_map: pass multiprocessing-map from __main__
+            pool = multiprocessing.Pool()
+            func_map = pool.map
+            pool.close()
+
 
     Args:
         zyx (np.ndarray): 3d points, with shape=(npts,3). Each point is [zi,yi,xi].
@@ -39,6 +46,7 @@ def robust_fitting(
         pop_size (int): Population size.
         tol (2-tuple): (tol_value, n_back). Terminate if change_ratio < tol_value within the last n_back steps.
         max_iter (int): The max number of generations.
+        func_map (Callable): Map function.
     
     Returns:
         zyx_fit (np.ndarray): Points on the fitted surface, with shape=(npts,3).
@@ -57,9 +65,11 @@ def robust_fitting(
     mtools = MOOTools().init_from_grid(grid, fitness_rthresh=fitness_rthresh)
     mpop = MOOPop().init_from_mootools(mtools, pop_size=pop_size)
 
-    # evolve
+    # init, register map, evolve, clean map
     mpop.init_pop()
+    mpop.register_map(func_map=func_map)
     mpop.evolve(tol=tol, max_iter=max_iter)
+    mpop.register_map()
 
     # get the best individual and fit surface
     zyx_fit = mpop.fit_surface_best(indiv=mpop.log_front[-1][0])

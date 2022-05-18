@@ -2,6 +2,7 @@
 """
 
 import numpy as np
+import scipy as sp
 import deap, deap.base, deap.tools
 from etsynseg import pcdutil, bspline
 
@@ -120,9 +121,8 @@ class MOOTools:
         # bspline
         self.surf_meta = bspline.Surface(degree=2)
         # pointcloud
-        self.pcd = pcdutil.points2pointcloud(
-            pcdutil.points_deduplicate(self.zyx)
-        )
+        self.zyx = pcdutil.points_deduplicate(self.zyx)
+        self.kdtree = sp.spatial.KDTree(self.zyx)
 
     def save_config(self):
         """ Convert attributes to dict.
@@ -326,14 +326,14 @@ class MOOTools:
         """
         # deduplicate, convert to pointcloud
         zyx_fit = pcdutil.points_deduplicate(zyx_fit)
-        pcd_fit = pcdutil.points2pointcloud(zyx_fit)
+        kdtree_fit = sp.spatial.KDTree(zyx_fit)
         
-        # coverage of zyx by fit
-        dist = np.asarray(self.pcd.compute_point_cloud_distance(pcd_fit))
+        # coverage of zyx by fit: dist from zyx to fit
+        dist, _ = kdtree_fit.query(self.zyx, k=1, workers=-1)
         fitness_coverage = np.sum(np.clip(dist, 0, self.fitness_rthresh)**2)
 
-        # excess pixels of fit compared with zyx
-        dist_fit = np.asarray(pcd_fit.compute_point_cloud_distance(self.pcd))
+        # excessive pixels of fit compared with zyx: dist from fit to zyx
+        dist_fit, _ = self.kdtree.query(zyx_fit, k=1, workers=-1)
         fitness_excess = np.sum(dist_fit>self.fitness_rthresh)
 
         # moo fitness
