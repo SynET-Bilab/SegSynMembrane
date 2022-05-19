@@ -7,8 +7,40 @@ from .moo_pop import MOOPop
 
 __all__ = [
     "Grid", "MOOTools", "MOOPop",
-    "robust_fitting"
+    "surface_area", "robust_fitting"
 ]
+
+
+def surface_area(zyx, guide, len_grid):
+    """ Calculate surface area of fitted spline surface.
+
+    The grid length affects the area, especially when the length is small compared to membrane thickness.
+    The length can be set to 4*membrane thickness where the area changes appear small.
+
+    Args:
+        zyx (np.ndarray): 3d points, with shape=(npts,3). Each point is [zi,yi,xi].
+        guide (np.ndarray): 3d guideline points sorted in each slice, with shape=(npts_guide,3). Each point is [zi,yi,xi].
+        len_grid (float): The length of grids in u(z) and v(xy) directions (set both to the same value).
+
+    Returns:
+        area (float): The area of fitted surface, in units of pixels^2.
+        surf_fit (splipy.surface.Surface): Fitted surface.
+    """
+    # construct grid and mootools
+    grid = Grid(zyx, guide, shrink_sidegrid=1, nz_eachu=1)
+    grid.set_ngrids_by_len(len_grids=(len_grid, len_grid))
+    grid.generate_grid()
+    mtools = MOOTools().init_from_grid(grid, 1)
+
+    # sample points, fit
+    indiv = mtools.gen_middle(pin_side=True)
+    pts_net = mtools.get_coords_net(indiv)
+    surf_fit = mtools.surf_meta.interpolate(pts_net)
+
+    # calc area
+    area = surf_fit.area()
+    return area, surf_fit
+
 
 def robust_fitting(
         zyx, guide,

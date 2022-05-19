@@ -6,14 +6,13 @@ import pathlib
 import logging
 import numpy as np
 import etsynseg
-from etsynseg.bin.segbase import SegBase, Timer
 
-class SegPrePost(SegBase):
+class SegPrePost(etsynseg.segbase.SegBase):
     def __init__(self, func_map=map):
         """ Initialization
         """
         # logging
-        self.timer = Timer()
+        self.timer = etsynseg.segbase.Timer()
         self.logger = logging.getLogger("segprepost")
         
         # func
@@ -332,29 +331,40 @@ class SegPrePost(SegBase):
         # setup
         tomod = self.steps["tomod"]
         meshrefine = self.steps["meshrefine"]
+        pixel_nm = tomod["pixel_nm"]
+        zyx_low = tomod["clip_low"]
 
         # collect results
         results = {}
         for i in (1, 2):
             # points
-            xyz_i = etsynseg.pcdutil.reverse_coord(
-                tomod["clip_low"]+meshrefine[f"zyx{i}"]
-            )
-            results[f"xyz{i}"] = xyz_i
+            zyx_i = meshrefine[f"zyx{i}"]
+            results[f"xyz{i}"] = etsynseg.pcdutil.reverse_coord(zyx_low+zyx_i)
+
             # normals
-            nxyz_i = etsynseg.pcdutil.normals_points(
-                xyz_i,
+            nzyx_i = etsynseg.pcdutil.normals_points(
+                zyx_i,
                 sigma=tomod["neigh_thresh"]*2,
-                pt_ref=tomod["normal_ref"][::-1]
+                pt_ref=tomod["normal_ref"]
             )
-            if i == 2:
-                nxyz_i = -nxyz_i
-            results[f"nxyz{i}"] = nxyz_i
+            if i == 2:  # flip sign for postsynapse
+                nzyx_i = -nzyx_i
+            results[f"nxyz{i}"] = etsynseg.pcdutil.reverse_coord(nzyx_i)
+
+            # surface area
+            area_i, _ = etsynseg.moosac.surface_area(
+                zyx_i, tomod["guide"],
+                len_grid=tomod["d_mem"]*4
+            )
+            results[f"area{i}_nm2"] = area_i * pixel_nm**2
+
         # distance
-        results["dist1"], results["dist2"] = etsynseg.pcdutil.points_distance(
+        dist1, dist2 = etsynseg.pcdutil.points_distance(
             meshrefine["zyx1"], meshrefine["zyx2"],
             return_2to1=True
         )
+        results["dist1_nm"] = dist1 * pixel_nm
+        results["dist2_nm"] = dist2 * pixel_nm
 
         # save
         self.results.update(results)

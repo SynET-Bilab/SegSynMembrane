@@ -252,8 +252,11 @@ class MOOTools:
             indiv.append(indiv_u)
         return indiv
     
-    def gen_middle(self):
+    def gen_middle(self, pin_side=False):
         """ Generate individual with the middle point in each grid.
+
+        Args:
+            pin_side (bool): If True, points in side grids are pinned to the boundaries.
 
         Returns:
             indiv (MOOIndiv): Individual.
@@ -263,7 +266,14 @@ class MOOTools:
             indiv_u = []
             for iv in range(self.n_vxy):
                 size_uv = self.uv_size[(iu, iv)]
+                # set index to middle
                 index = int((size_uv-1)/2)
+                # for side grids, optionally set index to the boundary
+                if pin_side:
+                    if iv == 0:
+                        index = 0
+                    elif iv == self.n_vxy-1:
+                        index = size_uv-1
                 indiv_uv = np.clip(index, 0, size_uv-1)
                 indiv_u.append(indiv_uv)
             indiv.append(indiv_u)

@@ -13,7 +13,7 @@ class Grid:
         uv_size: uv_size[(iu,iv)] is the number of points in the grid.
         uv_zyx: uv_zyx[(iu,iv)] is the array of point coordinates (in [z,y,x]) in the grid.
     """
-    def __init__(self, zyx, guide, shrink_sidegrid=0.2, nz_eachu=1):
+    def __init__(self, zyx, guide, shrink_sidegrid=0.25, nz_eachu=1):
         """ Initialization.
 
         Read points and sort by the guide.
@@ -35,16 +35,23 @@ class Grid:
         self.nz_eachu = nz_eachu
         self.shrink_sidegrid = shrink_sidegrid
 
-    def set_ngrids_direct(self, n_vxy, n_uz):
+    def set_ngrids_direct(self, n_uz, n_vxy):
         """ Set the number of grids directly.
 
+        Constraints:
+            n_uz < min number of slices / nz_eachu
+            n_vxy < min number of points in all slices * nz_eachu
+
         Args:
-            n_vxy, n_uz (int): The number of sampling grids in v(xy) and u(z) directions.
+            n_uz, n_vxy (int): The number of sampling grids in v(xy) and u(z) directions.
         
         Returns:
             self (Grid): Self object with set number of grids.
         """
-        self.n_vxy = n_vxy
+        min_npts_z = np.min([
+            np.sum(self.zyx[:, 0]==z) for z in self.zs
+        ])
+        self.n_vxy = min(n_vxy, int(min_npts_z*self.nz_eachu))
         self.n_uz = min(n_uz, int(self.nz/self.nz_eachu))
         return self
 
@@ -64,8 +71,6 @@ class Grid:
         # grids in u(z) direction
         n_uz = int(np.round(np.ptp(self.zs)/len_uz))+1
         n_uz = max(n_uz_min, n_uz)
-        n_uz = min(n_uz, int(self.nz/self.nz_eachu))
-        self.n_uz = n_uz
 
         # grids in v(xy) direction
         # avg length of guide in xy direction
@@ -78,7 +83,10 @@ class Grid:
         # (n_vxy-2)*len_vxy + 2*shrink_sidegrid*len_vxy = len_guide
         n_vxy = len_guide/len_vxy + 2*(1-self.shrink_sidegrid)
         n_vxy = int(np.round(n_vxy)) + 1
-        self.n_vxy = max(n_vxy_min, n_vxy)
+        n_vxy = max(n_vxy_min, n_vxy)
+
+        # constrain grid numbers
+        self.set_ngrids_direct(n_uz=n_uz, n_vxy=n_vxy)
         return self
 
     def generate_grid(self):

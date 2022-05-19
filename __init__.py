@@ -13,7 +13,6 @@ __version__ = "0.2"
 # open3d > 0.15
 # ]
 
-# auxiliary functions
 from .utilities import imgutil, pcdutil
 from .utilities import io, plot
 from .utilities import bspline
@@ -22,5 +21,7 @@ from .utilities import modutil
 from .submodules import features, nonmaxsup, dtvoting
 from .submodules import detecting, components
 from .submodules import moosac, matching, meshrefine
-
 from .submodules import membranogram
+
+from .bin import segbase
+from .bin import segprepost
