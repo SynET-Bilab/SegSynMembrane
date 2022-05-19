@@ -11,6 +11,9 @@ class SegPrePost(etsynseg.segbase.SegBase):
     def __init__(self, func_map=map):
         """ Initialization
         """
+        # init from SegBase
+        super().__init__()
+        
         # logging
         self.timer = etsynseg.segbase.Timer()
         self.logger = logging.getLogger("segprepost")
@@ -18,44 +21,18 @@ class SegPrePost(etsynseg.segbase.SegBase):
         # func
         self.func_map = func_map
 
-        # data
-        self.args = dict(
-            mode=None, inputs=None, outputs=None,
-            pixel_nm=None, extend_nm=None, d_mem_nm=None, neigh_thresh_nm=None,
-            detect_tv_nm=None, detect_filt=None, detect_supp=None,
-            components_min=None,
-            moosac_lengrids=None, moosac_shrinkside=None, moosac_popsize=None, moosac_maxiter=None
-        )
-        self.steps = dict(
-            tomod=dict(
-                I=None, shape=None, pixel_nm=None,
-                model=None, clip_low=None,
-                bound=None, bound_plus=None, bound_minus=None,
-                guide=None, normal_ref=None
-            ),
-            detect=dict(
-                zyx_nofilt=None, zyx=None
-            ),
-            components=dict(
-                zyx1=None, zyx2=None
-            ),
-            moosac=dict(
-                mpopz1=None, mpopz2=None,
-                zyx1=None, zyx2=None
-            ),
-            match=dict(
-                zyx1=None, zyx2=None,
-            ),
-            meshrefine=dict(
-                zyx1=None, zyx2=None,
-            ),
-        )
-        self.results=dict(
-            zyx1=None, zyx2=None,
-            nzyx1=None, nzyx2=None,
+        # update fields
+        self.args.update(dict(components_min=None))
+        self.steps["components"].update(dict(zyx2=None))
+        self.steps["moosac"].update(dict(
+            mpopz2=None, zyx2=None
+        ))
+        self.steps["match"].update(dict(zyx2=None))
+        self.steps["meshrefine"].update(dict(zyx2=None))
+        self.results.update(dict(
+            xyz2=None, nxyz2=None, area2_nm2=None,
             dist1_nm=None, dist2_nm=None,
-            area1_nm2=None, area2_nm2=None,
-        )
+        ))
 
     def build_parser(self):
         """ Build parser for segmentation.
@@ -136,70 +113,6 @@ class SegPrePost(etsynseg.segbase.SegBase):
         self.logger.info("----segprepost----")
         self.logger.info(f"read args")
 
-    def load_tomod(self):
-        """ Load tomo and model.
-        
-        Prerequisites: args are read.
-        Effects: updates self.steps["tomod"].
-        """
-        # log
-        self.timer.click()
-
-        # read tomo, model
-        args = self.args
-        tomod = etsynseg.modutil.read_tomo_model(
-            tomo_file=args["tomo_file"],
-            model_file=args["model_file"],
-            extend_nm=args["extend_nm"],
-            pixel_nm=args["pixel_nm"]
-        )
-        
-        # update parameters
-        tomod["d_mem"] = args["d_mem_nm"] / tomod["pixel_nm"]
-        # neigh thresh >= 1
-        tomod["neigh_thresh"] = max(1, args["neigh_thresh_nm"]/tomod["pixel_nm"])
-        
-        # save
-        self.steps["tomod"].update(tomod)
-
-        # log
-        self.save_state(self.args["outputs_state"])
-        self.logger.info(f"""loaded data: {self.timer.click()}""")
-
-    def detect(self):
-        """ Detect membrane-candidates from the image.
-
-        Prerequisites: tomod.
-        Effects: updates self.steps["detect"].
-        """
-        # log
-        self.timer.click()
-
-        # setup
-        args = self.args
-        tomod = self.steps["tomod"]
-        pixel_nm = tomod["pixel_nm"]
-
-        # detect mem-like structures
-        B, _, B_nofilt = etsynseg.detecting.detect_memlike(
-            tomod["I"],
-            guide=tomod["guide"],
-            bound=tomod["bound"],
-            sigma_gauss=tomod["d_mem"],
-            sigma_tv=args["detect_tv_nm"]/pixel_nm,
-            factor_filt=args["detect_filt"],
-            factor_supp=args["detect_supp"],
-            return_nofilt=True
-        )
-
-        # save results
-        self.steps["detect"]["zyx_nofilt"] = etsynseg.pcdutil.pixels2points(B_nofilt)
-        self.steps["detect"]["zyx"] = etsynseg.pcdutil.pixels2points(B)
-
-        # log
-        self.save_state(self.args["outputs_state"])
-        self.logger.info(f"""finished detecting: {self.timer.click()}""")
-
     def components_auto(self):
         """ Extract two components automatically.
 
@@ -265,70 +178,6 @@ class SegPrePost(etsynseg.segbase.SegBase):
         self.save_state(self.args["outputs_state"])
         self.logger.info(f"""extracted components: {self.timer.click()}""")
 
-    def fit_refine(self, label):
-        """ Fit, match, refine a surface.
-
-        Prerequisites: components are extracted.
-        Effects: updates self.steps[field], field="moosac","match","meshrefine"
-
-        Args:
-            label (int): 1 for presynapse, 2 for postsynapse. 
-        """
-        # log
-        self.timer.click()
-
-        # setup
-        args = self.args
-        tomod = self.steps["tomod"]
-        pixel_nm = tomod["pixel_nm"]
-        guide = tomod["guide"]
-        zyx = self.steps["components"][f"zyx{label}"]
-
-        # moosac fitting
-        len_grids = tuple(l/pixel_nm for l in args["moosac_lengrids"])
-        zyx_fit, mpop_state = etsynseg.moosac.robust_fitting(
-            zyx, guide,
-            len_grids=len_grids,
-            shrink_sidegrid=args["moosac_shrinkside"],
-            fitness_rthresh=tomod["neigh_thresh"],
-            pop_size=args["moosac_popsize"],
-            tol=(0.005, 10),
-            max_iter=args["moosac_maxiter"],
-            func_map=self.func_map
-        )
-        # save results
-        self.steps["moosac"][f"zyx{label}"] = zyx_fit
-        self.steps["moosac"][f"mpopz{label}"] = mpop_state
-        # log
-        self.logger.info(f"""finished moosac ({label}): {self.timer.click()}""")
-        self.save_state(self.args["outputs_state"])
-
-        # matching
-        zyx_match = etsynseg.matching.match_candidate_to_ref(
-            zyx, zyx_fit, guide, r_thresh=tomod["neigh_thresh"]
-        )
-        # save results
-        self.steps["match"][f"zyx{label}"] = zyx_match
-        # log
-        self.save_state(self.args["outputs_state"])
-        self.logger.info(f"""finished matching ({label}): {self.timer.click()}""")
-
-        # meshrefine
-        zyx_refine = etsynseg.meshrefine.refine_surface(
-            zyx_match,
-            sigma_normal=tomod["neigh_thresh"]*2,
-            sigma_mesh=tomod["neigh_thresh"]*2,
-            sigma_hull=tomod["d_mem"],
-            target_spacing=1,
-            bound=tomod["bound"]
-        )
-        # sort
-        zyx_refine = etsynseg.pcdutil.sort_pts_by_guide_3d(zyx_refine, guide)
-        # save results
-        self.steps["meshrefine"][f"zyx{label}"] = zyx_refine
-        # log
-        self.save_state(self.args["outputs_state"])
-        self.logger.info(f"""finished meshrefine ({label}): {self.timer.click()}""")
 
     def finalize(self):
         """ Finalize
@@ -344,7 +193,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
 
         # collect results
         results = {}
-        for i in (1, 2):
+        for i in [1, 2]:
             # points
             zyx_i = meshrefine[f"zyx{i}"]
             results[f"xyz{i}"] = etsynseg.pcdutil.reverse_coord(zyx_low+zyx_i)
