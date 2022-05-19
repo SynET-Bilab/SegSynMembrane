@@ -6,6 +6,7 @@ import subprocess
 import numpy as np
 import pandas as pd
 import mrcfile
+from etsynseg import pcdutil
 
 __all__ = [
     # tomo io
@@ -179,8 +180,8 @@ def write_model(model_file, model):
         cmd = f"point2model -op {point_file} {model_file} >/dev/null"
         subprocess.run(cmd, shell=True, check=True)
 
-def write_points(zyx_arr, break_contour=None, save=None):
-    """ Convert points to model DataFrame, and write.
+def write_points(model_file, zyx_arr, break_contour=None):
+    """ Convert points to model DataFrame, and write to file.
     
     Each element in the point array is one object.
     Points at different z's are assigned to different contours.
@@ -188,11 +189,11 @@ def write_points(zyx_arr, break_contour=None, save=None):
     or are broken into different contours if their distance is > break_contour(float).
 
     Args:
+        model_file (str): Filename to save the model.
         zyx_arr (list of np.ndarray): Array of points.
             zyx_arr = [zyx_0,zyx_1,...],
             zyx_i=[[z0,y0,x0],...], with shape=(npts_i,3).
         break_contour (float, optional): When to break points into different contours.
-        save (str, optional): Filename to save the model.
 
     Returns:
         model (pd.DataFrame): Dataframe object for the points, with columns=[object,contour,x,y,z].
@@ -246,6 +247,5 @@ def write_points(zyx_arr, break_contour=None, save=None):
     })
 
     # save model
-    if save is not None:
-        write_model(save, model)
+    write_model(model_file, model)
     return model

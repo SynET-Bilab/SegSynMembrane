@@ -47,7 +47,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
             formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
         # mode
-        parser.add_argument("mode", type=str, choices=["run", "runfine"], help="Segmentation mode.")
+        parser.add_argument("mode", type=str, choices=["run", "runfine", "imshow"], help="Segmentation mode.")
         # input/output
         parser.add_argument("inputs", type=str, nargs='+',help="Input files. Tomo file, model file for new segmentation. Seg file for continuation.")
         parser.add_argument("-o", "--outputs", type=str, default=None, help="Basename for output files. Defaults to the basename of model file.")
@@ -226,6 +226,12 @@ class SegPrePost(etsynseg.segbase.SegBase):
         # save
         self.results.update(results)
         self.save_state(self.args["outputs_state"])
+
+        # outputs
+        self.output_model(self.args["outputs"]+".mod", labels=(1, 2))
+        self.output_slices(self.args["outputs"]+".png", labels=(1, 2), nslice=5)
+
+        # log
         self.logger.info(f"finalized: {self.timer.click()}")
 
     def workflow(self):
@@ -254,11 +260,18 @@ if __name__ == "__main__":
     # init
     pool = multiprocessing.Pool()
     seg = SegPrePost(func_map=pool.map)
-    # parse args
+    
+    # parse and load args
     parser = seg.build_parser()
     args = parser.parse_args()
-    # run
     seg.load_args(args)
-    seg.workflow()
+    
+    # workflow
+    mode = seg.args["mode"]
+    if mode in ["run", "runfine"]:
+        seg.workflow()
+    elif mode == "imshow":
+        seg.imshow_steps(labels=(1, 2))
+    
     # clean
     pool.close()

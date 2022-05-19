@@ -145,17 +145,14 @@ class Project:
     Examples:
 
     """
-    def __init__(self, e2=(0, 0, 1.)):
+    def __init__(self, e2=(1,0,0)):
         """ Initialization.
 
         Args:
-            e2 (np.ndarray or tuple): Unit vector along e2 in order [x,y,z].
-        
-        Notes:
-            The order of point coordinates (xyz vs zyx) may be a bit confusing.
+            e2 (np.ndarray or tuple): Unit vector along e2 in order [z,y,x].
         """
-        # setup e2
-        self.e2 = np.asarray(e2) if e2 is not None else np.array([0, 1., 0])
+        # convert e2 to xyz order
+        self.e2 = np.asarray(e2)[::-1]
 
         # init other variables
         self.e1 = None
@@ -166,8 +163,10 @@ class Project:
         """ Fit.
 
         Args:
-            zyx, nzyx (np.ndarray): Points and their normals, in 
-        Returns: self
+            zyx, nzyx (np.ndarray): Points and their normals.
+
+        Returns:
+            self (Project): Self object, fitted.
         """
         # convert to xyz to be safe
         self.xyz_center = np.mean(zyx, axis=0)[::-1]

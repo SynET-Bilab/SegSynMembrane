@@ -14,7 +14,7 @@ __all__ = [
     # napari: 3d viewer
     "imshow3d",
     # open3d: visualize
-    "visualize_pcds"
+    "draw_pcds"
 ]
 
 
@@ -380,7 +380,7 @@ def imshow3d(
 # open3d
 #=========================
 
-def visualize_pcds(pts_arr, normals_arr=None, saturation="random"):
+def draw_pcds(pts_arr, normals_arr=None, saturation="random"):
     """ Visualize pointclouds using open3d.
 
     Construct pointcloud from points (and optionally normals).
