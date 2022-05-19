@@ -53,7 +53,8 @@ class SegPrePost(etsynseg.segbase.SegBase):
         self.results=dict(
             zyx1=None, zyx2=None,
             nzyx1=None, nzyx2=None,
-            dist1=None, dist2=None
+            dist1_nm=None, dist2_nm=None,
+            area1_nm2=None, area2_nm2=None,
         )
 
     def build_parser(self):
@@ -162,8 +163,8 @@ class SegPrePost(etsynseg.segbase.SegBase):
         self.steps["tomod"].update(tomod)
 
         # log
-        self.logger.info(f"""loaded data: {self.timer.click()}""")
         self.save_state(self.args["outputs_state"])
+        self.logger.info(f"""loaded data: {self.timer.click()}""")
 
     def detect(self):
         """ Detect membrane-candidates from the image.
@@ -196,8 +197,8 @@ class SegPrePost(etsynseg.segbase.SegBase):
         self.steps["detect"]["zyx"] = etsynseg.pcdutil.pixels2points(B)
 
         # log
-        self.logger.info(f"""finished detecting: {self.timer.click()}""")
         self.save_state(self.args["outputs_state"])
+        self.logger.info(f"""finished detecting: {self.timer.click()}""")
 
     def components_auto(self):
         """ Extract two components automatically.
@@ -233,8 +234,8 @@ class SegPrePost(etsynseg.segbase.SegBase):
         self.steps["components"]["zyx2"] = zyx2
 
         # log
-        self.logger.info(f"""extracted components: {self.timer.click()}""")
         self.save_state(self.args["outputs_state"])
+        self.logger.info(f"""extracted components: {self.timer.click()}""")
 
     def components_by_mask(self):
         """ Extract two components using masks.
@@ -261,8 +262,8 @@ class SegPrePost(etsynseg.segbase.SegBase):
         self.steps["components"]["zyx2"] = zyx2
 
         # log
-        self.logger.info(f"""extracted components: {self.timer.click()}""")
         self.save_state(self.args["outputs_state"])
+        self.logger.info(f"""extracted components: {self.timer.click()}""")
 
     def fit_refine(self, label):
         """ Fit, match, refine a surface.
@@ -309,8 +310,8 @@ class SegPrePost(etsynseg.segbase.SegBase):
         # save results
         self.steps["match"][f"zyx{label}"] = zyx_match
         # log
-        self.logger.info(f"""finished matching ({label}): {self.timer.click()}""")
         self.save_state(self.args["outputs_state"])
+        self.logger.info(f"""finished matching ({label}): {self.timer.click()}""")
 
         # meshrefine
         zyx_refine = etsynseg.meshrefine.refine_surface(
@@ -321,13 +322,20 @@ class SegPrePost(etsynseg.segbase.SegBase):
             target_spacing=1,
             bound=tomod["bound"]
         )
+        # sort
+        zyx_refine = etsynseg.pcdutil.sort_pts_by_guide_3d(zyx_refine, guide)
         # save results
         self.steps["meshrefine"][f"zyx{label}"] = zyx_refine
         # log
-        self.logger.info(f"""finished meshrefine ({label}): {self.timer.click()}""")
         self.save_state(self.args["outputs_state"])
+        self.logger.info(f"""finished meshrefine ({label}): {self.timer.click()}""")
 
     def finalize(self):
+        """ Finalize
+        """
+        # log
+        self.timer.click()
+
         # setup
         tomod = self.steps["tomod"]
         meshrefine = self.steps["meshrefine"]
@@ -369,6 +377,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
         # save
         self.results.update(results)
         self.save_state(self.args["outputs_state"])
+        self.logger.info(f"finalized: {self.timer.click()}")
 
     def workflow(self):
         # load tomod
@@ -390,7 +399,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
 
         # finalize
         self.finalize()
-
+        self.logger.info("segmentation finished.")
 
 if __name__ == "__main__":
     # init
@@ -404,4 +413,3 @@ if __name__ == "__main__":
     seg.workflow()
     # clean
     pool.close()
-

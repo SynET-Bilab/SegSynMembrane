@@ -41,15 +41,6 @@ class SegBase:
         self.steps = {}
         self.results = {}
 
-    def view_status(self):
-        """ view status (finished, process_time) of each step
-        """
-        status = {
-            k: {"finished": v["finished"], "process_time": v["timing"]}
-            for k, v in self.steps.items()
-        }
-        return status
-
     def load_state(self, state_file):
         """ Load info from state file.
 
@@ -74,17 +65,4 @@ class SegBase:
             steps=self.steps,
             results=self.results
         )
-
-    def check_steps(self, steps_prev, raise_error=False):
-        """ raise error if any prerequisite steps is not finished
-            steps_prev: array of names of prerequisite steps
-            raise_error: if raise error when prerequisites are not met
-        """
-        satisfied = True
-        for step in steps_prev:
-            if not self.steps[step]["finished"]:
-                if raise_error:
-                    raise RuntimeError(f"unsatisfied prerequisite step: {step}")
-                satisfied = False
-        return satisfied
 
