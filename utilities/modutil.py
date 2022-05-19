@@ -4,13 +4,10 @@
 import pathlib
 import numpy as np
 import scipy as sp
-import pandas as pd
 import tslearn.metrics
 from etsynseg import pcdutil, bspline, io
 
 __all__ = [
-    # conversions
-    "points2model",
     # contour interpolation
     "match_two_contours", "interpolate_contours_alongz", "interpolate_contours_alongxy",
     # regions from contour
@@ -18,82 +15,6 @@ __all__ = [
     # read tomo model
     "regions_from_guide", "read_tomo_model"
 ]
-
-#=========================
-# conversions
-#=========================
-
-def points2model(zyx_arr, break_contour=None, save=None):
-    """ Convert points to model DataFrame.
-    
-    Each element in the point array is one object.
-    Points at different z's are assigned to different contours.
-    Points in the same xy plane are assigned to the same contour if break_contour=None,
-    or are broken into different contours if their distance is > break_contour(float).
-
-    Args:
-        zyx_arr (list of np.ndarray): Array of points.
-            zyx_arr = [zyx_0,zyx_1,...],
-            zyx_i=[[z0,y0,x0],...], with shape=(npts_i,3).
-        break_contour (float, optional): When to break points into different contours.
-        save (str, optional): Filename to save the model.
-
-    Returns:
-        model (pd.DataFrame): Dataframe object for the points, with columns=[object,contour,x,y,z].
-    """
-    cols = ["object", "contour", "x", "y", "z"]
-    dtypes = [int, int, float, float, float]
-    data = []
-
-    # iterate over objects
-    for i_obj, zyx_obj in enumerate(zyx_arr):
-        z_obj = zyx_obj[:, 0]
-        ct_prev = 0
-
-        # iterate over xy planes
-        for z in np.unique(z_obj):
-            xyz_z = pcdutil.reverse_coord(zyx_obj[z_obj == z])
-            ones = np.ones((len(xyz_z), 1), dtype=int)
-
-            # assign all points into one contour
-            if break_contour is None:
-                ct_z = ones * (ct_prev+1)
-                ct_prev += 1
-            
-            # break points into different contours by distance
-            else:
-                # distance between points
-                dist_z = np.linalg.norm(np.diff(xyz_z, axis=0), axis=1)
-                # positions where the gap between points is large
-                pos_gap = np.nonzero(dist_z > break_contour)[0] + 1
-                ct_z = np.zeros(len(xyz_z), dtype=int)
-                ct_z[pos_gap] = 1
-                # cumulate gaps to get contour indexes starting from 0
-                ct_z = np.cumsum(ct_z)
-                # add prev contour index to get absolute ones
-                ct_z += ct_prev + 1
-                # update prev contour index
-                ct_prev = ct_z[-1]
-                # reshape
-                ct_z = ct_z.reshape((-1, 1))
-
-            # collect into data
-            data_z = np.concatenate([(i_obj+1)*ones, ct_z, xyz_z], axis=1)
-            data.append(data_z)
-
-    data = np.concatenate(data)
-
-    # make dataframe
-    model = pd.DataFrame({
-        cols[i]: pd.Series(data[:, i], dtype=dtypes[i])
-        for i in range(5)
-    })
-
-    # save model
-    if save is not None:
-        io.write_model(save, model)
-    return model
-
 
 #=========================
 # contour interpolation
