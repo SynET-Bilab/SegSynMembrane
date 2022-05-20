@@ -237,30 +237,30 @@ def region_surround_contour_slice(yx, nyx, shape, probe_end=5):
 
     return dist, dot_norm, mask_in
 
-def region_surround_contour(zyx, nzyx, width, cut_end=True):
+def region_surround_contour(zyx, nzyx, extend, cut_end=True):
     """ Generate regions surrounding a 3d open contour, e.g. a surface.
 
     Regions are extended from the surface along local normal directions (projected to xy-plane, no extensions along z).
-    Different widths can be set for regions in the normal direction and its opposite.
+    Different extensions can be set for regions in the normal direction and its opposite.
     Regions can be round-headed at the endpoints, or be cut beyond the normals of the endpoints.
 
     Args:
         zyx (np.ndarray): 3d points, with shape=(npts,3), arranged as [[z0,y0,x0],...].
         nzyx (np.ndarray): 3d normals of the points, with shape=(npts,3), arranged as [[nz0,ny0,nx0],...].
-        width (float or 2-tuple): Width to extend in normal's plus and minus direction, (width+,width-), or a float for equal widths.
+        extend (float or 2-tuple): Width to extend in normal's plus and minus direction, (extend+,extend-), or a float for equal extensions.
         cut_end (bool): Whether the region near the endpoints is round-headed (False) or will be cut beyond their normals (True).
 
     Returns:
         zyx_plus (np.ndarray): 3d points of the mask in the normal+ direction, with shape=(npts_plus,3).
         zyx_minus (np.ndarray): 3d points of the mask in the normal- direction, with shape=(npts_minus,3).
     """
-    # setup width=(width_plus,width_minus)
-    if isinstance(width, (int, float)):
-        width = (width, width)
+    # setup extend=(extend_plus,extend_minus)
+    if isinstance(extend, (int, float)):
+        extend = (extend, extend)
 
     # calculate yx ranges for later clipping
     zyx = np.round(zyx).astype(int)
-    yx_low, _, yx_shape = pcdutil.points_range(zyx[:, 1:], margin=int(max(width))+1)
+    yx_low, _, yx_shape = pcdutil.points_range(zyx[:, 1:], margin=int(max(extend))+1)
 
     # generate regions for each slice
     zyx_plus = []
@@ -278,8 +278,8 @@ def region_surround_contour(zyx, nzyx, width, cut_end=True):
         )
 
         # extract regions from masks
-        mask_plus = (dot_norm > 0) & (dist <= width[0])
-        mask_minus = (dot_norm < 0) & (dist <= width[1])
+        mask_plus = (dot_norm > 0) & (dist <= extend[0])
+        mask_minus = (dot_norm < 0) & (dist <= extend[1])
         if cut_end:
             mask_plus = mask_plus & mask_in
             mask_minus = mask_minus & mask_in
@@ -309,7 +309,7 @@ def region_surround_contour(zyx, nzyx, width, cut_end=True):
 # read tomo, model
 #=========================
 
-def regions_from_guide(guide_mod, width, normal_ref=None, interp_degree=2, cut_end=True):
+def regions_from_guide(guide_mod, extend, normal_ref=None, interp_degree=2, cut_end=True):
     """ Convert imod model with guiding lines to regions surrounding it.
 
     First interpolate the model along z and xy, to make dense contours.
@@ -317,7 +317,7 @@ def regions_from_guide(guide_mod, width, normal_ref=None, interp_degree=2, cut_e
 
     Args:
         guide_mod (np.ndarray): Model points of guiding lines, ordered in each z.
-        width (float or 2-tuple): Width to extend in normal's plus and minus direction, (width+,width-), or a float for equal widths.
+        extend (float or 2-tuple): Width to extend in normal's plus and minus direction, (extend+,extend-), or a float for equal extensions.
         interp_degree (int): Degree for bspline interpolation in the xy direction.
         normal_ref (np.ndarray or None): Reference point 'inside' for orienting the normals, [z_ref,y_ref,x_ref].
             If None, then generate from pcdutil.normals_gen_ref.
@@ -348,7 +348,7 @@ def regions_from_guide(guide_mod, width, normal_ref=None, interp_degree=2, cut_e
 
     # generate regions
     bound_plus, bound_minus = region_surround_contour(
-        guide, normals, width=width, cut_end=cut_end
+        guide, normals, extend=extend, cut_end=cut_end
     )
 
     return guide, bound_plus, bound_minus, normal_ref
@@ -364,7 +364,7 @@ def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degr
     Args:
         tomo_file (str): Filename of tomo mrc.
         model_file (str): Filename of imod model.
-        extend_nm (float): Extend from guiding lines by this width (in nm) to get the bound.
+        extend_nm (float): Extend from guiding lines by this value (in nm) to get the bound.
         pixel_nm (float): Pixel size in nm. If None then read from tomo.
         interp_degree (int): Degree of bspline interpolation of the model.
             2 for most cases.
@@ -408,7 +408,7 @@ def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degr
     # generate bounding regions from guiding line
     guide, bound_plus, bound_minus, normal_ref = regions_from_guide(
         model_guide,
-        width=extend_nm/pixel_nm,
+        extend=extend_nm/pixel_nm,
         normal_ref=normal_ref,
         interp_degree=interp_degree,
         cut_end=True
