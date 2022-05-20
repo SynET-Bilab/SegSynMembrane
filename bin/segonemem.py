@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import argparse, pathlib, logging
+import argparse, pathlib, logging, textwrap
 import multiprocessing
 import numpy as np
 import etsynseg
@@ -13,7 +13,7 @@ class SegOneMem(etsynseg.segbase.SegBase):
         super().__init__()
         
         # logging
-        self.timer = etsynseg.segbase.Timer(format="string")
+        self.timer = etsynseg.segbase.Timer(return_format="string")
         self.logger = logging.getLogger("segonemem")
         
         # update fields
@@ -23,16 +23,35 @@ class SegOneMem(etsynseg.segbase.SegBase):
         """ Build parser for segmentation.
 
         Returns:
-            parser (argparse.ArgumentParser): 
+            parser (argparse.ArgumentParser): Parser with arguments.
         """
         # parser
+        description = textwrap.dedent("""
+        Semi-automatic membrane segmentation.
+        
+        Usage:
+            (u1) segonemem.py mode tomo.mrc model.mod -o outputs [options]
+                model: if not provided, then set as tomo.mod
+                outputs: if not provided, then set as model-seg
+            (u2) segonemem.py mode state.npz [options]
+        
+        Modes:
+            run (u1): normal segmentation
+            runfine (u1): run with finely-drawn model which separates pre and post
+            rewrite (u2): model and figures
+            showarg (u2): print args
+            showim (u2): draw steps
+            showpcd (u2): draw membranes as pointclouds
+            showmoo (u2): plot moosac trajectory
+        """)
+
         parser = argparse.ArgumentParser(
             prog="segonemem.py",
-            description="Semi-automatic membrane segmentation.",
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter
+            description=description,
+            formatter_class=argparse.RawDescriptionHelpFormatter
         )
         # mode
-        parser.add_argument("mode", type=str, choices=["run", "runfine", "rewrite", "showarg", "showim", "showpcd"], help="Mode. run: normal segmentation; runfine: run with finely-drawn model which separates pre and post; rewrite: model and figures; showarg: print args; showim: draw steps; showpcd: draw membranes as pointclouds.")
+        parser.add_argument("mode", type=str, choices=["run", "runfine", "rewrite", "showarg", "showim", "showpcd"])
         # input/output
         parser.add_argument("inputs", type=str, nargs='+',help="Input files. Tomo and model files for modes in (run, runfine). State file for other modes.")
         parser.add_argument("-o", "--outputs", type=str, default=None, help="Basename for output files. Defaults to the basename of model file.")

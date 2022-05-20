@@ -345,7 +345,7 @@ class MOOPop:
                 *np.array(front).T,
                 marker="o", alpha=0.5, c=cmapper.to_rgba(i)
             )
-        axes[0].set(xlabel=f"fitness: coverage loss", ylabel=f"fitness: excess")
+        axes[0].set(xlabel="fitness: coverage loss", ylabel="fitness: excess")
 
         # plot indicators
         # indicator
@@ -355,7 +355,7 @@ class MOOPop:
         # change ratio
         axes1_twin = axes[1].twinx()
         axes1_twin.plot([ind["change_ratio"] for ind in log_indicator], c="C1")
-        axes1_twin.set(xlabel="generation", ylabel="change_ratio")
+        axes1_twin.set(xlabel="generation", ylabel="relative change")
         axes1_twin.tick_params(axis='y', labelcolor="C1")
 
         # save

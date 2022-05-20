@@ -3,6 +3,7 @@
 
 import time, pathlib
 import numpy as np
+import matplotlib.pyplot as plt
 import napari
 import etsynseg
 
@@ -14,17 +15,17 @@ class Timer:
     """ A timer class.
 
     Examples:
-        timer = Timer(format="number")
+        timer = Timer(return_format="number")
         dt_since_last = timer.click()
         dt_since_init = timer.total()
     """
-    def __init__(self, format="string"):
+    def __init__(self, return_format="string"):
         """ Init and record current time.
 
         Args:
-            format (str): Format for returned time difference, "string" or "number".
+            return_format (str): Format for returned time difference, "string" or "number".
         """
-        self.format = format
+        self.return_format = return_format
         self.t_init = time.perf_counter()
         self.t_last = time.perf_counter()
 
@@ -37,7 +38,7 @@ class Timer:
         t_curr = time.perf_counter()
         del_t = t_curr - self.t_last
         self.t_last = t_curr
-        if self.format == "string":
+        if self.return_format == "string":
             del_t = f"{del_t:.1f}s"
         return del_t
     
@@ -46,7 +47,7 @@ class Timer:
         """
         t_curr = time.perf_counter()
         del_t = t_curr - self.t_init
-        if self.format == "string":
+        if self.return_format == "string":
             del_t = f"{del_t:.1f}s"
         return del_t
 
@@ -427,6 +428,22 @@ class SegBase:
         pts_arr = [self.results[f"xyz{i}"] for i in labels]
         normals_arr = [self.results[f"nxyz{i}"] for i in labels]
         etsynseg.plot.draw_pcds(pts_arr, normals_arr, saturation=1)
+    
+    def show_moo(self, labels=None):
+        """ Plot MOOSAC evolution trajectory.
+
+        Args:
+            labels (tuple of int): Choose components to output.
+        """
+        if labels is None:
+            labels = self.labels
+
+        for i in labels:
+            mpop_i = etsynseg.moosac.MOOPop().init_from_state(
+                self.steps["moosac"][f"mpopz{i}"]
+            )
+            mpop_i.plot_logs()
+            plt.show()
 
     #=========================
     # outputs
