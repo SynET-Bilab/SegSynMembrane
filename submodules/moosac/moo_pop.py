@@ -20,7 +20,7 @@ class MOOPop:
         mtools = MOOTools().init_from_grid(grid, fitness_rthresh=1)
         mpop = MOOPop().init_from_mootools(mtools, pop_size=20)
         mpop.init_pop()
-        mpop.evolve(max_iter, (tol, n_back))
+        mpop.evolve(tol=0.01, max_iter=200)
         # save/load
         state = mpop.save_state()
         mpop = etsynseg.moosac.MOOPop().init_from_state(state)
@@ -283,14 +283,14 @@ class MOOPop:
         # select next generation
         self.pop = self.toolbox.select_best(self.pop+offspring, self.pop_size)
 
-    def evolve(self, var_cycle=(0, 1), tol=(0.005, 10), max_iter=200):
+    def evolve(self, var_cycle=(0, 1), tol=0.005, tol_nback=10, max_iter=200):
         """ Evolve multiple steps.
 
         Updates self.pop, self.log_front, self.log_indicators.
 
         Args:
             var_cycle (tuple): Sequence of variations to cycle. 0 for crossover, 1 for mutation.
-            tol (2-tuple): (tol_value, n_back). Terminate if max change_ratio within the last n_back steps < tol_value.
+            tol (float), tol_nback (int): Terminate if max change_ratio within the last tol_nback steps < tol.
             max_iter (int): The max number of generations.
         """
         for _, var in zip(range(max_iter), itertools.cycle(var_cycle)):
@@ -299,11 +299,11 @@ class MOOPop:
             self.logging_pop()
             
             # termination criteria
-            if len(self.log_indicator) > tol[1]:
+            if len(self.log_indicator) > tol_nback:
                 max_change = np.max([ind["change_ratio"]
-                    for ind in self.log_indicator[-tol[1]:]
+                    for ind in self.log_indicator[-tol_nback:]
                 ])
-                if max_change < tol[0]:
+                if max_change < tol:
                     break
     
     #=========================

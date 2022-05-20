@@ -46,7 +46,7 @@ def robust_fitting(
         zyx, guide,
         len_grids=(50, 100), shrink_sidegrid=0.25,
         fitness_rthresh=1,
-        pop_size=4, tol=(0.005, 10), max_iter=200,
+        pop_size=4, tol=0.005, tol_nback=10, max_iter=200,
         func_map=map
     ):
     """ Robust fitting of a surface to points.
@@ -76,7 +76,7 @@ def robust_fitting(
         shrink_sidegrid (float): Grids close to the sides in xy are shrinked to this ratio.
         fitness_rthresh (float): Distance threshold for fitness calculation.
         pop_size (int): Population size.
-        tol (2-tuple): (tol_value, n_back). Terminate if change_ratio < tol_value within the last n_back steps.
+        tol (float), tol_nback (int): Terminate if max change_ratio within the last tol_nback steps < tol.
         max_iter (int): The max number of generations.
         func_map (Callable): Map function.
     
@@ -100,7 +100,7 @@ def robust_fitting(
     # init, register map, evolve, clean map
     mpop.init_pop()
     mpop.register_map(func_map=func_map)
-    mpop.evolve(tol=tol, max_iter=max_iter)
+    mpop.evolve(tol=tol, tol_nback=tol_nback, max_iter=max_iter)
     mpop.register_map()
 
     # get the best individual and fit surface
