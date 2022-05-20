@@ -1,27 +1,23 @@
 #!/usr/bin/env python
 
-import argparse
+import argparse, pathlib, logging
 import multiprocessing
-import pathlib
-import logging
 import numpy as np
 import etsynseg
 
 class SegPrePost(etsynseg.segbase.SegBase):
-    def __init__(self, func_map=map):
+    def __init__(self):
         """ Initialization
         """
         # init from SegBase
         super().__init__()
         
         # logging
-        self.timer = etsynseg.segbase.Timer()
+        self.timer = etsynseg.segbase.Timer(format="string")
         self.logger = logging.getLogger("segprepost")
         
-        # func
-        self.func_map = func_map
-
         # update fields
+        self.labels = (1, 2)
         self.args.update(dict(components_min=None))
         self.steps["components"].update(dict(zyx2=None))
         self.steps["moosac"].update(dict(
@@ -43,13 +39,13 @@ class SegPrePost(etsynseg.segbase.SegBase):
         # parser
         parser = argparse.ArgumentParser(
             prog="segprepost.py",
-            description="Semi-automatic membrane segmentation. Inputs: tomo and boundary model. Outputs: record of steps (-steps.npz), segmentation result (-seg.npz), model (-seg.mod), quickview image (-seg.png).",
+            description="Semi-automatic membrane segmentation.",
             formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
         # mode
-        parser.add_argument("mode", type=str, choices=["run", "runfine", "imshow"], help="Segmentation mode.")
+        parser.add_argument("mode", type=str, choices=["run", "runfine", "rewrite", "showim", "showpcd"], help="Mode. run: normal segmentation; runfine: run with finely-drawn model which separates pre and post; rewrite: model and figures; showim: draw steps; showpcd: draw membranes as pointclouds.")
         # input/output
-        parser.add_argument("inputs", type=str, nargs='+',help="Input files. Tomo file, model file for new segmentation. Seg file for continuation.")
+        parser.add_argument("inputs", type=str, nargs='+',help="Input files. Tomo and model files for modes in (run, runfine). State file for other modes.")
         parser.add_argument("-o", "--outputs", type=str, default=None, help="Basename for output files. Defaults to the basename of model file.")
         # info
         parser.add_argument("-px", "--pixel_nm", type=float, default=None, help="Pixel size in nm. If not set, then read from the header of tomo.")
@@ -66,6 +62,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
         parser.add_argument("--moosac_lengrids", type=float, nargs=2, default=[50, 150], help="Step 'moosac': length of sampling grids in z- and xy-axes.")
         parser.add_argument("--moosac_shrinkside", type=float, default=0.25, help="Step 'moosac': grids on the side in xy are shrinked to this value.")
         parser.add_argument("--moosac_popsize", type=int, default=40, help="Step 'moosac': population size for evolution.")
+        parser.add_argument("--moosac_tol", type=float, default=0.005, help="Step 'moosac': terminate if fitness change < tol in all last 10 steps.")
         parser.add_argument("--moosac_maxiter", type=int, default=150, help="Step 'moosac': max number of iterations.")
         return parser
 
@@ -95,13 +92,16 @@ class SegPrePost(etsynseg.segbase.SegBase):
             # save
             self.args.update(args)
         # modes reading state file
-        else:
+        elif args["mode"] in ["rewrite", "showim", "showpcd"]:
             state_file = args["inputs"][0]
             self.load_state(state_file)
-        # add state filename
+        else:
+            raise ValueError(f"""Unrecognized mode: {args["mode"]}""")
+            
+        # state filename
         self.args["outputs_state"] = self.args["outputs"]+".npz"
 
-        # logging
+        # setup logging
         log_handler = logging.FileHandler(self.args["outputs"]+".log")
         log_formatter = logging.Formatter(
             "%(asctime)s %(message)s",
@@ -110,8 +110,17 @@ class SegPrePost(etsynseg.segbase.SegBase):
         log_handler.setFormatter(log_formatter)
         self.logger.addHandler(log_handler)
         self.logger.setLevel("INFO")
-        self.logger.info("----segprepost----")
-        self.logger.info(f"read args")
+        
+        # log for modes that run segmentation
+        if args["mode"] in ["run", "runfine"]:
+            self.logger.info("----segprepost----")
+            self.logger.info(f"read args")
+            # save state, backup for the first time
+            self.save_state(self.args["outputs_state"], backup=True)
+        # print for modes that just show
+        else:
+            print(f"----segprepost----")
+            print(f"""mode: {args["mode"]}""")
 
     def components_auto(self):
         """ Extract two components automatically.
@@ -164,9 +173,10 @@ class SegPrePost(etsynseg.segbase.SegBase):
 
         # extract by masking
         zyx = self.steps["detect"]["zyx"]
+        # pre in normal minus, post in normal plus
         zyx1, zyx2 = etsynseg.components.extract_components_regions(
             zyx,
-            region_arr=[tomod["bound_plus"], tomod["bound_minus"]],
+            region_arr=[tomod["bound_minus"], tomod["bound_plus"]],
             r_thresh=tomod["neigh_thresh"]
         )
 
@@ -178,9 +188,8 @@ class SegPrePost(etsynseg.segbase.SegBase):
         self.save_state(self.args["outputs_state"])
         self.logger.info(f"""extracted components: {self.timer.click()}""")
 
-
-    def finalize(self):
-        """ Finalize
+    def final_results(self):
+        """ Calculate final results. Save in self.results.
         """
         # log
         self.timer.click()
@@ -227,23 +236,31 @@ class SegPrePost(etsynseg.segbase.SegBase):
         self.results.update(results)
         self.save_state(self.args["outputs_state"])
 
-        # outputs
-        self.output_model(self.args["outputs"]+".mod", labels=(1, 2))
-        self.output_slices(self.args["outputs"]+".png", labels=(1, 2), nslice=5)
-
         # log
         self.logger.info(f"finalized: {self.timer.click()}")
 
+    def final_outputs(self):
+        """ Final outputs.
+        """
+        self.output_model(self.args["outputs"]+".mod")
+        self.output_slices(self.args["outputs"]+".png", nslice=5)
+
     def workflow(self):
+        """ Segmentation workflow.
+        """
+        mode = self.args["mode"]
+
         # load tomod
-        if self.args["mode"] in ["run", "runfine"]:
-            self.load_tomod()
+        if mode in ["run"]:
+            self.load_tomod(interp_degree=2)
+        elif mode in ["runfine"]:
+            self.load_tomod(interp_degree=1)
 
         # detecting
         self.detect()
 
         # extract components
-        if self.args["mode"] in ["runfine"]:
+        if mode in ["runfine"]:
             self.components_by_mask()
         else:
             self.components_auto()
@@ -253,25 +270,37 @@ class SegPrePost(etsynseg.segbase.SegBase):
         self.fit_refine(2)
 
         # finalize
-        self.finalize()
-        self.logger.info("segmentation finished.")
+        self.final_results()
+        self.final_outputs()
+        self.logger.info(f"""segmentation finished: total {self.timer.total()}""")
 
 if __name__ == "__main__":
     # init
-    pool = multiprocessing.Pool()
-    seg = SegPrePost(func_map=pool.map)
+    seg = SegPrePost()
     
     # parse and load args
     parser = seg.build_parser()
-    args = parser.parse_args()
+    args = vars(parser.parse_args())
     seg.load_args(args)
     
     # workflow
-    mode = seg.args["mode"]
+    # read mode from args, not seg.args
+    mode = args["mode"]
+    # run segmentation
     if mode in ["run", "runfine"]:
+        pool = multiprocessing.Pool()
+        seg.register_map(pool.map)
         seg.workflow()
-    elif mode == "imshow":
-        seg.imshow_steps(labels=(1, 2))
+        seg.register_map()
+        pool.close()
+    # recalculate and rewrite final results
+    elif mode == "rewrite":
+        seg.final_results()
+        seg.final_outputs()
+    # visualizations
+    elif mode == "showim":
+        seg.show_steps()
+    elif mode == "showpcd":
+        seg.show_pcds()
     
-    # clean
-    pool.close()
+    
