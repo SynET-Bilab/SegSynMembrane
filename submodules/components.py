@@ -114,19 +114,25 @@ def divide_spectral_points(zyx, orients, r_thresh, sigma_dO=np.pi/4, n_clusts=2)
 # components
 #=========================
 
-def extract_components_one(zyx, r_thresh=1):
+def extract_components_one(zyx, r_thresh=1, min_size=0):
     """ Extract the largest component in the neighboring graph of the points.
+
+    A min_size can be provided.
+    If the size of the largest component < min_size, raise error.
 
     Args:
         zyx (np.ndarray): Points with shape=(npts,dim) and in format [[zi,yi,xi],...].
         r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
+        min_size (int): The minimum size of components.
     
     Returns:
         zyx1 (np.ndarray): Points in the largest component. Shape=(npts1,dim).
     """
-    _, zyx1, _ = next(pcdutil.neighboring_components(
+    size1, zyx1, _ = next(pcdutil.neighboring_components(
         zyx, r_thresh, n_keep=1
     ))
+    if size1 < min_size:
+        raise RuntimeError(f"The largest component (size={size1}) < min_size ({min_size}).")
     return zyx1
 
 def extract_components_two(zyx, r_thresh=1, orients=None, sigma_dO=np.pi/4, min_size=0):
@@ -172,8 +178,7 @@ def extract_components_two(zyx, r_thresh=1, orients=None, sigma_dO=np.pi/4, min_
     # setup the test for termination
     def terminate_division(size1, size2):
         if size1 < min_size:
-            raise RuntimeError(
-                f"The largest component (size={size1}) is smaller than min_size ({min_size}).")
+            raise RuntimeError(f"The largest component (size={size1}) < min_size ({min_size}).")
         elif size2 >= min_size:
             return True
         else:
@@ -192,13 +197,14 @@ def extract_components_two(zyx, r_thresh=1, orients=None, sigma_dO=np.pi/4, min_
 
     return zyx1, zyx2
 
-def extract_components_regions(zyx, region_arr, r_thresh=1):
+def extract_components_regions(zyx, region_arr, r_thresh=1, min_size=0):
     """ Extract the largest components in each region.
 
     Args:
         zyx (np.ndarray): Points with shape=(npts,dim) and in format [[zi,yi,xi],...].
         region_arr (list of np.ndarray): List of regions. Each is an array of points in that region, with shape=(npts_i,dim).
         r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
+        min_size (int): The minimum size of components.
 
     Returns:
         zyx_arr (list of np.ndarray): List of points in each region. Each has shape (npts_in_region_i,dim).
@@ -206,6 +212,6 @@ def extract_components_regions(zyx, region_arr, r_thresh=1):
     zyx_arr = []
     for region_i in region_arr:
         mask_i = pcdutil.points_in_region(zyx, region_i)
-        zyx_i = extract_components_one(zyx[mask_i], r_thresh)
+        zyx_i = extract_components_one(zyx[mask_i], r_thresh, min_size)
         zyx_arr.append(zyx_i)
     return zyx_arr

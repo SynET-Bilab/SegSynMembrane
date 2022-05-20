@@ -90,8 +90,10 @@ class SegBase:
         # args: length unit is nm
         self.args = dict(
             mode=None, inputs=None, outputs=None,
+            tomo_file=None, model_file=None, outputs_state=None,
             pixel=None, extend=None, neigh_thresh=None,
             detect_gauss=None, detect_tv=None, detect_filt=None, detect_supp=None,
+            components_min=None,
             moosac_lengrids=None, moosac_shrinkside=None, moosac_popsize=None, moosac_tol=None, moosac_maxiter=None
         )
         # intermediate steps: length unit is pixel, coordinates are clipped
@@ -308,6 +310,57 @@ class SegBase:
     #=========================
     # show
     #=========================
+
+    def show_args(self):
+        """ Print self.args.
+        """
+        args = self.args
+        k_shown = []
+        
+        # functions for printing
+        def print_keys(k_arr, delim=", "):
+            doc = []
+            for k in k_arr:
+                doc.append(f"{k}={args[k]}")
+                k_shown.append(k)
+            doc = delim.join(doc)
+            print(doc)
+        
+        def print_prefix(prefix, delim=", "):
+            print(f"--{prefix}--")
+            doc = []
+            for k, v in args.items():
+                if k.startswith(prefix):
+                    doc.append(f"{k.split(prefix)[-1]}={v}")
+                    k_shown.append(k)
+            doc = delim.join(doc)
+            print(doc)
+        
+        def print_misc(title="--misc--", delim=", "):
+            doc = []
+            for k, v in args.items():
+                if k not in k_shown:
+                    doc.append(f"{k}={v}")
+            if len(doc) > 0:
+                doc = delim.join(doc)
+                print(title)
+                print(doc)
+    
+        # print
+        print("----arguments----")
+        # basics
+        print("--input/output--")
+        print_keys(["tomo_file", "model_file", "outputs"], delim="\n")
+        k_shown.extend(["inputs", "outputs_state"])
+        print("--basics--")
+        print_keys(["mode", "pixel", "extend", "neigh_thresh"])
+        # steps
+        print_prefix("detect")
+        print_prefix("components")
+        print_prefix("moosac")
+        # misc
+        print_misc("--misc--")
+        
 
     def show_steps(self, labels=None):
         """ Visualize each step as 3d image using etsynseg.plot.imshow3d

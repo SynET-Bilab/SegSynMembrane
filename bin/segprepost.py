@@ -43,7 +43,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
             formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
         # mode
-        parser.add_argument("mode", type=str, choices=["run", "runfine", "rewrite", "showim", "showpcd"], help="Mode. run: normal segmentation; runfine: run with finely-drawn model which separates pre and post; rewrite: model and figures; showim: draw steps; showpcd: draw membranes as pointclouds.")
+        parser.add_argument("mode", type=str, choices=["run", "runfine", "rewrite", "showarg", "showim", "showpcd"], help="Mode. run: normal segmentation; runfine: run with finely-drawn model which separates pre and post; rewrite: model and figures; showarg: print args; showim: draw steps; showpcd: draw membranes as pointclouds.")
         # input/output
         parser.add_argument("inputs", type=str, nargs='+',help="Input files. Tomo and model files for modes in (run, runfine). State file for other modes.")
         parser.add_argument("-o", "--outputs", type=str, default=None, help="Basename for output files. Defaults to the basename of model file.")
@@ -77,8 +77,9 @@ class SegPrePost(etsynseg.segbase.SegBase):
             args = vars(args)
         
         # processing
+        mode = args["mode"]
         # modes reading tomo and model files
-        if args["mode"] in ["run", "runfine"]:
+        if mode in ["run", "runfine"]:
             # amend tomo, model
             args["tomo_file"] = args["inputs"][0]
             if len(args["inputs"]) == 2:
@@ -92,11 +93,11 @@ class SegPrePost(etsynseg.segbase.SegBase):
             # save
             self.args.update(args)
         # modes reading state file
-        elif args["mode"] in ["rewrite", "showim", "showpcd"]:
+        elif (mode in ["rewrite"]) or  mode.startswith("show"):
             state_file = args["inputs"][0]
             self.load_state(state_file)
         else:
-            raise ValueError(f"""Unrecognized mode: {args["mode"]}""")
+            raise ValueError(f"""Unrecognized mode: {mode}""")
             
         # state filename
         self.args["outputs_state"] = self.args["outputs"]+".npz"
@@ -298,9 +299,10 @@ if __name__ == "__main__":
         seg.final_results()
         seg.final_outputs()
     # visualizations
+    elif mode == "showarg":
+        seg.show_args()
     elif mode == "showim":
         seg.show_steps()
     elif mode == "showpcd":
         seg.show_pcds()
-    
     
