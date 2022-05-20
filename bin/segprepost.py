@@ -48,12 +48,12 @@ class SegPrePost(etsynseg.segbase.SegBase):
         parser.add_argument("inputs", type=str, nargs='+',help="Input files. Tomo and model files for modes in (run, runfine). State file for other modes.")
         parser.add_argument("-o", "--outputs", type=str, default=None, help="Basename for output files. Defaults to the basename of model file.")
         # info
-        parser.add_argument("-px", "--pixel_nm", type=float, default=None, help="Pixel size in nm. If not set, then read from the header of tomo.")
-        parser.add_argument("--extend_nm", type=float, default=30, help="The distance (in nm) that the bounding region extends from guiding lines.")
-        parser.add_argument("--d_mem_nm", type=float, default=5, help="Membrane thickness in nm.")
-        parser.add_argument("--neigh_thresh_nm", type=float, default=5, help="Distance threshold (in nm) for neighboring points in graph construction.")
+        parser.add_argument("-px", "--pixel", type=float, default=None, help="Pixel size in nm. If not set, then read from the header of tomo.")
+        parser.add_argument("--extend", type=float, default=30, help="The distance (in nm) that the bounding region extends from guiding lines.")
+        parser.add_argument("--neigh_thresh", type=float, default=5, help="Distance threshold (in nm) for neighboring points in graph construction.")
         # detect
-        parser.add_argument("--detect_tv_nm", type=float, default=20, help="Step 'detect': sigma for tensor voting (tv) in nm. Can be set to cleft width.")
+        parser.add_argument("--detect_smooth", type=float, default=5, help="Step 'detect': sigma for gaussian smoothin in nm. Can be set to membrane thickness.")
+        parser.add_argument("--detect_tv", type=float, default=20, help="Step 'detect': sigma for tensor voting in nm. Can be set to cleft width.")
         parser.add_argument("--detect_filt", type=float, default=3, help="Step 'detect': keep the strongest (detect_filt * size of guiding surface) pixels during filtering.")
         parser.add_argument("--detect_supp", type=float, default=0.5, help="Step 'detect': sigma for normal suppression = (detect_supp * length of guiding line).")
         # components
@@ -220,7 +220,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
             # surface area
             area_i, _ = etsynseg.moosac.surface_area(
                 zyx_i, tomod["guide"],
-                len_grid=tomod["d_mem"]*4
+                len_grid=tomod["neigh_thresh"]*4
             )
             results[f"area{i}_nm2"] = area_i * pixel_nm**2
 

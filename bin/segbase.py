@@ -81,20 +81,20 @@ class SegBase:
         
         # info
         self.info = """ Info of the attributes.
-        args: Arguments received from the terminal.
+        args: Arguments received from the terminal. Length unit is nm.
         steps: Intermediate results in each step. Coordinates: ranged in the clipped tomo, in units of pixels, the order is [z,y,x].
         results: Final results. Coordinates: ranged in the input tomo, in units of pixels, the order is [x,y,z].
         """
         # labels
         self.labels = (1,)
-        # args
+        # args: length unit is nm
         self.args = dict(
             mode=None, inputs=None, outputs=None,
-            pixel_nm=None, extend_nm=None, d_mem_nm=None, neigh_thresh_nm=None,
-            detect_tv_nm=None, detect_filt=None, detect_supp=None,
+            pixel=None, extend=None, neigh_thresh=None,
+            detect_gauss=None, detect_tv=None, detect_filt=None, detect_supp=None,
             moosac_lengrids=None, moosac_shrinkside=None, moosac_popsize=None, moosac_tol=None, moosac_maxiter=None
         )
-        # intermediate steps: in clipped coordinates
+        # intermediate steps: length unit is pixel, coordinates are clipped
         self.steps = dict(
             tomod=dict(
                 I=None, shape=None, pixel_nm=None,
@@ -108,7 +108,7 @@ class SegBase:
             match=dict(zyx1=None),
             meshrefine=dict(zyx1=None)
         )
-        # results: in original coordinates
+        # results: coordinates are in the original range
         self.results=dict(
             xyz1=None, nxyz1=None, area1_nm2=None
         )
@@ -395,16 +395,15 @@ class SegBase:
         tomod = etsynseg.modutil.read_tomo_model(
             tomo_file=args["tomo_file"],
             model_file=args["model_file"],
-            extend_nm=args["extend_nm"],
-            pixel_nm=args["pixel_nm"],
+            extend_nm=args["extend"],
+            pixel_nm=args["pixel"],
             interp_degree=interp_degree
         )
 
-        # update parameters
-        tomod["d_mem"] = args["d_mem_nm"] / tomod["pixel_nm"]
-        # neigh thresh >= 1
+        # update neigh thresh:
+        # nm to pixel, constrain to >= 1
         tomod["neigh_thresh"] = max(
-            1, args["neigh_thresh_nm"]/tomod["pixel_nm"])
+            1, args["neigh_thresh"]/tomod["pixel_nm"])
 
         # save
         self.steps["tomod"].update(tomod)
@@ -432,8 +431,8 @@ class SegBase:
             tomod["I"],
             guide=tomod["guide"],
             bound=tomod["bound"],
-            sigma_gauss=tomod["d_mem"],
-            sigma_tv=args["detect_tv_nm"]/pixel_nm,
+            sigma_gauss=tomod["detect_smooth"]/pixel_nm,
+            sigma_tv=args["detect_tv"]/pixel_nm,
             factor_filt=args["detect_filt"],
             factor_supp=args["detect_supp"],
             return_nofilt=True
@@ -504,7 +503,7 @@ class SegBase:
             zyx_match,
             sigma_normal=tomod["neigh_thresh"]*2,
             sigma_mesh=tomod["neigh_thresh"]*2,
-            sigma_hull=tomod["d_mem"],
+            sigma_hull=tomod["neigh_thresh"],
             target_spacing=1,
             bound=tomod["bound"]
         )
