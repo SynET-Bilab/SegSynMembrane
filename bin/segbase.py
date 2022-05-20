@@ -222,7 +222,7 @@ class SegBase:
             tomod["I"],
             guide=tomod["guide"],
             bound=tomod["bound"],
-            sigma_gauss=tomod["detect_smooth"]/pixel_nm,
+            sigma_gauss=args["detect_smooth"]/pixel_nm,
             sigma_tv=args["detect_tv"]/pixel_nm,
             factor_filt=args["detect_filt"],
             factor_supp=args["detect_supp"],
@@ -486,7 +486,6 @@ class SegBase:
         contour_bound = etsynseg.imgutil.component_contour(B_bound)
         # components
         zyx_segs = [self.steps[step][f"zyx{i}"] for i in labels]
-        zyx_segs = [self.steps[step][f"zyx{i}"] for i in (1, 2)]
         # combine
         zyx_arr = [contour_bound, *zyx_segs]
 
@@ -511,62 +510,3 @@ class SegBase:
             im_dict, dpi=dpi, save=fig_file
         )
         return fig, axes
-
-    # def output_membrano(self, fig_file, step="meshrefine", labels=(1,)):
-    #     """ avg membranogram
-    #     :return: p_mem, p_pick, v_avg
-    #     """
-    #     # get data
-    #     tomo = data["tomo"]
-    #     px_nm = data["px_nm"]
-    #     pre_zyx = data["pre_zyx"]
-    #     pre_nzyx = data["pre_nzyx"]
-    #     post_zyx = data["post_zyx"]
-    #     post_nzyx = data["post_nzyx"]
-
-    #     # membranogram
-    #     _, v_pre = etsynseg.membranogram.interpolate_dist(
-    #         zyx_i,
-    #         pre_zyx, pre_nzyx, dist_arr_nm/px_nm, tomo
-    #     )
-    #     _, v_post = membranogram.interpolate_avg(
-    #         post_zyx, post_nzyx, dist_arr_nm/px_nm, tomo
-    #     )
-
-    #     # projection
-    #     mem_zyx = np.concatenate([pre_zyx, post_zyx], axis=0)
-    #     mem_nzyx = np.concatenate([-pre_nzyx, post_nzyx], axis=0)
-    #     proj = membranogram.Project().fit(mem_zyx, mem_nzyx)
-    #     del mem_zyx, mem_nzyx
-    #     p_pre = proj.transform(pre_zyx)
-    #     p_post = proj.transform(post_zyx)
-    #     e1 = proj.e1
-    #     e2 = proj.e2
-
-    #     # calculate angles
-    #     e1_orient = np.rad2deg(np.arctan2(e1[1], e1[0]))
-
-    #     # rescale values
-    #     v_pre = skimage.exposure.rescale_intensity(
-    #         v_pre,
-    #         in_range=tuple(np.quantile(v_pre, qrange))
-    #     )
-    #     v_post = skimage.exposure.rescale_intensity(
-    #         v_post,
-    #         in_range=tuple(np.quantile(v_post, qrange))
-    #     )
-
-    #     # plot
-    #     fig, axes, s_pt = plot.scatter(
-    #         [np.transpose(p)*px_nm for p in [p_pre, p_post]],
-    #         v_arr=[v_pre, v_post],
-    #         cmap="gray", shape=(2, 1),
-    #     )
-
-    #     axes[0, 0].set(ylabel="pre")
-    #     axes[1, 0].set(ylabel="post")
-    #     fig.supxlabel(rf"$e_1(\theta_{{xy}}={e1_orient:.1f}^o)/nm$")
-    #     fig.supylabel(f"$e_2(z)/nm$")
-
-    #     if save is not None:
-    #         fig.savefig(save)

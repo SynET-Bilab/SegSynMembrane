@@ -5,7 +5,7 @@ import multiprocessing
 import numpy as np
 import etsynseg
 
-class SegPrePost(etsynseg.segbase.SegBase):
+class SegOneMem(etsynseg.segbase.SegBase):
     def __init__(self):
         """ Initialization
         """
@@ -14,20 +14,10 @@ class SegPrePost(etsynseg.segbase.SegBase):
         
         # logging
         self.timer = etsynseg.segbase.Timer(format="string")
-        self.logger = logging.getLogger("segprepost")
+        self.logger = logging.getLogger("segonemem")
         
         # update fields
-        self.labels = (1, 2)
-        self.steps["components"].update(dict(zyx2=None))
-        self.steps["moosac"].update(dict(
-            mpopz2=None, zyx2=None
-        ))
-        self.steps["match"].update(dict(zyx2=None))
-        self.steps["meshrefine"].update(dict(zyx2=None))
-        self.results.update(dict(
-            xyz2=None, nxyz2=None, area2_nm2=None,
-            dist1_nm=None, dist2_nm=None,
-        ))
+        self.labels = (1,)
 
     def build_parser(self):
         """ Build parser for segmentation.
@@ -37,7 +27,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
         """
         # parser
         parser = argparse.ArgumentParser(
-            prog="segprepost.py",
+            prog="segonemem.py",
             description="Semi-automatic membrane segmentation.",
             formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
@@ -48,12 +38,12 @@ class SegPrePost(etsynseg.segbase.SegBase):
         parser.add_argument("-o", "--outputs", type=str, default=None, help="Basename for output files. Defaults to the basename of model file.")
         # info
         parser.add_argument("-px", "--pixel", type=float, default=None, help="Pixel size in nm. If not set, then read from the header of tomo.")
-        parser.add_argument("--extend", type=float, default=30, help="The distance (in nm) that the bounding region extends from guiding lines.")
+        parser.add_argument("--extend", type=float, default=20, help="The distance (in nm) that the bounding region extends from guiding lines.")
         parser.add_argument("--neigh_thresh", type=float, default=5, help="Distance threshold (in nm) for neighboring points in graph construction.")
         # detect
         parser.add_argument("--detect_smooth", type=float, default=5, help="Step 'detect': sigma for gaussian smoothin in nm. Can be set to membrane thickness.")
         parser.add_argument("--detect_tv", type=float, default=20, help="Step 'detect': sigma for tensor voting in nm. Can be set to cleft width.")
-        parser.add_argument("--detect_filt", type=float, default=3, help="Step 'detect': keep the strongest (detect_filt * size of guiding surface) pixels during filtering.")
+        parser.add_argument("--detect_filt", type=float, default=1.5, help="Step 'detect': keep the strongest (detect_filt * size of guiding surface) pixels during filtering.")
         parser.add_argument("--detect_supp", type=float, default=0.5, help="Step 'detect': sigma for normal suppression = (detect_supp * length of guiding line).")
         # components
         parser.add_argument("--components_min", type=float, default=0.75, help="Step 'components': min size of component = (components_min * size of guiding surface).")
@@ -122,7 +112,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
             print(f"----segprepost----")
             print(f"""mode: {args["mode"]}""")
 
-    def components_auto(self):
+    def components_one(self):
         """ Extract two components automatically.
 
         Prerequisites: membranes are detected.
@@ -138,51 +128,14 @@ class SegPrePost(etsynseg.segbase.SegBase):
         # extract by division
         zyx = self.steps["detect"]["zyx"]
         min_size = len(tomod["guide"])*args["components_min"]
-        zyx1, zyx2 = etsynseg.components.extract_components_two(
+        zyx1 = etsynseg.components.extract_components_one(
             zyx,
             r_thresh=tomod["neigh_thresh"],
-            orients=None, sigma_dO=np.pi/4,
             min_size=min_size
         )
 
-        # sort by distance to ref point
-        zyx1, zyx2 = etsynseg.pcdutil.sort_pcds_by_ref(
-            [zyx1, zyx2],
-            pt_ref=tomod["normal_ref"]
-        )
-        
         # save results
         self.steps["components"]["zyx1"] = zyx1
-        self.steps["components"]["zyx2"] = zyx2
-
-        # log
-        self.save_state(self.args["outputs_state"])
-        self.logger.info(f"""extracted components: {self.timer.click()}""")
-
-    def components_by_mask(self):
-        """ Extract two components using masks.
-        
-        Prerequisites: membranes are detected.
-        Effects: updates self.steps["components"].
-        """
-        # log
-        self.timer.click()
-
-        # setup
-        tomod = self.steps["tomod"]
-
-        # extract by masking
-        zyx = self.steps["detect"]["zyx"]
-        # pre in normal minus, post in normal plus
-        zyx1, zyx2 = etsynseg.components.extract_components_regions(
-            zyx,
-            region_arr=[tomod["bound_minus"], tomod["bound_plus"]],
-            r_thresh=tomod["neigh_thresh"]
-        )
-
-        # save results
-        self.steps["components"]["zyx1"] = zyx1
-        self.steps["components"]["zyx2"] = zyx2
 
         # log
         self.save_state(self.args["outputs_state"])
@@ -213,8 +166,6 @@ class SegPrePost(etsynseg.segbase.SegBase):
                 sigma=tomod["neigh_thresh"]*2,
                 pt_ref=tomod["normal_ref"]
             )
-            if i == 2:  # flip sign for postsynapse
-                nzyx_i = -nzyx_i
             results[f"nxyz{i}"] = etsynseg.pcdutil.reverse_coord(nzyx_i)
 
             # surface area
@@ -223,14 +174,6 @@ class SegPrePost(etsynseg.segbase.SegBase):
                 len_grid=tomod["neigh_thresh"]*4
             )
             results[f"area{i}_nm2"] = area_i * pixel_nm**2
-
-        # distance
-        dist1, dist2 = etsynseg.pcdutil.points_distance(
-            meshrefine["zyx1"], meshrefine["zyx2"],
-            return_2to1=True
-        )
-        results["dist1_nm"] = dist1 * pixel_nm
-        results["dist2_nm"] = dist2 * pixel_nm
 
         # save
         self.results.update(results)
@@ -260,14 +203,10 @@ class SegPrePost(etsynseg.segbase.SegBase):
         self.detect()
 
         # extract components
-        if mode in ["runfine"]:
-            self.components_by_mask()
-        else:
-            self.components_auto()
+        self.components_one()
 
         # fit refine
         self.fit_refine(1)
-        self.fit_refine(2)
 
         # finalize
         self.final_results()
@@ -276,7 +215,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
 
 if __name__ == "__main__":
     # init
-    seg = SegPrePost()
+    seg = SegOneMem()
     
     # parse and load args
     parser = seg.build_parser()
