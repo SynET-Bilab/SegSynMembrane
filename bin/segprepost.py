@@ -133,7 +133,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
         # log for modes that run segmentation
         if args["mode"] in ["run", "runfine"]:
             self.logger.info("----segprepost----")
-            self.logger.info(f"read args")
+            self.logger.info(f"""read args: {args["mode"]} {args["inputs"]}""")
             # save state, backup for the first time
             self.save_state(self.args["outputs_state"], backup=True)
         # print for modes that just show
