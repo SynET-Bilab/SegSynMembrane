@@ -147,11 +147,16 @@ class SegOneMem(etsynseg.segbase.SegBase):
         # extract by division
         zyx = self.steps["detect"]["zyx"]
         min_size = len(tomod["guide"])*args["components_min"]
-        zyx1 = etsynseg.components.extract_components_one(
-            zyx,
-            r_thresh=tomod["neigh_thresh"],
-            min_size=min_size
-        )
+        try:
+            zyx1 = etsynseg.components.extract_components_one(
+                zyx,
+                r_thresh=tomod["neigh_thresh"],
+                min_size=min_size
+            )
+        # RuntimeError: component size < min_size
+        except RuntimeError as e:
+            self.logger.error(e)
+            raise
 
         # save results
         self.steps["components"]["zyx1"] = zyx1

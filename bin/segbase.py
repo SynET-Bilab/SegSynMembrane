@@ -199,14 +199,20 @@ class SegBase:
 
         # read tomo, model
         args = self.args
-        tomod = etsynseg.modutil.read_tomo_model(
-            tomo_file=args["tomo_file"],
-            model_file=args["model_file"],
-            extend_nm=args["extend"],
-            pixel_nm=args["pixel"],
-            interp_degree=interp_degree,
-            raise_noref=raise_noref
-        )
+        try:
+            tomod = etsynseg.modutil.read_tomo_model(
+                tomo_file=args["tomo_file"],
+                model_file=args["model_file"],
+                extend_nm=args["extend"],
+                pixel_nm=args["pixel"],
+                interp_degree=interp_degree,
+                raise_noref=raise_noref
+            )
+        # FileNotFoundError: no tomo or no model file
+        # ValueError: no ref point if raise_noref=True
+        except (FileNotFoundError, ValueError) as e:
+            self.logger.error(e)
+            raise
 
         # update neigh thresh:
         # nm to pixel, constrain to >= 1

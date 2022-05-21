@@ -157,12 +157,17 @@ class SegPrePost(etsynseg.segbase.SegBase):
         # extract by division
         zyx = self.steps["detect"]["zyx"]
         min_size = len(tomod["guide"])*args["components_min"]
-        zyx1, zyx2 = etsynseg.components.extract_components_two(
-            zyx,
-            r_thresh=tomod["neigh_thresh"],
-            orients=None, sigma_dO=np.pi/4,
-            min_size=min_size
-        )
+        try:
+            zyx1, zyx2 = etsynseg.components.extract_components_two(
+                zyx,
+                r_thresh=tomod["neigh_thresh"],
+                orients=None, sigma_dO=np.pi/4,
+                min_size=min_size
+            )
+        # RuntimeError: component size < min_size
+        except RuntimeError as e:
+            self.logger.error(e)
+            raise
 
         # sort by distance to ref point
         zyx1, zyx2 = etsynseg.pcdutil.sort_pcds_by_ref(
@@ -192,12 +197,19 @@ class SegPrePost(etsynseg.segbase.SegBase):
 
         # extract by masking
         zyx = self.steps["detect"]["zyx"]
+        min_size = len(tomod["guide"])*args["components_min"]
         # pre in normal minus, post in normal plus
-        zyx1, zyx2 = etsynseg.components.extract_components_regions(
-            zyx,
-            region_arr=[tomod["bound_minus"], tomod["bound_plus"]],
-            r_thresh=tomod["neigh_thresh"]
-        )
+        try:
+            zyx1, zyx2 = etsynseg.components.extract_components_regions(
+                zyx,
+                region_arr=[tomod["bound_minus"], tomod["bound_plus"]],
+                r_thresh=tomod["neigh_thresh"],
+                min_size=min_size
+            )
+        # RuntimeError: component size < min_size
+        except RuntimeError as e:
+            self.logger.error(e)
+            raise
 
         # save results
         self.steps["components"]["zyx1"] = zyx1
