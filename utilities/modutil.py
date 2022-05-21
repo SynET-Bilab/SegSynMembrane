@@ -353,7 +353,7 @@ def regions_from_guide(guide_mod, extend, normal_ref=None, interp_degree=2, cut_
 
     return guide, bound_plus, bound_minus, normal_ref
 
-def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degree=2):
+def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degree=2, raise_noref=False):
     """ Read tomo and model.
 
     Read model: object 1 for guiding lines, object 2 for reference point.
@@ -369,6 +369,7 @@ def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degr
         interp_degree (int): Degree of bspline interpolation of the model.
             2 for most cases.
             1 for finely-drawn model to preserve the original contours.
+        raise_noref (bool): Whether to raise error if the reference point is not found in model object 2.
 
     Returns:
         tomod (dict): Tomo, model, and relevant info. See below for fields in the dict.
@@ -398,10 +399,12 @@ def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degr
     if 1 in model["object"].values:
         model_guide = model[model["object"] == 1][['z', 'y', 'x']].values
     else:
-        raise ValueError(f"The object for guiding lines (id=1) is not found in the model file.")
+        raise ValueError("The object for guiding lines (id=1) is not found in the model file.")
     # object: normal ref point
     if 2 in model["object"].values:
         normal_ref = model[model["object"] == 2][['z', 'y', 'x']].values[0]
+    elif raise_noref:
+        raise ValueError("The object for reference point (id=2) is not found in the model file.")
     else:
         normal_ref = None
 

@@ -271,9 +271,9 @@ class SegPrePost(etsynseg.segbase.SegBase):
 
         # load tomod
         if mode in ["run"]:
-            self.load_tomod(interp_degree=2)
+            self.load_tomod(interp_degree=2, raise_noref=True)
         elif mode in ["runfine"]:
-            self.load_tomod(interp_degree=1)
+            self.load_tomod(interp_degree=1, raise_noref=True)
 
         # detecting
         self.detect()

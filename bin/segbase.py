@@ -170,7 +170,7 @@ class SegBase:
     # steps
     #=========================
     
-    def load_tomod(self, interp_degree=2):
+    def load_tomod(self, interp_degree=2, raise_noref=False):
         """ Load tomo and model.
         
         Prerequisites: args are read.
@@ -178,6 +178,7 @@ class SegBase:
 
         Args:
             interp_degree (int): Degree for model interpolation. 2 for quadratic, 1 for linear.
+            raise_noref (bool): Whether to raise error if the reference point is not found in model object 2.
         """
         # log
         self.timer.click()
@@ -189,7 +190,8 @@ class SegBase:
             model_file=args["model_file"],
             extend_nm=args["extend"],
             pixel_nm=args["pixel"],
-            interp_degree=interp_degree
+            interp_degree=interp_degree,
+            raise_noref=raise_noref
         )
 
         # update neigh thresh:
