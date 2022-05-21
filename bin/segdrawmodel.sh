@@ -23,34 +23,40 @@ echo ""
 # iterate over tomos
 for fmrc in $@
 do
+    echo ""
     echo "--${fmrc}--"
 
     # default mod filename
     fmod="${fmrc%.*}.mod"
-    echo "default model name: ${fmod}"
-
+    echo "Default model name: ${fmod}"
+    
+    # prompt for existence
     if [[ -f $fmod ]]
     then
-        echo "the model exists. skipping."
-        continue
+        echo "The model file exists."
     fi
     
     # draw
-    read -p "draw model on ${fmrc}? yes(y,default)/skip(s)/exit(e): " open_mod
+    read -p "Draw model? yes(y,default)/skip(s)/exit(e): " open_mod
     case $open_mod in
 	s* ) 
-        echo "skipped, reading next"
+        echo "Skipping."
         continue
         ;;
 	e* )
-        echo "exit" 
+        echo "Exiting." 
         break
         ;;
 	* )
-        cp $mod_empty $fmod
+        # copy/paste an empty model file if it does not exist
+        if [[ ! -f $fmod ]]
+        then
+            cp $mod_empty $fmod
+        fi
         echo "3dmod $fmrc $fmod"
 	    3dmod $fmrc $fmod
 
+        # whether to delete the model file
         read -p "successful? yes(y,default)/no(n,delete model): " succ_mod
         case $succ_mod in
         n* ) 
