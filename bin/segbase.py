@@ -1,14 +1,17 @@
 """ 
 """
 
-import time, pathlib
+import pathlib
+import argparse
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 import napari
 import etsynseg
 
 __all__ = [
-    "Timer", "SegBase"
+    "Timer", "HelpFormatterCustom",
+    "SegBase"
 ]
 
 class Timer:
@@ -30,10 +33,10 @@ class Timer:
         self.t_last = time.perf_counter()
 
     def click(self):
-        """ Record current time and calc time difference with the last click.
+        """ Record current time and return elapsed time since the last click.
 
         Returns:
-            del_t (str): 
+            del_t (str or float): Elapsed time.
         """
         t_curr = time.perf_counter()
         del_t = t_curr - self.t_last
@@ -43,7 +46,10 @@ class Timer:
         return del_t
     
     def total(self):
-        """ Calc time difference between current and the initial.
+        """ Return elapsed time since initiation.
+
+        Returns:
+            del_t (str or float): Elapsed time.
         """
         t_curr = time.perf_counter()
         del_t = t_curr - self.t_init
@@ -51,6 +57,14 @@ class Timer:
             del_t = f"{del_t:.1f}s"
         return del_t
 
+class HelpFormatterCustom(argparse.ArgumentDefaultsHelpFormatter):
+    # RawDescriptionHelpFormatter
+    def _fill_text(self, text, width, indent):
+        return ''.join(indent + line for line in text.splitlines(keepends=True))
+    
+    # MetavarTypeHelpFormatter
+    def _get_default_metavar_for_optional(self, action):
+        return action.type.__name__
 
 class SegBase:
     """ Base class for segmentation.

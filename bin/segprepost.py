@@ -58,7 +58,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
         parser = argparse.ArgumentParser(
             prog="segprepost.py",
             description=description,
-            formatter_class=argparse.RawDescriptionHelpFormatter
+            formatter_class=etsynseg.segbase.HelpFormatterCustom
         )
         # mode
         parser.add_argument("mode", type=str, choices=["run", "runfine", "rewrite", "showarg", "showim", "showpcd", "showmoo"])
