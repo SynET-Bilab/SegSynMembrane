@@ -53,8 +53,8 @@ do
         then
             cp $mod_empty $fmod
         fi
-        echo "3dmod $fmrc $fmod"
-	    3dmod $fmrc $fmod
+        echo "3dmod -m $fmrc $fmod"
+	    3dmod -m $fmrc $fmod
 
         # whether to delete the model file
         read -p "successful? yes(y,default)/no(n,delete model): " succ_mod

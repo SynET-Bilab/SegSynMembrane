@@ -29,6 +29,6 @@ module load etsynseg
 
 # for fmrc in *.mrc
 # do
-#     segprepost.py run $fmrc
+#     segprepost.py run \$fmrc
 # done
 EOL
