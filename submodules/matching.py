@@ -171,7 +171,8 @@ def bridge_gaps_2d(pts_cand, pts_gapped, orients_cand, r_thresh):
         r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
 
     Returns:
-        pts_bridge (np.ndarray): Bridged points, with shape=(npts_bridged,dim).
+        pts_bridge (np.ndarray or None): Bridged points, with shape=(npts_bridged,dim).
+            Return None if no points are matched.
     """
     # build neighbors graph for candidate points
     g_cand = pcdutil.neighbors_graph(
@@ -196,9 +197,13 @@ def bridge_gaps_2d(pts_cand, pts_gapped, orients_cand, r_thresh):
                 weights=g_cand.es["dorients"]
             )[0]
             pts_bridge.append(pts_cand[idx_path])
-
-    pts_bridge = np.concatenate(pts_bridge, axis=0)
-    return pts_bridge
+    
+    # concat
+    if len(pts_bridge) > 0:
+        pts_bridge = np.concatenate(pts_bridge, axis=0)
+        return pts_bridge
+    else:
+        return None
 
 def bridge_gaps_3d(zyx_cand, zyx_gapped, orients_cand, r_thresh):
     """ Bridge gaps slice by slice.
@@ -232,12 +237,13 @@ def bridge_gaps_3d(zyx_cand, zyx_gapped, orients_cand, r_thresh):
             orients_cand=orients_cand_z,
             r_thresh=r_thresh
         )
-        zyx_bridged.append(zyx_bridged_z)
+        if zyx_bridged_z is not None:
+            zyx_bridged.append(zyx_bridged_z)
 
-    # bridged points: concat, sort
+    # concat bridged points
     zyx_bridged = np.concatenate(zyx_bridged, axis=0)
     return zyx_bridged
-
+    
 def match_candidate_to_ref(zyx_cand, zyx_ref, guide, r_thresh):
     """ Match the candidate image to the reference one.
     

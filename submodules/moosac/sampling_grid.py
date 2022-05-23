@@ -6,8 +6,7 @@ class Grid:
     
     Examples:
         grid = Grid(zyx, guide, shrink_sidegrid=0.2, nz_eachu=1)
-        grid.set_ngrids_by_len(len_grids=(50, 400))
-        grid.generate_grid()
+        grid.gen_grids_by_len(len_grids=(50, 400))
 
     Attributes:
         uv_size: uv_size[(iu,iv)] is the number of points in the grid.
@@ -17,7 +16,7 @@ class Grid:
         """ Initialization.
 
         Read points and sort by the guide.
-        The number of grids will be set by self.set_ngrids_direct or self.set_ngrids_by_len.
+        The number of grids will be set by self.gen_grids_by_num or self.gen_grids_by_len.
 
         Args:
             zyx (np.ndarray): 3d points, with shape=(npts,3). Each point is [zi,yi,xi].
@@ -35,8 +34,8 @@ class Grid:
         self.nz_eachu = nz_eachu
         self.shrink_sidegrid = shrink_sidegrid
 
-    def set_ngrids_direct(self, n_uz, n_vxy):
-        """ Set the number of grids directly.
+    def gen_grids_by_num(self, n_uz, n_vxy):
+        """ Given the number of grids, then generate grids.
 
         Constraints:
             n_uz < min number of slices / nz_eachu
@@ -48,14 +47,29 @@ class Grid:
         Returns:
             self (Grid): Self object with set number of grids.
         """
+        # set the number of grids
         min_npts_z = np.min([
             np.sum(self.zyx[:, 0]==z) for z in self.zs
         ])
         self.n_vxy = min(n_vxy, int(min_npts_z*self.nz_eachu))
         self.n_uz = min(n_uz, int(self.nz/self.nz_eachu))
+
+        # generate grids
+        # info of each bin[iu]: indexes of z, coordinates
+        self.ubin_iz = self.gen_ubin_iz()
+        self.ubin_zyx = self.gen_ubin_zyx()
+
+        # info of each grid[iu][iv]: size, coordinates
+        npts_iu = [
+            len(self.ubin_zyx[iu][i])
+            for i in range(self.nz_eachu)
+            for iu in range(self.n_uz)
+        ]
+        self.n_vxy = min(self.n_vxy, np.min(npts_iu))
+        self.uv_size, self.uv_zyx = self.gen_grid_zyx()
         return self
 
-    def set_ngrids_by_len(self, len_grids, ngrids_min=(3, 3)):
+    def gen_grids_by_len(self, len_grids, ngrids_min=(3, 3)):
         """ Set the number of grids by providing target lengths.
 
         Args:
@@ -85,31 +99,44 @@ class Grid:
         n_vxy = int(np.round(n_vxy)) + 1
         n_vxy = max(n_vxy_min, n_vxy)
 
-        # constrain grid numbers
-        self.set_ngrids_direct(n_uz=n_uz, n_vxy=n_vxy)
+        # generate grids by number
+        self.gen_grids_by_num(n_uz=n_uz, n_vxy=n_vxy)
         return self
 
-    def generate_grid(self):
-        """ Generate uv_size, uv_zyx for grids.
+    def get_config(self, downscale=1):
+        """ Get grid config as a dict.
+        
+        Downscaling can reduce the degrees of freedom, which makes MOO easier.
+        The number of grids remain unchanged.
+        The coordinates are downscaled, made int, deduplicated.
 
+        Args:
+            downscale (float): Factor for downscaling.
+        
         Returns:
-            self (Grid): Self object whose grids are set.   
+            config (dict): Dict for configurations.
+                {zyx,n_uz,n_vxy,uv_zyx,uv_size}
         """
-        # info of each bin[iu]: indexes of z, coordinates
-        self.ubin_iz = self.get_ubin_iz()
-        self.ubin_zyx = self.get_ubin_zyx()
+        config = {}
 
-        # info of each grid[iu][iv]: size, coordinates
-        npts_iu = [
-            len(self.ubin_zyx[iu][i])
-            for i in range(self.nz_eachu)
-            for iu in range(self.n_uz)
-        ]
-        self.n_vxy = min(self.n_vxy, np.min(npts_iu))
-        self.uv_size, self.uv_zyx = self.get_grid_zyx()
-        return self
+        # downscale coordinates
+        config["zyx"] = pcdutil.points_deduplicate(self.zyx/downscale)
+        
+        # downscale grids
+        config["n_uz"] = self.n_uz
+        config["n_vxy"] = self.n_vxy
+        config["uv_zyx"] = {}
+        config["uv_size"] = {}
+        for iu in range(self.n_uz):
+            for iv in range(self.n_vxy):
+                zyx_i = pcdutil.points_deduplicate(
+                    self.uv_zyx[(iu, iv)]/downscale
+                )
+                config["uv_zyx"][(iu, iv)] = zyx_i
+                config["uv_size"][(iu, iv)] = len(zyx_i)
+        return config
 
-    def get_ubin_iz(self):
+    def gen_ubin_iz(self):
         """ Get z-indexes for each bin in u(z)-direction.
 
         Returns:
@@ -128,7 +155,7 @@ class Grid:
         )
         return ubin_iz
 
-    def get_ubin_zyx(self):
+    def gen_ubin_zyx(self):
         """ Get points for each bin and slice in u(z)-direction.
 
         Returns:
@@ -145,7 +172,7 @@ class Grid:
             ubin_zyx.append(zyx_iu)
         return ubin_zyx
 
-    def get_grid_zyx(self):
+    def gen_grid_zyx(self):
         """ For each uv-grid, get size and coordinates.
 
         Returns:
