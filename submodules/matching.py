@@ -178,8 +178,11 @@ def bridge_gaps_2d(pts_cand, pts_gapped, orients_cand, r_thresh):
     g_cand = pcdutil.neighbors_graph(
         pts_cand, r_thresh=r_thresh, orients=orients_cand
     )
-    # mask for candidate points that are also gapped points
-    mask_ingapped = pcdutil.points_in_region(pts_cand, pts_gapped)
+    # mask for candidate points that are also gapped points (by dist=0)
+    mask_ingapped = np.isclose(
+        pcdutil.points_distance(pts_cand, pts_gapped, return_2to1=False),
+        0
+    )
 
     # iterate for each component in g_cand
     pts_bridge = []

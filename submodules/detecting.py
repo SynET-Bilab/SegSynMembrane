@@ -61,7 +61,11 @@ def filter_by_value(B, V, B_guide, factor):
         B_filt[i] = B[i]*(V[i] >= v_thresh)
     return B_filt
 
-def detect_memlike(I, guide, bound, sigma_gauss, sigma_tv, factor_filt=3, factor_supp=0.5, return_nofilt=False):
+def detect_memlike(
+        I, zyx_guide, B_bound, 
+        sigma_gauss, sigma_tv,
+        factor_filt=3, factor_supp=0.5, return_nofilt=False
+    ):
     """ Detect membrane-like pixels from the image.
 
     First calculate ridge-like features using hessian.
@@ -72,7 +76,7 @@ def detect_memlike(I, guide, bound, sigma_gauss, sigma_tv, factor_filt=3, factor
     Args:
         I (np.ndarray): Image (bright-field, membranes appear black). Shape=(nz,ny,nx).
         guide (np.ndarray): Points in the guide surface, shape=(npts_guide,3). Assumed sorted.
-        bound (np.ndarray): Points in the bounding region, shape=(npts_bound,3).
+        bound (np.ndarray): The bounding region, shape=I.shape.
         sigma_gauss (float): Decay lengthscale for gaussian smoothing.
             Can be set to the membrane thickness.
         sigma_tv (float): Decay lengthscale for stick tensor voting.
@@ -93,8 +97,7 @@ def detect_memlike(I, guide, bound, sigma_gauss, sigma_tv, factor_filt=3, factor
     Ineg = -imgutil.scale_zscore(I)
     # mask for bound, guide
     shape = Ineg.shape
-    B_bound = pcdutil.points2pixels(bound, shape)
-    B_guide = pcdutil.points2pixels(guide, shape)
+    B_guide = pcdutil.points2pixels(zyx_guide, shape)
     
     # detect ridgelike features, nms
     S, O = features.ridgelike3d(Ineg, sigma=sigma_gauss)
@@ -120,7 +123,7 @@ def detect_memlike(I, guide, bound, sigma_gauss, sigma_tv, factor_filt=3, factor
 
     # normal suppression
     # sigma is set to factor_supp*length of the guide
-    sigma_supp = factor_supp*len(guide)/shape[0]
+    sigma_supp = factor_supp*len(zyx_guide)/shape[0]
     Bsupp, _ = suppress_by_orient(
         Btv_filt, Oref*Btv_filt, sigma=sigma_supp
     )

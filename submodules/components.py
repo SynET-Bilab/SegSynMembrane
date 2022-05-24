@@ -202,7 +202,7 @@ def extract_components_regions(zyx, region_arr, r_thresh=1, min_size=0):
 
     Args:
         zyx (np.ndarray): Points with shape=(npts,dim) and in format [[zi,yi,xi],...].
-        region_arr (list of np.ndarray): List of regions. Each is an array of points in that region, with shape=(npts_i,dim).
+        region_arr (list of np.ndarray): List of regions. Each is a binary image with shape=(nz,ny,nx).
         r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
         min_size (int): The minimum size of components.
 

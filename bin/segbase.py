@@ -230,6 +230,7 @@ class SegBase:
             self.logger.info(f"""read args: {args["mode"]} {args["inputs"]}""")
             # save state, backup for the first time
             self.save_state(self.args["outputs_state"], backup=True)
+            self.logger.info("saved state (with backups)")
         # print for modes that just show
         else:
             print(f"----{self.prog}----")
@@ -259,17 +260,23 @@ class SegBase:
         if p.is_file():
             p.rename(filename+"~")
 
-    def save_state(self, state_file, backup=False):
+    def save_state(self, state_file, compress=False, backup=False):
         """ Save data to state file.
 
         Args:
             state_file (str): Filename of the state file.
+            compress (bool): Whether to compress the npz. No compression saves time
             backup (bool): Whether to backup state_file if it exists.
         """
         if backup:
             self.backup_file(state_file)
 
-        np.savez(
+        if compress:
+            func_save = np.savez_compressed
+        else:
+            func_save = np.savez
+
+        func_save(
             state_file,
             prog=self.prog,
             info=self.info,
@@ -320,8 +327,9 @@ class SegBase:
         self.steps["tomod"].update(tomod)
 
         # log
-        self.save_state(self.args["outputs_state"])
         self.logger.info(f"""loaded data: {self.timer.click()}""")
+        self.save_state(self.args["outputs_state"])
+        self.logger.info("saved state")
 
     def detect(self):
         """ Detect membrane-candidates from the image.
@@ -340,8 +348,7 @@ class SegBase:
         # detect mem-like structures
         B, _, B_nofilt = etsynseg.detecting.detect_memlike(
             tomod["I"],
-            guide=tomod["guide"],
-            bound=tomod["bound"],
+            zyx_guide=tomod["guide"], B_bound=tomod["bound"],
             sigma_gauss=args["detect_smooth"]/pixel_nm,
             sigma_tv=args["detect_tv"]/pixel_nm,
             factor_filt=args["detect_filt"],
@@ -355,8 +362,9 @@ class SegBase:
         self.steps["detect"]["zyx"] = etsynseg.pcdutil.pixels2points(B)
 
         # log
-        self.save_state(self.args["outputs_state"])
         self.logger.info(f"""finished detecting: {self.timer.click()}""")
+        self.save_state(self.args["outputs_state"])
+        self.logger.info("saved state")
 
     def fit_refine(self, label):
         """ Fit, match, refine a surface.
@@ -397,7 +405,7 @@ class SegBase:
         # log
         self.logger.info(
             f"""finished moosac ({label}): {self.timer.click()}""")
-        self.save_state(self.args["outputs_state"])
+        # self.save_state(self.args["outputs_state"])
 
         # matching
         # r_thresh: at least 2*moosac_resize
@@ -408,7 +416,7 @@ class SegBase:
         # save results
         self.steps["match"][f"zyx{label}"] = zyx_match
         # log
-        self.save_state(self.args["outputs_state"])
+        # self.save_state(self.args["outputs_state"])
         self.logger.info(
             f"""finished matching ({label}): {self.timer.click()}""")
 
@@ -419,16 +427,17 @@ class SegBase:
             sigma_mesh=tomod["neigh_thresh"]*2,
             sigma_hull=tomod["neigh_thresh"],
             target_spacing=1,
-            bound=tomod["bound"]
+            B_bound=tomod["bound"]
         )
         # sort
         zyx_refine = etsynseg.pcdutil.sort_pts_by_guide_3d(zyx_refine, guide)
         # save results
         self.steps["meshrefine"][f"zyx{label}"] = zyx_refine
         # log
-        self.save_state(self.args["outputs_state"])
         self.logger.info(
             f"""finished meshrefine ({label}): {self.timer.click()}""")
+        self.save_state(self.args["outputs_state"])
+        self.logger.info("saved state")
 
     #=========================
     # show
@@ -516,7 +525,7 @@ class SegBase:
                 visible_Is.append(visible)
 
         # add steps
-        im_append(tomod["bound"], "bound", "bop blue")
+        im_append(etsynseg.pcdutil.pixels2points(tomod["bound"]), "bound", "bop blue")
         im_append(steps["detect"]["zyx_nofilt"], "detect(nofilt)", "red", True)
         im_append(steps["detect"]["zyx"], "detect", "bop orange", True)
         for i in labels:
@@ -592,8 +601,7 @@ class SegBase:
         # list of points
         # contour of bound
         tomod = self.steps["tomod"]
-        B_bound = etsynseg.pcdutil.points2pixels(
-            tomod["bound"], tomod["shape"])
+        B_bound = tomod["bound"]
         contour_bound = etsynseg.imgutil.component_contour(B_bound)
         # components
         zyx_segs = [self.steps[step][f"zyx{i}"] for i in labels]
@@ -627,8 +635,7 @@ class SegBase:
         # list of points
         # contour of bound
         tomod = self.steps["tomod"]
-        B_bound = etsynseg.pcdutil.points2pixels(
-            tomod["bound"], tomod["shape"])
+        B_bound = tomod["bound"]
         contour_bound = etsynseg.imgutil.component_contour(B_bound)
         # components
         zyx_segs = [self.steps[step][f"zyx{i}"] for i in labels]

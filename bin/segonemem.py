@@ -42,7 +42,7 @@ class SegOneMem(etsynseg.segbase.SegBase):
         )
 
     def components_one(self):
-        """ Extract two components automatically.
+        """ Extract one component.
 
         Prerequisites: membranes are detected.
         Effects: updates self.steps["components"].
@@ -72,8 +72,9 @@ class SegOneMem(etsynseg.segbase.SegBase):
         self.steps["components"]["zyx1"] = zyx1
 
         # log
-        self.save_state(self.args["outputs_state"])
         self.logger.info(f"""extracted components: {self.timer.click()}""")
+        self.save_state(self.args["outputs_state"])
+        self.logger.info("saved state")
 
     def final_results(self):
         """ Calculate final results. Save in self.results.
@@ -111,7 +112,7 @@ class SegOneMem(etsynseg.segbase.SegBase):
 
         # save
         self.results.update(results)
-        self.save_state(self.args["outputs_state"])
+        self.save_state(self.args["outputs_state"], compress=True)
 
         # log
         self.logger.info(f"finalized: {self.timer.click()}")

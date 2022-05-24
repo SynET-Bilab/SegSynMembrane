@@ -7,7 +7,7 @@ __all__ = [
 
 def refine_surface(
         zyx, sigma_normal, sigma_mesh, sigma_hull,
-        target_spacing=1, bound=None
+        target_spacing=1, B_bound=None
     ):
     """ Refine surface using mesh-based methods, mainly poisson reconstruction
 
@@ -17,7 +17,7 @@ def refine_surface(
         sigma_mesh (float): Target spatial resolution for poisson reconstruction.
         sigma_hull (float): Length to extend in the normal direction when computing hull.
         target_spacing (float): Target spacing of points.
-        bound (np.ndarray): The mask region with shape=(npts_bound,dim). Surface will be constrained inside.
+        B_bound (np.ndarray): The mask region with shape=(nz,ny,nx). Surface will be constrained inside.
 
     Returns:
         zyx_refine (np.ndarray): Points for the refined surface.
@@ -55,8 +55,8 @@ def refine_surface(
     zyx_refine = zyx_div[mask_inhull]
 
     # constrain in bound if provided
-    if bound is not None:
-        mask_inside = pcdutil.points_in_region(zyx_refine, bound)
+    if B_bound is not None:
+        mask_inside = pcdutil.points_in_region(zyx_refine, B_bound)
         zyx_refine = zyx_refine[mask_inside]
 
     return zyx_refine

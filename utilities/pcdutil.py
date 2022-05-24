@@ -42,12 +42,13 @@ def pixels2points(I):
     pts = np.argwhere(I)
     return pts
 
-def points2pixels(pts, shape=None):
+def points2pixels(pts, shape=None, dtype=int):
     """ Convert points to an image with 1's on point locations (rounded) and 0's otherwise.
 
     Args:
         pts (np.ndarray): Array of points with shape=(npts,I.ndim). Format of each point is [y,x] for 2d or [z,y,x] for 3d.
         shape (tuple): Shape of the target image, (ny,nx) for 2d or (nz,ny,nx) for 3d.
+        dtype (type): Datatype for the image, int or bool.
     
     Returns:
         I (np.ndarray): Image with shape = (ny,nx) for 2d or (nz,ny,nx) for 3d.
@@ -68,7 +69,7 @@ def points2pixels(pts, shape=None):
     pts = pts[mask]
 
     # assign to pixels
-    I = np.zeros(shape, dtype=int)
+    I = np.zeros(shape, dtype=dtype)
     index = tuple(pts.T)
     I[index] = 1
     return I
@@ -115,9 +116,9 @@ def points_range(pts, margin=0):
         margin (float or tuple): Margin in each direction to be added to the range.
 
     Returns:
-        low (np.ndarray): Point at the lowest end, with shape=(dim,).
-        high (np.ndarray): Point at the highest end, with shape=(dim,).
-        shape (tuple): Shape of image that can contain the points, high-low+1.
+        low (np.ndarray of int): Point at the lowest end, with shape=(dim,).
+        high (np.ndarray of int): Point at the highest end, with shape=(dim,).
+        shape (tuple of int): Shape of image that can contain the points, high-low+1.
     """
     margin = np.ceil(np.asarray(margin)).astype(int)
     low = np.floor(np.min(pts, axis=0)).astype(int) - margin
@@ -165,21 +166,34 @@ def points_distance(pts1, pts2, return_2to1=False):
         dist2, _ = kdtree1.query(pts2, workers=-1)
         return dist1, dist2
 
-def points_in_region(pts, pts_region):
-    """ Select points inside a region.
+def points_in_region(zyx, region):
+    """ Select points inside a mask region.
 
     Args:
-        pts (np.ndarray): Points with shape=(npts,dim).
-        pts_region (np.ndarray): The region represented by all points inside it, with shape=(npts_region,dim).
+        zyx (np.ndarray): Points with shape=(nzyx,dim) and order=[z,y,x].
+        region (np.ndarray): The region represented as a binary image, with shape=(nz,ny,nx).
 
     Returns:
-        mask (np.ndarray): Array bools indicating whether each point is in the region, shape=(npts,).
-            pts[mask] gives points in the region.
+        mask (np.ndarray): Array of bools indicating whether each point is in the region, shape=(nzyx,).
+            zyx[mask] gives points in the region.
     """
-    dist2mask = points_distance(
-        pts, pts_region, return_2to1=False
+    # mask for points inside region.shape
+    dim = zyx.shape[1]
+    mask_shape = np.ones(len(zyx), dtype=bool)
+    for i in range(dim):
+        mask_i = (zyx[:, i]>=0) & (zyx[:, i]<=region.shape[i]-1)
+        mask_shape = mask_shape & mask_i
+
+    # mask for clipped points inside region
+    # clip so that region[idx] is valid
+    idx_clip = tuple(
+        np.clip(zyx[:, i], 0, region.shape[i]-1).astype(int)
+        for i in range(3)
     )
-    mask = np.isclose(dist2mask, 0)
+    mask_clip = np.asarray(region, dtype=bool)[idx_clip]
+
+    # combine masks
+    mask = mask_shape & mask_clip
     return mask
 
 def orients_absdiff(orient1, orient2):

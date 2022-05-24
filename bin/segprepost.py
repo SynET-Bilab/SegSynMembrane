@@ -85,8 +85,9 @@ class SegPrePost(etsynseg.segbase.SegBase):
         self.steps["components"]["zyx2"] = zyx2
 
         # log
-        self.save_state(self.args["outputs_state"])
         self.logger.info(f"""extracted components: {self.timer.click()}""")
+        self.save_state(self.args["outputs_state"])
+        self.logger.info("saved state")
 
     def components_by_mask(self):
         """ Extract two components using masks.
@@ -121,8 +122,9 @@ class SegPrePost(etsynseg.segbase.SegBase):
         self.steps["components"]["zyx2"] = zyx2
 
         # log
-        self.save_state(self.args["outputs_state"])
         self.logger.info(f"""extracted components: {self.timer.click()}""")
+        self.save_state(self.args["outputs_state"])
+        self.logger.info("saved state")
 
     def final_results(self):
         """ Calculate final results. Save in self.results.
@@ -170,7 +172,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
 
         # save
         self.results.update(results)
-        self.save_state(self.args["outputs_state"])
+        self.save_state(self.args["outputs_state"], compress=True)
 
         # log
         self.logger.info(f"finalized: {self.timer.click()}")

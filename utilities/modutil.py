@@ -4,6 +4,7 @@
 import pathlib
 import numpy as np
 import scipy as sp
+import multiprocessing.dummy
 import tslearn.metrics
 from etsynseg import pcdutil, bspline, io
 
@@ -260,48 +261,43 @@ def region_surround_contour(zyx, nzyx, extend, cut_end=True):
 
     # calculate yx ranges for later clipping
     zyx = np.round(zyx).astype(int)
-    yx_low, _, yx_shape = pcdutil.points_range(zyx[:, 1:], margin=int(max(extend))+1)
+    extend_max = int(max(extend))+1
+    clip_low, _, clip_shape = pcdutil.points_range(
+        zyx,
+        margin=(0, extend_max, extend_max)
+    )
+    zyx_clip = zyx - clip_low
 
-    # generate regions for each slice
-    zyx_plus = []
-    zyx_minus = []
-    for z in sorted(np.unique(zyx[:, 0])):
+    # generate regions for one slice
+    mask_plus = np.zeros(clip_shape, dtype=bool)
+    mask_minus = np.zeros(clip_shape, dtype=bool)
+    def calc_one(iz):
         # extract data at z
-        # subtract the shift to reduce size
-        mask_z = zyx[:, 0] == z
-        yx_clip = zyx[mask_z][:, 1:] - yx_low
+        mask_z = zyx_clip[:, 0] == iz
+        yx_clip = zyx_clip[mask_z][:, 1:]
         nyx = nzyx[mask_z][:, 1:]
-
         # get 2d masks at each pixel
         dist, dot_norm, mask_in = region_surround_contour_slice(
-            yx_clip, nyx, yx_shape
+            yx_clip, nyx, clip_shape[1:]
         )
-
         # extract regions from masks
-        mask_plus = (dot_norm > 0) & (dist <= extend[0])
-        mask_minus = (dot_norm < 0) & (dist <= extend[1])
+        mask_plus_z = (dot_norm > 0) & (dist <= extend[0])
+        mask_minus_z = (dot_norm < 0) & (dist <= extend[1])
         if cut_end:
-            mask_plus = mask_plus & mask_in
-            mask_minus = mask_minus & mask_in
+            mask_plus_z = mask_plus_z & mask_in
+            mask_minus_z = mask_minus_z & mask_in
+        # assignment
+        mask_plus[iz] = mask_plus_z
+        mask_minus[iz] = mask_minus_z
+    
+    # generate regions for all slices
+    pool = multiprocessing.dummy.Pool()
+    pool.map(calc_one, range(clip_shape[0]))
+    pool.close()
 
-        # convert pixels to points, add back the shift
-        yx_plus = pcdutil.pixels2points(mask_plus) + yx_low
-        yx_minus = pcdutil.pixels2points(mask_minus) + yx_low
-
-        # concat with z
-        zyx_plus_z = np.concatenate([
-            z*np.ones((len(yx_plus), 1)), yx_plus
-        ], axis=1)
-        zyx_minus_z = np.concatenate([
-            z*np.ones((len(yx_minus), 1)), yx_minus
-        ], axis=1)
-
-        zyx_plus.append(zyx_plus_z)
-        zyx_minus.append(zyx_minus_z)
-
-    zyx_plus = np.concatenate(zyx_plus, axis=0).astype(int)
-    zyx_minus = np.concatenate(zyx_minus, axis=0).astype(int)
-
+    # convert masks to points
+    zyx_plus = pcdutil.pixels2points(mask_plus) + clip_low
+    zyx_minus = pcdutil.pixels2points(mask_minus) + clip_low
     return zyx_plus, zyx_minus
 
 
@@ -314,6 +310,7 @@ def regions_from_guide(guide_mod, extend, normal_ref=None, interp_degree=2, cut_
 
     First interpolate the model along z and xy, to make dense contours.
     Then generate the region surrounding the contours.
+    Regions are represented by points. If unclipped points are converted to image, it may take much space.
 
     Args:
         guide_mod (np.ndarray): Model points of guiding lines, ordered in each z.
@@ -378,7 +375,8 @@ def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degr
             pixel_nm: pixel size in nm
             model: model DataFrame, in the original coordinates
             clip_low: [z,y,x] at the lower corner for clipping
-            mask_bound, guide, mask_plus, mask_minus: zyx-points in the masks generated from the guiding lines
+            guide: interpolated guiding lines, in points, with shape=(npts_guide,3)
+            bound, bound_plus, bound_minus: binary masks extended from guide towards both/normal+/normal- directions, shape=I.shape.
             normal_ref: reference point inside for normal orientation
     """
     # check file existence
@@ -408,8 +406,8 @@ def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degr
     else:
         normal_ref = None
 
-    # generate bounding regions from guiding line
-    guide, bound_plus, bound_minus, normal_ref = regions_from_guide(
+    # generate bounding regions (in points) from guiding line
+    guide, boundpts_plus, boundpts_minus, normal_ref = regions_from_guide(
         model_guide,
         extend=extend_nm/pixel_nm,
         normal_ref=normal_ref,
@@ -417,23 +415,27 @@ def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degr
         cut_end=True
     )
     # combine all parts of the bound
-    bound = np.concatenate([guide, bound_plus, bound_minus], axis=0)
-    bound = pcdutil.points_deduplicate(bound)
+    boundpts = np.concatenate([guide, boundpts_plus, boundpts_minus], axis=0)
 
     # get clip range and raw shape from the mask
-    clip_low, _, shape = pcdutil.points_range(bound, margin=0)
+    clip_low, _, shape = pcdutil.points_range(boundpts, margin=0)
 
     # clip coordinates
     guide -= clip_low
-    bound_plus -= clip_low
-    bound_minus -= clip_low
-    bound -= clip_low
+    boundpts_plus -= clip_low
+    boundpts_minus -= clip_low
+    boundpts -= clip_low
     normal_ref -= clip_low
 
     # clip tomo
     sub = tuple(slice(ci, ci+si) for ci, si in zip(clip_low, shape))
     I = I[sub]
     shape = I.shape
+
+    # convert bounds from points to image
+    bound = pcdutil.points2pixels(boundpts, shape, dtype=bool)
+    bound_plus = pcdutil.points2pixels(boundpts_plus, shape, dtype=bool)
+    bound_minus = pcdutil.points2pixels(boundpts_minus, shape, dtype=bool)
 
     # save parameters and results
     tomod = dict(
