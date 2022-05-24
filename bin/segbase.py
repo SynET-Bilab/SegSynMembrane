@@ -1,4 +1,4 @@
-""" 
+""" Segmentation base functions.
 """
 
 import time
@@ -85,7 +85,7 @@ class SegBase:
         # outputs
         output_model, output_slices
         # visualization
-        show_steps, show_pcds
+        show_steps, show_segpcds
         # steps
         load_tomod, detect, fit_refine
     """
@@ -101,7 +101,7 @@ class SegBase:
         self.labels = labels
         
         # logging
-        self.timer = etsynseg.segbase.Timer(return_format="string")
+        self.timer = Timer(return_format="string")
         self.logger = logging.getLogger(self.prog)
 
         # map
@@ -113,7 +113,7 @@ class SegBase:
         steps: Intermediate results in each step. Coordinates: ranged in the clipped tomo, in units of pixels, the order is [z,y,x].
         results: Final results. Coordinates: ranged in the input tomo, in units of pixels, the order is [x,y,z].
         """
-        
+
         # args: length unit is nm
         self.args = dict(
             mode=None, inputs=None, outputs=None,
@@ -135,7 +135,7 @@ class SegBase:
             detect=dict(zyx_nofilt=None, zyx=None),
         )
         # steps where components are treated separately
-        # keys: zyxi, (mpopzi for moosac)
+        # keys: zyxi (additional mpopzi for moosac)
         for step in ["components", "moosac", "match", "meshrefine"]:
             self.steps[step] = {f"zyx{i}": None for i in self.labels}
         self.steps["moosac"].update(
@@ -178,11 +178,7 @@ class SegBase:
         Modes:
             run (u1): normal segmentation
             runfine (u1): run with finely-drawn model which separates pre and post
-            rewrite (u2): model and figures
-            showarg (u2): print args
-            showim (u2): draw steps
-            showpcd (u2): draw membranes as pointclouds
-            showmoo (u2): plot moosac trajectory
+            contresults (u2): continue calculating results.
         """)
 
         parser = argparse.ArgumentParser(
@@ -191,7 +187,9 @@ class SegBase:
             formatter_class=etsynseg.segbase.HelpFormatterCustom
         )
         # mode
-        parser.add_argument("mode", type=str, choices=["run", "runfine", "rewrite", "showarg", "showim", "showpcd", "showmoo"])
+        parser.add_argument("mode", type=str, choices=[
+            "run", "runfine", "contresults"
+        ])
         
         # input/output
         parser.add_argument("inputs", type=str, nargs='+',help="Input files. Tomo and model files for modes in (run, runfine). State file for other modes.")
@@ -204,7 +202,7 @@ class SegBase:
         
         # detect
         parser.add_argument("--detect_smooth", type=float, help="Step 'detect': sigma for gaussian smoothin in nm. Can be set to membrane thickness.")
-        parser.add_argument("--detect_tv", type=float, help="Step 'detect': sigma for tensor voting in nm. Can be set to e.g. cleft width.")
+        parser.add_argument("--detect_tv", type=float, help="Step 'detect': sigma for tensor voting in nm. Should be smaller than membrane spacings.")
         parser.add_argument("--detect_filt", type=float, help="Step 'detect': keep the strongest (detect_filt * size of guiding surface) pixels during filtering. A larger value keeps more candidates for the next step.")
         parser.add_argument("--detect_supp", type=float, help="Step 'detect': sigma for normal suppression = (detect_supp * length of guiding line).")
         
@@ -250,7 +248,7 @@ class SegBase:
             # save
             self.args.update(args)
         # modes reading state file
-        elif (mode in ["rewrite"]) or mode.startswith("show"):
+        elif mode in ["contresults"]:
             state_file = args["inputs"][0]
             self.load_state(state_file)
         else:
@@ -515,6 +513,7 @@ class SegBase:
                 print(doc)
 
         # print
+        print(f"----{self.prog}----")
         print("----arguments----")
         # basics
         print("--input/output--")
@@ -583,7 +582,7 @@ class SegBase:
         # run napari: otherwise the window will not sustain
         napari.run()
 
-    def show_pcds(self, labels=None):
+    def show_segpcds(self, labels=None):
         """ Draw segmentation as pointclouds.
 
         Args:
@@ -592,11 +591,17 @@ class SegBase:
         if labels is None:
             labels = self.labels
 
-        pts_arr = [self.results[f"xyz{i}"] for i in labels]
-        normals_arr = [self.results[f"nxyz{i}"] for i in labels]
+        results = self.results
+        pts_arr = []
+        normals_arr = []
+        for i in labels:
+            if (f"xyz{i}" in results) and ((f"nxyz{i}" in results)):
+                pts_arr.append(results[f"xyz{i}"])
+                normals_arr.append(results[f"nxyz{i}"])
+
         etsynseg.plot.draw_pcds(pts_arr, normals_arr, saturation=1)
     
-    def show_moo(self, labels=None):
+    def show_moosac(self, labels=None):
         """ Plot MOOSAC evolution trajectory.
 
         Args:
@@ -609,7 +614,7 @@ class SegBase:
             mpop_i = etsynseg.moosac.MOOPop().init_from_state(
                 self.steps["moosac"][f"mpopz{i}"]
             )
-            mpop_i.plot_logs()
+            mpop_i.plot_logs(title=f"MOOSAC trajectory for component {i}")
             plt.show()
 
     #=========================

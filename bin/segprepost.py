@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+""" Segmentation of pre- and post-synapses.
+"""
 
 import multiprocessing
 import numpy as np
@@ -18,10 +20,9 @@ class SegPrePost(etsynseg.segbase.SegBase):
         self.build_argparser()
 
     def build_argparser(self):
-        """ Build parser for segmentation.
+        """ Amemd build_parser for segmentation.
 
-        Returns:
-            parser (argparse.ArgumentParser): Parser with arguments.
+        Mainly setting the default values.
         """
         super().build_argparser()
 
@@ -31,8 +32,8 @@ class SegPrePost(etsynseg.segbase.SegBase):
             neigh_thresh=5,
             # detect
             detect_smooth=5,
-            detect_tv=20,
-            detect_filt=3,
+            detect_tv=0,
+            detect_filt=4,
             detect_supp=0.5,
             # components
             components_min=0.5,
@@ -227,17 +228,7 @@ if __name__ == "__main__":
         seg.workflow()
         seg.register_map()
         pool.close()
-    # recalculate and rewrite final results
-    elif mode == "rewrite":
+    # recalculate and continue calculating final results
+    elif mode == "contresults":
         seg.final_results()
         seg.final_outputs()
-    # visualizations
-    elif mode == "showarg":
-        seg.show_args()
-    elif mode == "showim":
-        seg.show_steps()
-    elif mode == "showpcd":
-        seg.show_pcds()
-    elif mode == "showmoo":
-        seg.show_moo()
-    

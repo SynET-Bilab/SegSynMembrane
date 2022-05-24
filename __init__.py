@@ -24,4 +24,4 @@ from .submodules import moosac, matching, meshrefine
 from .submodules import membranogram
 
 from .bin import segbase
-from .bin import segprepost
+from .bin import segprepost, segonemem

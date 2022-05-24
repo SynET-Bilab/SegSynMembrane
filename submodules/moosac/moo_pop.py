@@ -310,7 +310,7 @@ class MOOPop:
     # misc: plot, fit
     #=========================
     
-    def plot_logs(self, log_front=None, log_indicator=None, save=None):
+    def plot_logs(self, log_front=None, log_indicator=None, title=None, save=None):
         """ Plot Pareto fronts during evolution.
 
         Args:
@@ -318,6 +318,7 @@ class MOOPop:
                 Each element is the Pareto front of one generation.
             log_indicator (list of dict): Log of indicators. Use self.log_indicator if None.
                 Each element is a dict with keys {"coverage","change_ratio"} for one generation.
+            title (str): Title of the figure.
             save (str): Filename of figure for saving.
 
         Returns:
@@ -357,6 +358,9 @@ class MOOPop:
         axes1_twin.plot([ind["change_ratio"] for ind in log_indicator], c="C1")
         axes1_twin.set(xlabel="generation", ylabel="relative change")
         axes1_twin.tick_params(axis='y', labelcolor="C1")
+
+        # misc
+        fig.suptitle(title)
 
         # save
         if save is not None:

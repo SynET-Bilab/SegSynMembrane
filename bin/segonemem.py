@@ -1,8 +1,7 @@
 #!/usr/bin/env python
-
-import argparse, pathlib, logging, textwrap
+""" Segmentation of one membrane.
+"""
 import multiprocessing
-import numpy as np
 import etsynseg
 
 class SegOneMem(etsynseg.segbase.SegBase):
@@ -10,126 +9,37 @@ class SegOneMem(etsynseg.segbase.SegBase):
         """ Initialization
         """
         # init from SegBase
-        super().__init__()
+        super().__init__(prog="segonemem", labels=(1,))
         
-        # logging
-        self.timer = etsynseg.segbase.Timer(return_format="string")
-        self.logger = logging.getLogger("segonemem")
-        
-        # update fields
-        self.labels = (1,)
+        # build parser
+        self.build_argparser()
+    
+    def build_argparser(self):
+        """ Amemd build_parser for segmentation.
 
-    def build_parser(self):
-        """ Build parser for segmentation.
-
-        Returns:
-            parser (argparse.ArgumentParser): Parser with arguments.
+        Mainly setting the default values.
         """
-        # parser
-        description = textwrap.dedent("""
-        Semi-automatic membrane segmentation.
-        
-        Usage:
-            (u1) segonemem.py mode tomo.mrc model.mod -o outputs [options]
-                model: if not provided, then set as tomo.mod
-                outputs: if not provided, then set as model-seg
-            (u2) segonemem.py mode state.npz [options]
-        
-        Modes:
-            run (u1): normal segmentation
-            runfine (u1): run with finely-drawn model which separates pre and post
-            rewrite (u2): model and figures
-            showarg (u2): print args
-            showim (u2): draw steps
-            showpcd (u2): draw membranes as pointclouds
-            showmoo (u2): plot moosac trajectory
-        """)
+        super().build_argparser()
 
-        parser = argparse.ArgumentParser(
-            prog="segonemem.py",
-            description=description,
-            formatter_class=etsynseg.segbase.HelpFormatterCustom
+        self.argparser.set_defaults(
+            # basics
+            extend=20,
+            neigh_thresh=5,
+            # detect
+            detect_smooth=5,
+            detect_tv=0,
+            detect_filt=2,
+            detect_supp=0.5,
+            # components
+            components_min=0.5,
+            # moosac
+            moosac_lengrids=[50, 150],
+            moosac_shrinkside=0.25,
+            moosac_resize=5,
+            moosac_popsize=40,
+            moosac_tol=0.005,
+            moosac_maxiter=150,
         )
-        # mode
-        parser.add_argument("mode", type=str, choices=["run", "runfine", "rewrite", "showarg", "showim", "showpcd"])
-        # input/output
-        parser.add_argument("inputs", type=str, nargs='+',help="Input files. Tomo and model files for modes in (run, runfine). State file for other modes.")
-        parser.add_argument("-o", "--outputs", type=str, default=None, help="Basename for output files. Defaults to the basename of model file.")
-        # info
-        parser.add_argument("-px", "--pixel", type=float, default=None, help="Pixel size in nm. If not set, then read from the header of tomo.")
-        parser.add_argument("--extend", type=float, default=20, help="The distance (in nm) that the bounding region extends from guiding lines.")
-        parser.add_argument("--neigh_thresh", type=float, default=5, help="Distance threshold (in nm) for neighboring points in graph construction.")
-        # detect
-        parser.add_argument("--detect_smooth", type=float, default=5, help="Step 'detect': sigma for gaussian smoothin in nm. Can be set to membrane thickness.")
-        parser.add_argument("--detect_tv", type=float, default=20, help="Step 'detect': sigma for tensor voting in nm. Can be set to cleft width.")
-        parser.add_argument("--detect_filt", type=float, default=1.5, help="Step 'detect': keep the strongest (detect_filt * size of guiding surface) pixels during filtering.")
-        parser.add_argument("--detect_supp", type=float, default=0.5, help="Step 'detect': sigma for normal suppression = (detect_supp * length of guiding line).")
-        # components
-        parser.add_argument("--components_min", type=float, default=0.75, help="Step 'components': min size of component = (components_min * size of guiding surface).")
-        # moosac
-        parser.add_argument("--moosac_lengrids", type=float, nargs=2, default=[50, 150], help="Step 'moosac': length of sampling grids in z- and xy-axes.")
-        parser.add_argument("--moosac_shrinkside", type=float, default=0.25, help="Step 'moosac': grids on the side in xy are shrinked to this value.")
-        parser.add_argument("--moosac_popsize", type=int, default=40, help="Step 'moosac': population size for evolution.")
-        parser.add_argument("--moosac_tol", type=float, default=0.005, help="Step 'moosac': terminate if fitness change < tol in all last 10 steps.")
-        parser.add_argument("--moosac_maxiter", type=int, default=150, help="Step 'moosac': max number of iterations.")
-        return parser
-
-    def load_args(self, args):
-        """ Load args into self.args.
-
-        Args:
-            args (dict or argparse.Namespace): Args as a dict, or from parser.parse_args.
-        """
-        # conversion
-        if type(args) is not dict:
-            args = vars(args)
-        
-        # processing
-        mode = args["mode"]
-        # modes reading tomo and model files
-        if mode in ["run", "runfine"]:
-            # amend tomo, model
-            args["tomo_file"] = args["inputs"][0]
-            if len(args["inputs"]) == 2:
-                args["model_file"] = args["inputs"][1]
-            else:
-                args["model_file"] = str(pathlib.Path(
-                    args["tomo_file"]).with_suffix(".mod"))
-            # amend outputs
-            if args["outputs"] is None:
-                args["outputs"] = pathlib.Path(args["model_file"]).stem + "-seg"
-            # save
-            self.args.update(args)
-        # modes reading state file
-        elif (mode in ["rewrite"]) or  mode.startswith("show"):
-            state_file = args["inputs"][0]
-            self.load_state(state_file)
-        else:
-            raise ValueError(f"""Unrecognized mode: {mode}""")
-            
-        # state filename
-        self.args["outputs_state"] = self.args["outputs"]+".npz"
-
-        # setup logging
-        log_handler = logging.FileHandler(self.args["outputs"]+".log")
-        log_formatter = logging.Formatter(
-            "%(asctime)s %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S"
-        )
-        log_handler.setFormatter(log_formatter)
-        self.logger.addHandler(log_handler)
-        self.logger.setLevel("INFO")
-        
-        # log for modes that run segmentation
-        if args["mode"] in ["run", "runfine"]:
-            self.logger.info("----segprepost----")
-            self.logger.info(f"read args")
-            # save state, backup for the first time
-            self.save_state(self.args["outputs_state"], backup=True)
-        # print for modes that just show
-        else:
-            print(f"----segprepost----")
-            print(f"""mode: {args["mode"]}""")
 
     def components_one(self):
         """ Extract two components automatically.
@@ -242,8 +152,7 @@ if __name__ == "__main__":
     seg = SegOneMem()
     
     # parse and load args
-    parser = seg.build_parser()
-    args = vars(parser.parse_args())
+    args = vars(seg.argparser.parse_args())
     seg.load_args(args)
     
     # workflow
@@ -256,15 +165,8 @@ if __name__ == "__main__":
         seg.workflow()
         seg.register_map()
         pool.close()
-    # recalculate and rewrite final results
-    elif mode == "rewrite":
+    # recalculate and continue calculating final results
+    elif mode == "contresults":
         seg.final_results()
         seg.final_outputs()
-    # visualizations
-    elif mode == "showarg":
-        seg.show_args()
-    elif mode == "showim":
-        seg.show_steps()
-    elif mode == "showpcd":
-        seg.show_pcds()
     
