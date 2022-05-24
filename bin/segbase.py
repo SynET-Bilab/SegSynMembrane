@@ -216,8 +216,7 @@ class SegBase:
 
         # update neigh thresh:
         # nm to pixel, constrain to >= 1
-        tomod["neigh_thresh"] = max(
-            1, args["neigh_thresh"]/tomod["pixel_nm"])
+        tomod["neigh_thresh"] = max(args["neigh_thresh"]/tomod["pixel_nm"], 1)
 
         # save
         self.steps["tomod"].update(tomod)
@@ -268,7 +267,7 @@ class SegBase:
         Effects: updates self.steps[field], field="moosac","match","meshrefine"
 
         Args:
-            label (int): Name label for the component. 
+            label (int): Name label for the component.
         """
         # log
         self.timer.click()
@@ -287,6 +286,7 @@ class SegBase:
             len_grids=len_grids,
             shrink_sidegrid=args["moosac_shrinkside"],
             fitness_rthresh=tomod["neigh_thresh"],
+            downscale=args["moosac_resize"]/pixel_nm,
             pop_size=args["moosac_popsize"],
             tol=args["moosac_tol"],
             tol_nback=10,
@@ -302,8 +302,10 @@ class SegBase:
         self.save_state(self.args["outputs_state"])
 
         # matching
+        # r_thresh: at least 2*moosac_resize
         zyx_match = etsynseg.matching.match_candidate_to_ref(
-            zyx, zyx_fit, guide, r_thresh=tomod["neigh_thresh"]
+            zyx, zyx_fit, guide,
+            r_thresh=max(args["moosac_resize"]/pixel_nm*2, 2)
         )
         # save results
         self.steps["match"][f"zyx{label}"] = zyx_match

@@ -31,7 +31,7 @@ def surface_area(zyx, guide, len_grid):
     # construct grid and mootools
     grid = Grid(zyx, guide, shrink_sidegrid=1, nz_eachu=1)
     grid.gen_grids_by_len(len_grids=(len_grid, len_grid))
-    mtools = MOOTools().init_from_grid(grid, 1)
+    mtools = MOOTools().init_from_grid(grid.get_config(), 1)  # fitness_rthresh is not used
 
     # sample points, fit
     indiv = mtools.gen_middle(pin_side=True)
@@ -90,16 +90,16 @@ def robust_fitting(
             {mootools_config,pop_size,pop_list,log_front_list,log_indicator}.
             mpop = etsynseg.moosac.MOOPop().init_from_state(mpop_state)
     """
-    # setup downscaling factor
-    downscale = max(1, downscale)
-
     # setup grid
     grid = Grid(zyx, guide, shrink_sidegrid=shrink_sidegrid, nz_eachu=1)
     grid.gen_grids_by_len(len_grids=len_grids, ngrids_min=(3, 3))
-    
+    # grid_down also regularized the input downscaling
+    grid_down = grid.get_config(downscale)
+    downscale = grid_down["downscale"]
+
     # setup downscaled mootools
     mtools = MOOTools().init_from_grid(
-        grid.get_config(downscale),
+        grid_down,
         fitness_rthresh=fitness_rthresh/downscale)
     # setup population
     mpop = MOOPop().init_from_mootools(mtools, pop_size=pop_size)

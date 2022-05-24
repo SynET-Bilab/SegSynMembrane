@@ -115,9 +115,21 @@ class Grid:
         
         Returns:
             config (dict): Dict for configurations.
-                {zyx,n_uz,n_vxy,uv_zyx,uv_size}
+                {downscale,zyx,n_uz,n_vxy,uv_zyx,uv_size}
+                downscale: regularized downscale factor, so that downscaled z in different grids would not overlap
         """
         config = {}
+        
+        # setup downscaling factor
+        # so that downscaling would not cause z in different grids to overlap
+        dz_arr = []
+        for iu in range(1, self.n_uz):
+            dz = self.uv_zyx[(iu, 0)][:, 0].min() - self.uv_zyx[(iu-1, 0)][:, 0].max()
+            dz_arr.append(dz)
+        dz_min = np.min(dz_arr)
+        downscale = max(downscale, 1)  # downscale>=1
+        downscale = min(downscale, dz_min)  # dz_min/downscale>=1
+        config["downscale"] = downscale
 
         # downscale coordinates
         config["zyx"] = pcdutil.points_deduplicate(self.zyx/downscale)

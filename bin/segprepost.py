@@ -72,13 +72,14 @@ class SegPrePost(etsynseg.segbase.SegBase):
         # detect
         parser.add_argument("--detect_smooth", type=float, default=5, help="Step 'detect': sigma for gaussian smoothin in nm. Can be set to membrane thickness.")
         parser.add_argument("--detect_tv", type=float, default=20, help="Step 'detect': sigma for tensor voting in nm. Can be set to cleft width.")
-        parser.add_argument("--detect_filt", type=float, default=3, help="Step 'detect': keep the strongest (detect_filt * size of guiding surface) pixels during filtering.")
+        parser.add_argument("--detect_filt", type=float, default=3, help="Step 'detect': keep the strongest (detect_filt * size of guiding surface) pixels during filtering. A larger value keeps more candidates for the next step.")
         parser.add_argument("--detect_supp", type=float, default=0.5, help="Step 'detect': sigma for normal suppression = (detect_supp * length of guiding line).")
         # components
-        parser.add_argument("--components_min", type=float, default=0.75, help="Step 'components': min size of component = (components_min * size of guiding surface).")
+        parser.add_argument("--components_min", type=float, default=0.75, help="Step 'components': min size of component = (components_min * size of guiding surface). Raise error if only smaller ones are obtained.")
         # moosac
-        parser.add_argument("--moosac_lengrids", type=float, nargs=2, default=[50, 150], help="Step 'moosac': length of sampling grids in z- and xy-axes.")
-        parser.add_argument("--moosac_shrinkside", type=float, default=0.25, help="Step 'moosac': grids on the side in xy are shrinked to this value.")
+        parser.add_argument("--moosac_lengrids", type=float, nargs=2, default=[50, 150], help="Step 'moosac': length of sampling grids in z- and xy-axes. More complex surface requires smaller grids.")
+        parser.add_argument("--moosac_shrinkside", type=float, default=0.25, help="Step 'moosac': grids on the side in xy are shrinked to this value. A smaller facilicates segmentation towards the bounding region.")
+        parser.add_argument("--moosac_resize", type=float, default=5, help="Step 'moosac': temporarily increase pixel size (nm) to this value to simplify computation. Can be set to membrane thickness.")
         parser.add_argument("--moosac_popsize", type=int, default=40, help="Step 'moosac': population size for evolution.")
         parser.add_argument("--moosac_tol", type=float, default=0.005, help="Step 'moosac': terminate if fitness change < tol in all last 10 steps.")
         parser.add_argument("--moosac_maxiter", type=int, default=150, help="Step 'moosac': max number of iterations.")
