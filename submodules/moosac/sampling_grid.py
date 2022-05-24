@@ -116,7 +116,7 @@ class Grid:
         Returns:
             config (dict): Dict for configurations.
                 {downscale,zyx,n_uz,n_vxy,uv_zyx,uv_size}
-                downscale: regularized downscale factor, so that downscaled z in different grids would not overlap
+                downscale: regularized downscale factor, so that downscaled z in different grids do not overlap
         """
         config = {}
         
