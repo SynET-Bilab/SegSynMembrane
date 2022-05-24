@@ -32,7 +32,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
             neigh_thresh=5,
             # detect
             detect_smooth=5,
-            detect_tv=0,
+            detect_tv=20,
             detect_filt=4,
             detect_supp=0.5,
             # components

@@ -13,7 +13,7 @@ __version__ = "0.2"
 # open3d > 0.15
 # ]
 
-from .utilities import imgutil, pcdutil
+from .utilities import imgutil, pcdutil, miscutil
 from .utilities import io, plot
 from .utilities import bspline
 from .utilities import modutil

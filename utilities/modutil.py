@@ -432,7 +432,7 @@ def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degr
 
     # clip tomo
     sub = tuple(slice(ci, ci+si) for ci, si in zip(clip_low, shape))
-    I = np.asarray(I[sub])
+    I = I[sub]
     shape = I.shape
 
     # save parameters and results
