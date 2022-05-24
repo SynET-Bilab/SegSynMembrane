@@ -522,10 +522,10 @@ class SegBase:
             f"""finished moosac ({label}): {self.timer.click()}""")
 
         # matching
-        # r_thresh: at least 2*moosac_resize
+        # r_thresh: at least moosac_resize
         zyx_match = etsynseg.matching.match_candidate_to_ref(
             zyx, zyx_fit, guide,
-            r_thresh=max(args["moosac_resize"]/pixel_nm*2, 2)
+            r_thresh=max(args["moosac_resize"]/pixel_nm, 1)
         )
         # save results
         self.steps["match"][f"zyx{label}"] = zyx_match

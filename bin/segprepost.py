@@ -28,12 +28,12 @@ class SegPrePost(etsynseg.segbase.SegBase):
 
         self.argparser.set_defaults(
             # basics
-            extend=40,
+            extend=35,
             neigh_thresh=5,
             # detect
             detect_smooth=5,
             detect_tv=20,
-            detect_filt=4,
+            detect_filt=3.5,
             detect_supp=0.5,
             # components
             components_min=0.5,

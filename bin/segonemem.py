@@ -28,12 +28,12 @@ class SegOneMem(etsynseg.segbase.SegBase):
             # detect
             detect_smooth=5,
             detect_tv=20,
-            detect_filt=2,
+            detect_filt=1.75,
             detect_supp=0.5,
             # components
             components_min=0.5,
             # moosac
-            moosac_lengrids=[50, 150],
+            moosac_lengrids=[50, 200],
             moosac_shrinkside=0.25,
             moosac_resize=5,
             moosac_popsize=40,
