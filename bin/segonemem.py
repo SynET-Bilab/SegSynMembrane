@@ -41,41 +41,6 @@ class SegOneMem(etsynseg.segbase.SegBase):
             moosac_maxiter=150,
         )
 
-    def components_one(self):
-        """ Extract one component.
-
-        Prerequisites: membranes are detected.
-        Effects: updates self.steps["components"].
-        """
-        # log
-        self.timer.click()
-
-        # setup
-        args = self.args
-        tomod = self.steps["tomod"]
-        
-        # extract by division
-        zyx = self.steps["detect"]["zyx"]
-        min_size = len(tomod["guide"])*args["components_min"]
-        try:
-            zyx1 = etsynseg.components.extract_components_one(
-                zyx,
-                r_thresh=tomod["neigh_thresh"],
-                min_size=min_size
-            )
-        # RuntimeError: component size < min_size
-        except RuntimeError as e:
-            self.logger.error(e)
-            raise
-
-        # save results
-        self.steps["components"]["zyx1"] = zyx1
-
-        # log
-        self.logger.info(f"""extracted components: {self.timer.click()}""")
-        self.save_state(self.args["outputs_state"])
-        self.logger.info("saved state")
-
     def final_results(self):
         """ Calculate final results. Save in self.results.
         """

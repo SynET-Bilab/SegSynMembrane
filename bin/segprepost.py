@@ -46,86 +46,6 @@ class SegPrePost(etsynseg.segbase.SegBase):
             moosac_maxiter=150,
         )
 
-    def components_auto(self):
-        """ Extract two components automatically.
-
-        Prerequisites: membranes are detected.
-        Effects: updates self.steps["components"].
-        """
-        # log
-        self.timer.click()
-
-        # setup
-        args = self.args
-        tomod = self.steps["tomod"]
-        
-        # extract by division
-        zyx = self.steps["detect"]["zyx"]
-        min_size = len(tomod["guide"])*args["components_min"]
-        try:
-            zyx1, zyx2 = etsynseg.components.extract_components_two(
-                zyx,
-                r_thresh=tomod["neigh_thresh"],
-                orients=None, sigma_dO=np.pi/4,
-                min_size=min_size
-            )
-        # RuntimeError: component size < min_size
-        except RuntimeError as e:
-            self.logger.error(e)
-            raise
-
-        # sort by distance to ref point
-        zyx1, zyx2 = etsynseg.pcdutil.sort_pcds_by_ref(
-            [zyx1, zyx2],
-            pt_ref=tomod["normal_ref"]
-        )
-        
-        # save results
-        self.steps["components"]["zyx1"] = zyx1
-        self.steps["components"]["zyx2"] = zyx2
-
-        # log
-        self.logger.info(f"""extracted components: {self.timer.click()}""")
-        self.save_state(self.args["outputs_state"])
-        self.logger.info("saved state")
-
-    def components_by_mask(self):
-        """ Extract two components using masks.
-        
-        Prerequisites: membranes are detected.
-        Effects: updates self.steps["components"].
-        """
-        # log
-        self.timer.click()
-
-        # setup
-        tomod = self.steps["tomod"]
-
-        # extract by masking
-        zyx = self.steps["detect"]["zyx"]
-        min_size = len(tomod["guide"])*args["components_min"]
-        # pre in normal minus, post in normal plus
-        try:
-            zyx1, zyx2 = etsynseg.components.extract_components_regions(
-                zyx,
-                region_arr=[tomod["bound_minus"], tomod["bound_plus"]],
-                r_thresh=tomod["neigh_thresh"],
-                min_size=min_size
-            )
-        # RuntimeError: component size < min_size
-        except RuntimeError as e:
-            self.logger.error(e)
-            raise
-
-        # save results
-        self.steps["components"]["zyx1"] = zyx1
-        self.steps["components"]["zyx2"] = zyx2
-
-        # log
-        self.logger.info(f"""extracted components: {self.timer.click()}""")
-        self.save_state(self.args["outputs_state"])
-        self.logger.info("saved state")
-
     def final_results(self):
         """ Calculate final results. Save in self.results.
         """
@@ -199,9 +119,9 @@ class SegPrePost(etsynseg.segbase.SegBase):
 
         # extract components
         if mode in ["runfine"]:
-            self.components_by_mask()
+            self.components_two_mask()
         else:
-            self.components_auto()
+            self.components_two_div()
 
         # fit refine
         self.fit_refine(1)

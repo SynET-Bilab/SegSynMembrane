@@ -328,7 +328,7 @@ class SegBase:
 
         # log
         self.logger.info(f"""loaded data: {self.timer.click()}""")
-        self.save_state(self.args["outputs_state"])
+        self.save_state(args["outputs_state"])
         self.logger.info("saved state")
 
     def detect(self):
@@ -363,7 +363,122 @@ class SegBase:
 
         # log
         self.logger.info(f"""finished detecting: {self.timer.click()}""")
-        self.save_state(self.args["outputs_state"])
+        self.save_state(args["outputs_state"])
+        self.logger.info("saved state")
+
+    def components_one(self):
+        """ Extract one component.
+
+        Prerequisites: membranes are detected.
+        Effects: updates self.steps["components"].
+        """
+        # log
+        self.timer.click()
+
+        # setup
+        args = self.args
+        tomod = self.steps["tomod"]
+        
+        # extract by division
+        zyx = self.steps["detect"]["zyx"]
+        min_size = len(tomod["guide"])*args["components_min"]
+        try:
+            zyx1 = etsynseg.components.extract_components_one(
+                zyx,
+                r_thresh=tomod["neigh_thresh"],
+                min_size=min_size
+            )
+        # RuntimeError: component size < min_size
+        except RuntimeError as e:
+            self.logger.error(e)
+            raise
+
+        # save results
+        self.steps["components"]["zyx1"] = zyx1
+
+        # log
+        self.logger.info(f"""extracted components: {self.timer.click()}""")
+        self.save_state(args["outputs_state"])
+        self.logger.info("saved state")
+
+    def components_two_div(self):
+        """ Extract two components with automatic division.
+
+        Prerequisites: membranes are detected.
+        Effects: updates self.steps["components"].
+        """
+        # log
+        self.timer.click()
+        # setup
+        args = self.args
+        tomod = self.steps["tomod"]
+
+        # extract by division
+        zyx = self.steps["detect"]["zyx"]
+        min_size = len(tomod["guide"])*args["components_min"]
+        try:
+            zyx1, zyx2 = etsynseg.components.extract_components_two(
+                zyx,
+                r_thresh=tomod["neigh_thresh"],
+                orients=None, sigma_dO=np.pi/4,
+                min_size=min_size
+            )
+        # RuntimeError: component size < min_size
+        except RuntimeError as e:
+            self.logger.error(e)
+            raise
+
+        # sort by distance to ref point
+        zyx1, zyx2 = etsynseg.pcdutil.sort_pcds_by_ref(
+            [zyx1, zyx2],
+            pt_ref=tomod["normal_ref"]
+        )
+
+        # save results
+        self.steps["components"]["zyx1"] = zyx1
+        self.steps["components"]["zyx2"] = zyx2
+
+        # log
+        self.logger.info(f"""extracted components: {self.timer.click()}""")
+        self.save_state(args["outputs_state"])
+        self.logger.info("saved state")
+
+    def components_two_mask(self):
+        """ Extract two components using masks.
+        
+        Prerequisites: membranes are detected.
+        Effects: updates self.steps["components"].
+        """
+        # log
+        self.timer.click()
+
+        # setup
+        args = self.args
+        tomod = self.steps["tomod"]
+
+        # extract by masking
+        zyx = self.steps["detect"]["zyx"]
+        min_size = len(tomod["guide"])*args["components_min"]
+        # pre in normal minus, post in normal plus
+        try:
+            zyx1, zyx2 = etsynseg.components.extract_components_regions(
+                zyx,
+                region_arr=[tomod["bound_minus"], tomod["bound_plus"]],
+                r_thresh=tomod["neigh_thresh"],
+                min_size=min_size
+            )
+        # RuntimeError: component size < min_size
+        except RuntimeError as e:
+            self.logger.error(e)
+            raise
+
+        # save results
+        self.steps["components"]["zyx1"] = zyx1
+        self.steps["components"]["zyx2"] = zyx2
+
+        # log
+        self.logger.info(f"""extracted components: {self.timer.click()}""")
+        self.save_state(args["outputs_state"])
         self.logger.info("saved state")
 
     def fit_refine(self, label):
@@ -405,7 +520,6 @@ class SegBase:
         # log
         self.logger.info(
             f"""finished moosac ({label}): {self.timer.click()}""")
-        # self.save_state(self.args["outputs_state"])
 
         # matching
         # r_thresh: at least 2*moosac_resize
@@ -416,7 +530,6 @@ class SegBase:
         # save results
         self.steps["match"][f"zyx{label}"] = zyx_match
         # log
-        # self.save_state(self.args["outputs_state"])
         self.logger.info(
             f"""finished matching ({label}): {self.timer.click()}""")
 
@@ -436,7 +549,7 @@ class SegBase:
         # log
         self.logger.info(
             f"""finished meshrefine ({label}): {self.timer.click()}""")
-        self.save_state(self.args["outputs_state"])
+        self.save_state(args["outputs_state"])
         self.logger.info("saved state")
 
     #=========================
