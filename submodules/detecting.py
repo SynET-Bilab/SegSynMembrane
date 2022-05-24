@@ -104,10 +104,10 @@ def detect_memlike(I, guide, bound, sigma_gauss, sigma_tv, factor_filt=3, factor
     # tv on B rather than S gives less scattered results
     if sigma_tv > 0:
         Stv, Otv = dtvoting.stick3d(B, B*O, sigma=sigma_tv)
+        Btv = B_bound*nonmaxsup.nms3d(Stv, Otv)
     else:
         Stv = S
-        Otv = O
-    Btv = B_bound*nonmaxsup.nms3d(Stv, Otv)
+        Btv = B
 
     # filter by value
     # filter on S*Stv rather than Stv, adds info from the original image

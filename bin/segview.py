@@ -42,9 +42,15 @@ if __name__ == '__main__':
     parser = build_argparser()
     args = vars(parser.parse_args())
 
-    # init seg according to program
+    # init seg
+    # read prog from state file
     state_file = args["input"]
-    prog = np.load(state_file, allow_pickle=True)["prog"].item()
+    state = np.load(state_file, allow_pickle=True)
+    if "prog" in state.keys():
+        prog = state["prog"].item()
+    else:
+        prog = "segprepost"
+    # init seg according to program
     if prog == "segprepost":
         seg = etsynseg.segprepost.SegPrePost()
     elif prog == "segonemem":

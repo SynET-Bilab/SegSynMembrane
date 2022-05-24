@@ -28,7 +28,7 @@ alternatives: run `segsbatchtemplate.sh` to generate a sbatch file for job submi
 
 outputs: (1 for presynapse, 2 for postsynapse)
 name-seg.npz: info of all steps and results.
-    results can be retrieved in python using: `np.load(name-seg.npz, allow_pickle=True)["results"].item()`
+    results can be retrieved in python using: `numpy.load(name-seg.npz, allow_pickle=True)["results"].item()`
 name-seg.png: image of sample slices
 name-seg.mod: an imod model file with segmented membranes and the manual bounding region
 
