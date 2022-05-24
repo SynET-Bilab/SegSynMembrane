@@ -1,9 +1,11 @@
 """ 
 """
 
+import time
 import pathlib
 import argparse
-import time
+import textwrap
+import logging
 import numpy as np
 import matplotlib.pyplot as plt
 import napari
@@ -74,8 +76,10 @@ class SegBase:
         args, steps, results (dict): Useful attributes. See self.info.
 
     Methods:
-        # misc
+        # funcs
         register_map
+        # args
+        build_argparse, load_args
         # io
         load_state, backup_file, save_state
         # outputs
@@ -85,12 +89,21 @@ class SegBase:
         # steps
         load_tomod, detect, fit_refine
     """
-    def __init__(self):
+    def __init__(self, prog, labels=(1,)):
         """ Init. Example attributes.
+
+        Args:
+            prog (str): Program name.
+            labels (tuple of int): Labels for components.
         """
+        # program
+        self.prog = prog
+        self.labels = labels
+        
         # logging
-        self.timer = None
-        self.logger = None
+        self.timer = etsynseg.segbase.Timer(return_format="string")
+        self.logger = logging.getLogger(self.prog)
+
         # map
         self.func_map = map
         
@@ -100,17 +113,17 @@ class SegBase:
         steps: Intermediate results in each step. Coordinates: ranged in the clipped tomo, in units of pixels, the order is [z,y,x].
         results: Final results. Coordinates: ranged in the input tomo, in units of pixels, the order is [x,y,z].
         """
-        # labels
-        self.labels = (1,)
+        
         # args: length unit is nm
         self.args = dict(
             mode=None, inputs=None, outputs=None,
             tomo_file=None, model_file=None, outputs_state=None,
             pixel=None, extend=None, neigh_thresh=None,
-            detect_gauss=None, detect_tv=None, detect_filt=None, detect_supp=None,
+            detect_smooth=None, detect_tv=None, detect_filt=None, detect_supp=None,
             components_min=None,
             moosac_lengrids=None, moosac_shrinkside=None, moosac_popsize=None, moosac_tol=None, moosac_maxiter=None
         )
+
         # intermediate steps: length unit is pixel, coordinates are clipped
         self.steps = dict(
             tomod=dict(
@@ -120,15 +133,22 @@ class SegBase:
                 guide=None, normal_ref=None
             ),
             detect=dict(zyx_nofilt=None, zyx=None),
-            components=dict(zyx1=None),
-            moosac=dict(mpopz1=None, zyx1=None),
-            match=dict(zyx1=None),
-            meshrefine=dict(zyx1=None)
         )
+        # steps where components are treated separately
+        # keys: zyxi, (mpopzi for moosac)
+        for step in ["components", "moosac", "match", "meshrefine"]:
+            self.steps[step] = {f"zyx{i}": None for i in self.labels}
+        self.steps["moosac"].update(
+            {f"mpopz{i}": None for i in self.labels}
+        )
+
         # results: coordinates are in the original range
-        self.results=dict(
-            xyz1=None, nxyz1=None, area1_nm2=None
-        )
+        # keys: zyxi, nzyxi, areai_nm2
+        self.results = {}
+        for i in self.labels:
+            self.results[f"zyx{i}"] = None
+            self.results[f"nzyx{i}"] = None
+            self.results[f"area{i}_nm2"] = None
 
     def register_map(self, func_map=map):
         """ Register map function for multiprocessing.
@@ -137,6 +157,128 @@ class SegBase:
             func_map (Callable): Map function.
         """
         self.func_map = func_map
+
+    #=========================
+    # parser
+    #=========================
+    
+    def build_argparser(self):
+        """ Build argument parser for inputs. Constructs self.argparser (argparse.ArgumentParser).
+        """
+        # parser
+        description = textwrap.dedent(f"""
+        Semi-automatic membrane segmentation.
+        
+        Usage:
+            (u1) {self.prog}.py mode tomo.mrc model.mod -o outputs [options]
+                model: if not provided, then set as tomo.mod
+                outputs: if not provided, then set as model-seg
+            (u2) {self.prog}.py mode state.npz [options]
+        
+        Modes:
+            run (u1): normal segmentation
+            runfine (u1): run with finely-drawn model which separates pre and post
+            rewrite (u2): model and figures
+            showarg (u2): print args
+            showim (u2): draw steps
+            showpcd (u2): draw membranes as pointclouds
+            showmoo (u2): plot moosac trajectory
+        """)
+
+        parser = argparse.ArgumentParser(
+            prog=f"{self.prog}.py",
+            description=description,
+            formatter_class=etsynseg.segbase.HelpFormatterCustom
+        )
+        # mode
+        parser.add_argument("mode", type=str, choices=["run", "runfine", "rewrite", "showarg", "showim", "showpcd", "showmoo"])
+        
+        # input/output
+        parser.add_argument("inputs", type=str, nargs='+',help="Input files. Tomo and model files for modes in (run, runfine). State file for other modes.")
+        parser.add_argument("-o", "--outputs", type=str, default=None, help="Basename for output files. Defaults to the basename of model file.")
+        
+        # basics
+        parser.add_argument("-px", "--pixel", type=float, default=None, help="Pixel size in nm. If not set, then read from the header of tomo.")
+        parser.add_argument("--extend", type=float, help="The distance (in nm) that the bounding region extends from guiding lines.")
+        parser.add_argument("--neigh_thresh", type=float, help="Distance threshold (in nm) for neighboring points in graph construction.")
+        
+        # detect
+        parser.add_argument("--detect_smooth", type=float, help="Step 'detect': sigma for gaussian smoothin in nm. Can be set to membrane thickness.")
+        parser.add_argument("--detect_tv", type=float, help="Step 'detect': sigma for tensor voting in nm. Can be set to e.g. cleft width.")
+        parser.add_argument("--detect_filt", type=float, help="Step 'detect': keep the strongest (detect_filt * size of guiding surface) pixels during filtering. A larger value keeps more candidates for the next step.")
+        parser.add_argument("--detect_supp", type=float, help="Step 'detect': sigma for normal suppression = (detect_supp * length of guiding line).")
+        
+        # components
+        parser.add_argument("--components_min", type=float, help="Step 'components': min size of component = (components_min * size of guiding surface). Raise error if only smaller ones are obtained.")
+        
+        # moosac
+        parser.add_argument("--moosac_lengrids", type=float, nargs=2, help="Step 'moosac': length of sampling grids in z- and xy-axes. More complex surface requires smaller grids.")
+        parser.add_argument("--moosac_shrinkside", type=float, help="Step 'moosac': grids on the side in xy are shrinked to this value. A smaller facilicates segmentation towards the bounding region.")
+        parser.add_argument("--moosac_resize", type=float, help="Step 'moosac': temporarily increase pixel size (nm) to this value to simplify computation. Can be set to membrane thickness.")
+        parser.add_argument("--moosac_popsize", type=int, help="Step 'moosac': population size for evolution.")
+        parser.add_argument("--moosac_tol", type=float, help="Step 'moosac': terminate if fitness change < tol in all last 10 steps.")
+        parser.add_argument("--moosac_maxiter", type=int, help="Step 'moosac': max number of iterations.")
+
+        # assign to self
+        self.argparser = parser
+
+    def load_args(self, args):
+        """ Load args into self.args.
+
+        Args:
+            args (dict or argparse.Namespace): Args as a dict, or from parser.parse_args.
+        """
+        # conversion
+        if type(args) is not dict:
+            args = vars(args)
+
+        # processing
+        mode = args["mode"]
+        # modes reading tomo and model files
+        if mode in ["run", "runfine"]:
+            # amend tomo, model
+            args["tomo_file"] = args["inputs"][0]
+            if len(args["inputs"]) == 2:
+                args["model_file"] = args["inputs"][1]
+            else:
+                args["model_file"] = str(pathlib.Path(
+                    args["tomo_file"]).with_suffix(".mod"))
+            # amend outputs
+            if args["outputs"] is None:
+                args["outputs"] = pathlib.Path(
+                    args["model_file"]).stem + "-seg"
+            # save
+            self.args.update(args)
+        # modes reading state file
+        elif (mode in ["rewrite"]) or mode.startswith("show"):
+            state_file = args["inputs"][0]
+            self.load_state(state_file)
+        else:
+            raise ValueError(f"""Unrecognized mode: {mode}""")
+
+        # state filename
+        self.args["outputs_state"] = self.args["outputs"]+".npz"
+
+        # setup logging
+        log_handler = logging.FileHandler(self.args["outputs"]+".log")
+        log_formatter = logging.Formatter(
+            "%(asctime)s %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        )
+        log_handler.setFormatter(log_formatter)
+        self.logger.addHandler(log_handler)
+        self.logger.setLevel("INFO")
+
+        # log for modes that run segmentation
+        if args["mode"] in ["run", "runfine"]:
+            self.logger.info(f"----{self.prog}----")
+            self.logger.info(f"""read args: {args["mode"]} {args["inputs"]}""")
+            # save state, backup for the first time
+            self.save_state(self.args["outputs_state"], backup=True)
+        # print for modes that just show
+        else:
+            print(f"----{self.prog}----")
+            print(f"""mode: {args["mode"]}""")
 
 
     #=========================
@@ -174,6 +316,7 @@ class SegBase:
 
         np.savez_compressed(
             state_file,
+            prog=self.prog,
             info=self.info,
             args=self.args,
             steps=self.steps,
