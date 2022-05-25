@@ -32,15 +32,14 @@ class SegPrePost(etsynseg.segbase.SegBase):
             neigh_thresh=5,
             # detect
             detect_smooth=5,
-            detect_tv=20,
-            detect_filt=4,
-            detect_supp=0.5,
+            detect_tv=50,
+            detect_filt=3.5,
+            detect_supp=0.25,
             # components
             components_min=0.5,
             # moosac
             moosac_lengrids=[50, 160],
             moosac_shrinkside=0.25,
-            moosac_resize=5,
             moosac_popsize=80,
             moosac_tol=0.005,
             moosac_maxiter=200,

@@ -159,7 +159,7 @@ class SegBase:
         
         # detect
         parser.add_argument("--detect_smooth", type=float, help="Step 'detect': sigma for gaussian smoothin in nm. Can be set to membrane thickness.")
-        parser.add_argument("--detect_tv", type=float, help="Step 'detect': sigma for tensor voting in nm. Should be smaller than membrane spacings.")
+        parser.add_argument("--detect_tv", type=float, help="Step 'detect': sigma for tensor voting in nm. A larger value makes lines more continuous.")
         parser.add_argument("--detect_filt", type=float, help="Step 'detect': keep the strongest (detect_filt * size of guiding surface) pixels during filtering. A larger value keeps more candidates for the next step.")
         parser.add_argument("--detect_supp", type=float, help="Step 'detect': sigma for normal suppression = (detect_supp * length of guiding line).")
         
@@ -169,7 +169,6 @@ class SegBase:
         # moosac
         parser.add_argument("--moosac_lengrids", type=float, nargs=2, help="Step 'moosac': length of sampling grids in z- and xy-axes. More complex surface requires smaller grids.")
         parser.add_argument("--moosac_shrinkside", type=float, help="Step 'moosac': grids on the side in xy are shrinked to this value. A smaller facilicates segmentation towards the bounding region.")
-        parser.add_argument("--moosac_resize", type=float, help="Step 'moosac': temporarily increase pixel size (nm) to this value to simplify computation. Can be set to membrane thickness.")
         parser.add_argument("--moosac_popsize", type=int, help="Step 'moosac': population size for evolution.")
         parser.add_argument("--moosac_tol", type=float, help="Step 'moosac': terminate if fitness change < tol in all last 10 steps.")
         parser.add_argument("--moosac_maxiter", type=int, help="Step 'moosac': max number of iterations.")
@@ -501,13 +500,14 @@ class SegBase:
         zyx = self.steps["components"][f"zyx{label}"]
 
         # moosac fitting
+        # downscale: set to be the same as detect_smooth
         len_grids = tuple(l/pixel_nm for l in args["moosac_lengrids"])
         zyx_fit, mpop_state = etsynseg.moosac.robust_fitting(
             zyx, guide,
             len_grids=len_grids,
             shrink_sidegrid=args["moosac_shrinkside"],
             fitness_rthresh=tomod["neigh_thresh"],
-            downscale=args["moosac_resize"]/pixel_nm,
+            downscale=args["detect_smooth"]/pixel_nm,
             pop_size=args["moosac_popsize"],
             tol=args["moosac_tol"],
             tol_nback=10,
@@ -522,10 +522,10 @@ class SegBase:
             f"""finished moosac ({label}): {self.timer.click()}""")
 
         # matching
-        # r_thresh: at least moosac_resize
+        # r_thresh: set to detect_smooth
         zyx_match = etsynseg.matching.match_candidate_to_ref(
             zyx, zyx_fit, guide,
-            r_thresh=max(args["moosac_resize"]/pixel_nm, 1)
+            r_thresh=max(args["detect_smooth"]/pixel_nm, 1)
         )
         # save results
         self.steps["match"][f"zyx{label}"] = zyx_match
