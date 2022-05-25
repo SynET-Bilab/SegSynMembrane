@@ -82,13 +82,14 @@ class MOOTools:
         """ Initialize attributes from Grid object.
 
         Args:
-            grid (dict): Config of moosac.Grid. Keys={zyx,n_uz,n_vxy,uv_zyx,uv_size}.
+            grid (dict): Config of moosac.Grid. Keys={zyx,count_zyx,n_uz,n_vxy,uv_zyx,uv_size}.
             fitness_rthresh (float): Distance threshold for fitness calculation.
 
         Returns:
             self (MOOTools): Self object whose attributes are set.
         """
         self.zyx = grid["zyx"]
+        self.count_zyx = grid["count_zyx"]
         self.n_uz = grid["n_uz"]
         self.n_vxy = grid["n_vxy"]
         self.uv_size = grid["uv_size"]
@@ -107,6 +108,7 @@ class MOOTools:
             self (MOOTools): Self object whose attributes are set.
         """
         self.zyx = config["zyx"]
+        self.count_zyx = config["count_zyx"]
         self.n_uz = config["n_uz"]
         self.n_vxy = config["n_vxy"]
         self.uv_size = config["uv_size"]
@@ -131,10 +133,11 @@ class MOOTools:
 
         Returns:
             config (dict): Dict of attributes.
-                {zyx,n_vxy,n_uz,uv_size,uv_zyx,fitness_rthresh}.
+                {zyx,count_zyx,n_vxy,n_uz,uv_size,uv_zyx,fitness_rthresh}.
         """
         config = dict(
             zyx=self.zyx,
+            count_zyx=self.count_zyx,
             n_uz=self.n_uz,
             n_vxy=self.n_vxy,
             uv_size=self.uv_size,
@@ -341,7 +344,8 @@ class MOOTools:
         
         # coverage of zyx by fit: dist from zyx to fit
         dist, _ = kdtree_fit.query(self.zyx, k=1, workers=-1)
-        fitness_coverage = np.sum(np.clip(dist, 0, self.fitness_rthresh)**2)
+        dist2 = np.clip(dist, 0, self.fitness_rthresh)**2
+        fitness_coverage = np.sum(self.count_zyx*dist2)
 
         # excessive pixels of fit compared with zyx: dist from fit to zyx
         dist_fit, _ = self.kdtree.query(zyx_fit, k=1, workers=-1)

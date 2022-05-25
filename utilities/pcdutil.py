@@ -11,7 +11,7 @@ __all__ = [
     # conversion
     "pixels2points", "points2pixels", "reverse_coord", "points2pointcloud",
     # misc
-    "points_range", "points_deduplicate", "points_distance",
+    "points_range", "points_deduplicate", "points_deduplicate_count", "points_distance",
     "points_in_region", "orients_absdiff", "wireframe_length",
     # normals
     "normals_gen_ref", "normals_pointcloud", "normals_points",
@@ -143,6 +143,33 @@ def points_deduplicate(pts):
     # convert to np.ndarray
     pts_dedup = np.array(list(pts_dedup))
     return pts_dedup
+
+def points_deduplicate_count(pts):
+    """ Deduplicate points while retaining the order. Count the number of appearances.
+
+    This is slower that points_deduplicate, so creating a separate function.
+    
+    Args:
+        pts (np.ndarray): Array of points with shape=(npts,dim).
+
+    Returns:
+        pts_dedup (np.ndarray): Deduplicated array of points, with shape=(npts_dedup,dim).
+        pts_count (np.ndarray): The number of appearance of points, with shape=(npts_dedup,dim).
+    """
+    # round
+    pts = np.round(pts).astype(int)
+    # count using dict
+    pts_dict = {}
+    for pt in pts:
+        pt = tuple(pt)
+        if pt in pts_dict:
+            pts_dict[pt] += 1
+        else:
+            pts_dict[pt] = 1
+    # convert to np.ndarray
+    pts_dedup = np.asarray(list(pts_dict.keys()))
+    pts_count = np.asarray(list(pts_dict.values()))
+    return pts_dedup, pts_count
 
 def points_distance(pts1, pts2, return_2to1=False):
     """ Calculate distances between two point arrays.

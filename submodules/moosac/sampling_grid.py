@@ -115,8 +115,10 @@ class Grid:
         
         Returns:
             config (dict): Dict for configurations.
-                {downscale,zyx,n_uz,n_vxy,uv_zyx,uv_size}
+                {downscale,zyx,count_zyx,n_uz,n_vxy,uv_zyx,uv_size}
                 downscale: regularized downscale factor, so that downscaled z in different grids do not overlap
+                zyx: downscaled rounded points
+                count_zyx: the count of each downscaled point before deduplicating
         """
         config = {}
         
@@ -131,8 +133,9 @@ class Grid:
         downscale = min(downscale, dz_min)  # dz_min/downscale>=1
         config["downscale"] = downscale
 
-        # downscale coordinates
-        config["zyx"] = pcdutil.points_deduplicate(self.zyx/downscale)
+        # downscale coordinates, count for each downscaled point
+        zyx_down = self.zyx/downscale
+        config["zyx"], config["count_zyx"] = pcdutil.points_deduplicate_count(zyx_down)
         
         # downscale grids
         config["n_uz"] = self.n_uz
@@ -141,9 +144,7 @@ class Grid:
         config["uv_size"] = {}
         for iu in range(self.n_uz):
             for iv in range(self.n_vxy):
-                zyx_i = pcdutil.points_deduplicate(
-                    self.uv_zyx[(iu, iv)]/downscale
-                )
+                zyx_i = pcdutil.points_deduplicate(self.uv_zyx[(iu, iv)]/downscale)
                 config["uv_zyx"][(iu, iv)] = zyx_i
                 config["uv_size"][(iu, iv)] = len(zyx_i)
         return config
