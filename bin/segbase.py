@@ -226,7 +226,9 @@ class SegBase:
         # log for modes that run segmentation
         if args["mode"] in ["run", "runfine"]:
             self.logger.info(f"----{self.prog}----")
-            self.logger.info(f"""read args: {args["mode"]} {args["inputs"]}""")
+            self.logger.info(f"""mode: {args["mode"]}""")
+            self.logger.info(f"""inputs: {self.args["tomo_file"]} {self.args["model_file"]}""")
+            self.logger.info(f"""outputs: {self.args["outputs"]}""")
             # save state, backup for the first time
             self.save_state(self.args["outputs_state"], backup=True)
             self.logger.info("saved state (with backups)")
@@ -764,7 +766,7 @@ class SegBase:
         I = self.steps["tomod"]["I"]
         im_dict = {
             # label z in range of original tomo
-            f"z={iz+iz_clip}": {
+            f"z={iz+iz_clip+1}": {
                 "I": I[iz],
                 "yxs": [zyx_i[zyx_i[:, 0] == iz][:, 1:] for zyx_i in zyx_arr]
             }
