@@ -78,7 +78,8 @@ class SegBase:
             pixel=None, extend=None, neigh_thresh=None,
             detect_smooth=None, detect_tv=None, detect_filt=None, detect_supp=None,
             components_min=None,
-            moosac_lengrids=None, moosac_shrinkside=None, moosac_popsize=None, moosac_tol=None, moosac_maxiter=None
+            moosac_lengrids=None, moosac_shrinkside=None, moosac_popsize=None, moosac_tol=None, moosac_maxiter=None,
+            meshrefine_spacing=None,
         )
 
         # intermediate steps: length unit is pixel, coordinates are clipped
@@ -158,7 +159,7 @@ class SegBase:
         parser.add_argument("--neigh_thresh", type=float, help="Distance threshold (in nm) for neighboring points in graph construction.")
         
         # detect
-        parser.add_argument("--detect_smooth", type=float, help="Step 'detect': sigma for gaussian smoothin in nm. Can be set to membrane thickness.")
+        parser.add_argument("--detect_smooth", type=float, help="Step 'detect': sigma for gaussian smoothing in nm. Can be set to membrane thickness.")
         parser.add_argument("--detect_tv", type=float, help="Step 'detect': sigma for tensor voting in nm. A larger value makes lines more continuous.")
         parser.add_argument("--detect_filt", type=float, help="Step 'detect': keep the strongest (detect_filt * size of guiding surface) pixels during filtering. A larger value keeps more candidates for the next step.")
         parser.add_argument("--detect_supp", type=float, help="Step 'detect': sigma for normal suppression = (detect_supp * length of guiding line).")
@@ -167,11 +168,14 @@ class SegBase:
         parser.add_argument("--components_min", type=float, help="Step 'components': min size of component = (components_min * size of guiding surface). Raise error if only smaller ones are obtained.")
         
         # moosac
-        parser.add_argument("--moosac_lengrids", type=float, nargs=2, help="Step 'moosac': length of sampling grids in z- and xy-axes. More complex surface requires smaller grids.")
-        parser.add_argument("--moosac_shrinkside", type=float, help="Step 'moosac': grids on the side in xy are shrinked to this value. A smaller facilicates segmentation towards the bounding region.")
+        parser.add_argument("--moosac_lengrids", type=float, nargs=2, help="Step 'moosac': length (in nm) of sampling grids in z- and xy-axes. More complex surface requires smaller grids.")
+        parser.add_argument("--moosac_shrinkside", type=float, help="Step 'moosac': grids on the side in xy are shrinked to this fraction. A smaller value facilitates segmentation towards the bounding region.")
         parser.add_argument("--moosac_popsize", type=int, help="Step 'moosac': population size for evolution.")
-        parser.add_argument("--moosac_tol", type=float, help="Step 'moosac': terminate if fitness change < tol in all last 10 steps.")
+        parser.add_argument("--moosac_tol", type=float, help="Step 'moosac': terminate if the relative fitness change < tol in all last 10 steps.")
         parser.add_argument("--moosac_maxiter", type=int, help="Step 'moosac': max number of iterations.")
+
+        # meshrefine
+        parser.add_argument("--meshrefine_spacing", type=float, help="Step 'meshrefine': mesh spacing for poisson reconstruction. A larger value makes the surface smoother.")
 
         # assign to self
         self.argparser = parser
@@ -539,7 +543,7 @@ class SegBase:
         zyx_refine = etsynseg.meshrefine.refine_surface(
             zyx_match,
             sigma_normal=tomod["neigh_thresh"]*2,
-            sigma_mesh=tomod["neigh_thresh"]*2,
+            sigma_mesh=args["meshrefine_spacing"]/pixel_nm,
             sigma_hull=tomod["neigh_thresh"],
             target_spacing=1,
             B_bound=tomod["bound"]

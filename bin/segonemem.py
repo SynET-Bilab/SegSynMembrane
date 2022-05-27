@@ -38,6 +38,8 @@ class SegOneMem(etsynseg.segbase.SegBase):
             moosac_popsize=40,
             moosac_tol=0.005,
             moosac_maxiter=150,
+            # meshrefine
+            meshrefine_spacing=20
         )
 
     def final_results(self):

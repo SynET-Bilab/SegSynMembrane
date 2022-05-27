@@ -43,6 +43,8 @@ class SegPrePost(etsynseg.segbase.SegBase):
             moosac_popsize=80,
             moosac_tol=0.005,
             moosac_maxiter=200,
+            # meshrefine
+            meshrefine_spacing=20
         )
 
     def final_results(self):
