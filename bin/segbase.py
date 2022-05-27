@@ -44,7 +44,7 @@ class SegBase:
         # visualization
         show_steps, show_segpcds
         # steps
-        load_tomod, detect, fit_refine
+        load_tomod, detect, fit_refine, refine
     """
     def __init__(self, prog, labels=(1,)):
         """ Init. Example attributes.
@@ -136,7 +136,8 @@ class SegBase:
         Modes:
             run (u1): normal segmentation
             runfine (u1): run with finely-drawn model which separates pre and post
-            contresults (u2): continue calculating results.
+            results (u2): continue calculating results.
+            meshrefine (u2): continue from step meshrefine.
         """)
 
         parser = argparse.ArgumentParser(
@@ -146,7 +147,7 @@ class SegBase:
         )
         # mode
         parser.add_argument("mode", type=str, choices=[
-            "run", "runfine", "contresults"
+            "run", "runfine", "contresults", "contrefine"
         ])
         
         # input/output
@@ -207,10 +208,23 @@ class SegBase:
                     args["model_file"]).stem + "-seg"
             # save
             self.args.update(args)
+
         # modes reading state file
-        elif mode in ["contresults"]:
+        elif mode in ["contresults", "contrefine"]:
             state_file = args["inputs"][0]
             self.load_state(state_file)
+            # outputs: defaults to state_file without suffix
+            if args["outputs"] is None:
+                self.args["outputs"] = str(pathlib.Path(state_file).with_suffix(''))
+            else:
+                self.args["outputs"] = args["outputs"]
+            
+            # optionally updating parameters
+            if mode == "contrefine":
+                self.args.update({
+                    "meshrefine_spacing": args["meshrefine_spacing"]
+                })
+
         else:
             raise ValueError(f"""Unrecognized mode: {mode}""")
 
@@ -227,19 +241,21 @@ class SegBase:
         self.logger.addHandler(log_handler)
         self.logger.setLevel("INFO")
 
-        # log for modes that run segmentation
+        # log
+        # mode
+        self.logger.info(f"----{self.prog}----")
+        self.logger.info(f"""mode: {args["mode"]}""")
+        # inputs
         if args["mode"] in ["run", "runfine"]:
-            self.logger.info(f"----{self.prog}----")
-            self.logger.info(f"""mode: {args["mode"]}""")
             self.logger.info(f"""inputs: {self.args["tomo_file"]} {self.args["model_file"]}""")
-            self.logger.info(f"""outputs: {self.args["outputs"]}""")
-            # save state, backup for the first time
-            self.save_state(self.args["outputs_state"], backup=True)
-            self.logger.info("saved state (with backups)")
-        # print for modes that just show
         else:
-            print(f"----{self.prog}----")
-            print(f"""mode: {args["mode"]}""")
+            self.logger.info(f"""inputs: {args["inputs"][0]}""")
+        # outputs
+        self.logger.info(f"""outputs: {self.args["outputs"]}""")
+        # save state, backup for the first time
+        if args["mode"] in ["run", "runfine", "contrefine"]:
+            self.save_state(self.args["outputs_state"], backup=True)
+            self.logger.info("saved state (backup if existed)")
 
 
     #=========================
@@ -493,7 +509,7 @@ class SegBase:
         Effects: updates self.steps[field], field="moosac","match","meshrefine"
 
         Args:
-            label (int): Name label for the component.
+            label (int): Label for the component.
         """
         # log
         self.timer.click()
@@ -558,6 +574,45 @@ class SegBase:
         self.save_state(args["outputs_state"])
         self.logger.info("saved state")
 
+    def refine(self, label):
+        """ Refine a surface.
+
+        Prerequisites: matching is finished.
+        Effects: updates self.steps[field], field="meshrefine"
+
+        Args:
+            label (int): Label for the component.
+        """
+        # log
+        self.timer.click()
+
+        # setup
+        args = self.args
+        tomod = self.steps["tomod"]
+
+        # meshrefine
+        zyx_refine = etsynseg.meshrefine.refine_surface(
+            zyx=self.steps["match"][f"zyx{label}"],
+            sigma_normal=tomod["neigh_thresh"]*2,
+            sigma_mesh=args["meshrefine_spacing"]/tomod["pixel_nm"],
+            sigma_hull=tomod["neigh_thresh"],
+            target_spacing=1,
+            B_bound=tomod["bound"]
+        )
+        # sort
+        zyx_refine = etsynseg.pcdutil.sort_pts_by_guide_3d(
+            zyx_refine, tomod["guide"]
+        )
+
+        # save results
+        self.steps["meshrefine"][f"zyx{label}"] = zyx_refine
+        # log
+        self.logger.info(
+            f"""finished meshrefine ({label}): {self.timer.click()}""")
+        self.save_state(args["outputs_state"])
+        self.logger.info("saved state")
+
+
     #=========================
     # show
     #=========================
@@ -610,6 +665,7 @@ class SegBase:
         print_prefix("detect")
         print_prefix("components")
         print_prefix("moosac")
+        print_prefix("meshrefine")
         # misc
         print_misc("--misc--")
 

@@ -132,6 +132,18 @@ class SegPrePost(etsynseg.segbase.SegBase):
         self.final_results()
         self.final_outputs()
         self.logger.info(f"""segmentation finished: total {self.timer.total()}""")
+    
+    def step_refine(self):
+        """ Segmentation step: refine.
+        """
+        # fit refine
+        self.refine(1)
+        self.refine(2)
+
+        # finalize
+        self.final_results()
+        self.final_outputs()
+        self.logger.info(f"""segmentation finished: total {self.timer.total()}""")
 
 if __name__ == "__main__":
     # init
@@ -151,7 +163,10 @@ if __name__ == "__main__":
         seg.workflow()
         seg.register_map()
         pool.close()
-    # recalculate and continue calculating final results
+    # continue from calculation of results
     elif mode == "contresults":
         seg.final_results()
         seg.final_outputs()
+    # continue from meshrefine
+    elif mode == "contrefine":
+        seg.step_refine()

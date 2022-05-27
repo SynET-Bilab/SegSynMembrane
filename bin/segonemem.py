@@ -35,9 +35,9 @@ class SegOneMem(etsynseg.segbase.SegBase):
             # moosac
             moosac_lengrids=[50, 200],
             moosac_shrinkside=0.25,
-            moosac_popsize=40,
+            moosac_popsize=80,
             moosac_tol=0.005,
-            moosac_maxiter=150,
+            moosac_maxiter=200,
             # meshrefine
             meshrefine_spacing=20
         )
