@@ -702,7 +702,7 @@ class SegBase:
         # add steps
         im_append(etsynseg.pcdutil.pixels2points(tomod["bound"]), "bound", "bop blue")
         im_append(steps["detect"]["zyx_nofilt"], "detect(nofilt)", "red", True)
-        im_append(steps["detect"]["zyx"], "detect", "bop orange", True)
+        im_append(steps["detect"]["zyx"], "detect", "bop orange")
         for i in labels:
             im_append(steps["components"]
                       [f"zyx{i}"], f"components{i}", "magenta")
@@ -711,8 +711,7 @@ class SegBase:
         for i in labels:
             im_append(steps["match"][f"zyx{i}"], f"match{i}", "cyan")
         for i in labels:
-            im_append(steps["meshrefine"]
-                      [f"zyx{i}"], f"meshrefine{i}", "yellow")
+            im_append(steps["meshrefine"][f"zyx{i}"], f"meshrefine{i}", "yellow", True)
 
         # imshow
         etsynseg.plot.imshow3d(
