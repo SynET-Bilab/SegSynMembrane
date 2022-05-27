@@ -45,8 +45,8 @@ def surface_area(zyx, guide, len_grid):
 
 def robust_fitting(
         zyx, guide,
-        len_grids=(50, 100), shrink_sidegrid=0.25, fitness_rthresh=1,
-        downscale=1,
+        len_grids=(50, 100), shrink_sidegrid=0.25, nz_eachu=1, 
+        fitness_rthresh=1, downscale=1,
         pop_size=4, tol=0.005, tol_nback=10, max_iter=200,
         func_map=map
     ):
@@ -76,6 +76,7 @@ def robust_fitting(
         guide (np.ndarray): 3d guideline points sorted in each slice, with shape=(npts_guide,3). Each point is [zi,yi,xi].
         len_grids (2-tuple of float): The length of grids in u(z),v(xy) directions, (len_uz,len_vxy) in units of pixels.
         shrink_sidegrid (float): Grids close to the sides in xy are shrinked to this ratio.
+        nz_eachu (int): The number of z-direction slices contained in each grid.
         fitness_rthresh (float): Distance threshold for fitness calculation.
         downscale (float): Downscale grid by this factor during MOOSAC, to simplify computation.
             Input length units in other args should be in original pixels, not in pixel/downscale.
@@ -91,7 +92,7 @@ def robust_fitting(
             mpop = etsynseg.moosac.MOOPop().init_from_state(mpop_state)
     """
     # setup grid
-    grid = Grid(zyx, guide, shrink_sidegrid=shrink_sidegrid, nz_eachu=1)
+    grid = Grid(zyx, guide, shrink_sidegrid=shrink_sidegrid, nz_eachu=nz_eachu)
     grid.gen_grids_by_len(len_grids=len_grids, ngrids_min=(3, 3))
     # grid_down also regularized the input downscaling
     grid_down = grid.get_config(downscale)
