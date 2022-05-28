@@ -644,7 +644,7 @@ def sort_pts_by_guide_2d(pts, guide):
     return idx_pts
 
 def sort_pts_by_guide_3d(zyx, guide):
-    """ Sort 3d points by guidelines slice by slice.
+    """ Sort 3d points by guiding lines slice by slice.
 
     Guide line points are assumed sorted in each xy-slice.
     Sort the points in each slice first by the index of their nearest guide then by the distance.

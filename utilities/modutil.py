@@ -326,8 +326,17 @@ def regions_from_guide(guide_mod, extend, normal_ref=None, interp_degree=2, cut_
         bound_minus (np.ndarray): Points of the bounding region in the normal- direction, with shape=(npts_minus,3).
         normal_ref (np.ndarray): Reference point 'inside' for orienting the normals.
     """
-    # guidelines interpolation along z and xy
-    guide = pcdutil.points_deduplicate(guide_mod)
+    # regulate guiding lines
+    # remove slices where the number of points <= 1
+    guide_raw = pcdutil.points_deduplicate(guide_mod)
+    guide = []
+    for z in np.unique(guide_raw[:, 0]):
+        guide_raw_z = guide_raw[guide_raw[:, 0]==z]
+        if len(guide_raw_z) > 1:
+            guide.append(guide_raw_z)
+    guide = np.concatenate(guide, axis=0)
+
+    # guiding lines interpolation along z and xy
     guide = interpolate_contours_alongz(guide, closed=False)
     guide = interpolate_contours_alongxy(guide, degree=interp_degree)
     guide = pcdutil.points_deduplicate(guide)
