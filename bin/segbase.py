@@ -137,7 +137,7 @@ class SegBase:
             run (u1): normal segmentation
             runfine (u1): run with finely-drawn model which separates pre and post
             results (u2): continue calculating results.
-            meshrefine (u2): continue from step meshrefine.
+            contrefine (u2): continue from step meshrefine.
         """)
 
         parser = argparse.ArgumentParser(

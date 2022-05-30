@@ -46,8 +46,15 @@ def refine_surface(
     )
 
     # select center+surround region of the mesh
+    # selection 1: mesh vertices in the hull
     mask_center = pcdutil.points_in_hull(mesh.vertices, hull)
-    iv_center = np.nonzero(mask_center)[0]
+    # selection 2: mesh vertices with dist to points <= sigma_mesh
+    # mask_center-only may miss vertices close to the boundary, due to large sigma_mesh
+    mask_dist = pcdutil.points_distance(
+        np.asarray(mesh.vertices), np.asarray(pcd.points)
+    ) <= sigma_mesh
+    # add surrounding vertices
+    iv_center = np.nonzero(mask_center|mask_dist)[0]
     iv_surround = pcdutil.meshpoints_surround(mesh, iv_center)
     mesh = mesh.select_by_index(iv_surround)
 
