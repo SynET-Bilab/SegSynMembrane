@@ -38,7 +38,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
             # components
             components_min=0.5,
             # moosac
-            moosac_lengrids=[50, 160],
+            moosac_lengrids=[50, 200],
             moosac_shrinkside=0.25,
             moosac_popsize=80,
             moosac_tol=0.005,
