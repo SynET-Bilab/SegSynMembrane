@@ -11,7 +11,7 @@ import napari
 import etsynseg
 
 __all__ = [
-    "Timer", "HelpFormatterCustom",
+    "HelpFormatterCustom",
     "SegBase"
 ]
 
@@ -131,12 +131,13 @@ class SegBase:
             (u1) {self.prog}.py mode tomo.mrc model.mod -o outputs [options]
                 model: if not provided, then set as tomo.mod
                 outputs: if not provided, then set as model-seg
-            (u2) {self.prog}.py mode state.npz [options]
+            (u2) {self.prog}.py mode name-seg.npz -o outputs [options]
+                outputs: if not provided, then set as name-seg
         
         Modes:
             run (u1): normal segmentation
             runfine (u1): run with finely-drawn model which separates pre and post
-            results (u2): continue calculating results.
+            contresults (u2): continue calculating results.
             contrefine (u2): continue from step meshrefine.
         """)
 
@@ -156,7 +157,7 @@ class SegBase:
         
         # basics
         parser.add_argument("-px", "--pixel", type=float, default=None, help="Pixel size in nm. If not set, then read from the header of tomo.")
-        parser.add_argument("--extend", type=float, help="The distance (in nm) that the bounding region extends from guiding lines.")
+        parser.add_argument("--extend", type=float, help="The distance (in nm) that the bounding region extends from guiding lines. Should be set such that the bounding region contain all target membranes.")
         parser.add_argument("--neigh_thresh", type=float, help="Distance threshold (in nm) for neighboring points in graph construction.")
         
         # detect
