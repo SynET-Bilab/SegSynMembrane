@@ -3,7 +3,6 @@
 """
 
 import multiprocessing
-import numpy as np
 import etsynseg
 
 class SegPrePost(etsynseg.segbase.SegBase):
@@ -28,7 +27,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
 
         self.argparser.set_defaults(
             # basics
-            extend=35,
+            extend=30,
             neigh_thresh=5,
             # detect
             detect_smooth=5,
