@@ -1,3 +1,6 @@
+""" membranogram
+"""
+import multiprocessing.dummy
 import numpy as np
 import scipy as sp
 from sklearn import manifold
@@ -29,12 +32,12 @@ def interpolate_dist(zyx, nzyx, dist, I):
     """
     zyx_d = zyx+nzyx*dist
     v_d = sp.ndimage.map_coordinates(
-        I, zyx_d.T, order=3
+        I, zyx_d.T, order=3, mode="nearest"
     )
     return zyx_d, v_d
 
-def interpolate_avg(zyx, nzyx, dist_arr, I):
-    """ Generate membranogram averaged at series of distances.
+def interpolate_distarr(zyx, nzyx, dist_arr, I):
+    """ Generate membranogram at an array of distances.
 
     Args:
         zyx (np.ndarray): Points with shape=(npts,3), arranged in [[z0,y0,x0],...].
@@ -43,26 +46,19 @@ def interpolate_avg(zyx, nzyx, dist_arr, I):
         I (np.ndarray): Image with shape=(nz,ny,nx).
 
     Returns:
-        zyx_d (np.ndarray): Points at average dist from membrane.
-        v_d (np.ndarray): Averaged values for points starting from zyx, shape=(npts).
+        v_arr (np.ndarray): Interpolated values at the distances, shape=(ndist,npts).
+            v_arr[i]: values at zyx+dist_arr[i]*nzyx
     """
     # init empty arrays
-    zyx_d = np.zeros(zyx.shape, dtype=float)
-    v_d = np.zeros(zyx.shape[0], dtype=float)
+    v_arr = np.zeros((len(dist_arr), len(zyx)), dtype=float)
 
-    # accumulate
-    for dist in dist_arr:
-        zyx_d_i, v_d_i = interpolate_dist(
-            zyx, nzyx, dist, I
-        )
-        zyx_d += zyx_d_i
-        v_d += v_d_i
-    
-    # average
-    n = len(dist_arr)
-    zyx_d /= n
-    v_d /= n
-    return zyx_d, v_d
+    # interpolate at dists
+    def calc_one(i):
+        _, v_arr[i] = interpolate_dist(zyx, nzyx, dist_arr[i], I)
+    pool = multiprocessing.dummy.Pool()
+    pool.map(calc_one, range(len(dist_arr)))
+    pool.close()
+    return v_arr
 
 
 #=========================
@@ -140,58 +136,58 @@ class Project:
     
     Attributes:
         e2: assigned unit vector.
-        e1: e1=cross(e2,mean(nzyx)).
+        e1: e1=cross(e2,mean(nxyz)).
     
     Examples:
 
     """
-    def __init__(self, e2=(1,0,0)):
+    def __init__(self, e2=(0,0,1)):
         """ Initialization.
 
         Args:
-            e2 (np.ndarray or tuple): Unit vector along e2 in order [z,y,x].
+            e2 (np.ndarray or tuple): Unit vector along e2 in order [x,y,z].
         """
         # convert e2 to xyz order
-        self.e2 = np.asarray(e2)[::-1]
+        self.e2 = np.asarray(e2)
 
         # init other variables
         self.e1 = None
         self.xyz_center = None
         self.nxyz_avg = None
 
-    def fit(self, zyx, nzyx):
+    def fit(self, xyz, nxyz):
         """ Fit.
 
         Args:
-            zyx, nzyx (np.ndarray): Points and their normals.
+            xyz, nxyz (np.ndarray): Points and their normals.
 
         Returns:
             self (Project): Self object, fitted.
         """
         # convert to xyz to be safe
-        self.xyz_center = np.mean(zyx, axis=0)[::-1]
-        self.nxyz_avg = np.mean(nzyx, axis=0)[::-1]
+        self.xyz_center = np.mean(xyz, axis=0)
+        self.nxyz_avg = np.mean(nxyz, axis=0)
 
         # calc e1
         e1 = np.cross(self.e2, self.nxyz_avg)
         self.e1 = e1 / np.linalg.norm(e1)
         return self
 
-    def transform(self, zyx):
+    def transform(self, xyz):
         """ Transform.
 
         Args:
-            zyx (np.ndarray): Points to be transformed.
+            xyz (np.ndarray): Points to be transformed.
 
         Returns:
             p1, p2 (np.ndarray): Projected coordinates on e1,e2.
         """
-        xyz = pcdutil.reverse_coord(zyx) - self.xyz_center
+        xyz = xyz - self.xyz_center
         p1 = np.dot(xyz, self.e1)
         p2 = np.dot(xyz, self.e2)
         return p1, p2
 
-    def fit_transform(self, zyx, nzyx):
+    def fit_transform(self, xyz, nxyz):
         """ Combines fit and transform.
 
         Args:
@@ -200,5 +196,5 @@ class Project:
         Returns:
             p1, p2 (np.ndarray): Projected coordinates on e1,e2.
         """
-        self.fit(zyx, nzyx)
-        return self.transform(zyx)
+        self.fit(xyz, nxyz)
+        return self.transform(xyz)
