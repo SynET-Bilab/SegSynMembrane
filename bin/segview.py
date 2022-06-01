@@ -2,7 +2,6 @@
 
 import argparse
 import textwrap
-import numpy as np
 import etsynseg
 
 
@@ -44,20 +43,8 @@ if __name__ == '__main__':
 
     # init seg
     # read prog from state file
-    state_file = args["input"]
-    state = np.load(state_file, allow_pickle=True)
-    if "prog" in state.keys():
-        prog = state["prog"].item()
-    else:
-        prog = "segprepost"
-    # init seg according to program
-    if prog == "segprepost":
-        seg = etsynseg.segprepost.SegPrePost()
-    elif prog == "segonemem":
-        seg = etsynseg.segonemem.SegOneMem()
-    else:
-        raise ValueError(f"Unrecognized prog in {state_file}.")
-    seg.load_state(state_file)
+    seg = etsynseg.segbase.SegBase()
+    seg.load_state(args["input"])
 
     # view
     mode = args["mode"]

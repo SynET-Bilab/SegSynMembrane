@@ -46,7 +46,7 @@ class SegBase:
         # steps
         load_tomod, detect, fit_refine, refine
     """
-    def __init__(self, prog, labels=(1,)):
+    def __init__(self, prog=None, labels=(1,)):
         """ Init. Example attributes.
 
         Args:
@@ -139,12 +139,18 @@ class SegBase:
             runfine (u1): run with finely-drawn model which separates pre and post
             contresults (u2): continue calculating results.
             contrefine (u2): continue from step meshrefine.
+        
+        Outputs:
+            name-seg.npz: npz-file containing args, intermediate steps, final results.
+                results: all points on the membrane, normal vectors, area, etc.
+            name-seg.png: quickview figure of 5 slices of the segmentation.
+            name-seg.mod: imod model file, which can be viewed via `3dmod tomo.mrc name-seg.mod`.
         """)
 
         parser = argparse.ArgumentParser(
             prog=f"{self.prog}.py",
             description=description,
-            formatter_class=etsynseg.segbase.HelpFormatterCustom
+            formatter_class=HelpFormatterCustom
         )
         # mode
         parser.add_argument("mode", type=str, choices=[
@@ -212,11 +218,11 @@ class SegBase:
 
         # modes reading state file
         elif mode in ["contresults", "contrefine"]:
-            state_file = args["inputs"][0]
-            self.load_state(state_file)
-            # outputs: defaults to state_file without suffix
+            seg_file = args["inputs"][0]
+            self.load_state(seg_file)
+            # outputs: defaults to seg_file without suffix
             if args["outputs"] is None:
-                self.args["outputs"] = str(pathlib.Path(state_file).with_suffix(''))
+                self.args["outputs"] = str(pathlib.Path(seg_file).with_suffix(''))
             else:
                 self.args["outputs"] = args["outputs"]
             
@@ -263,13 +269,17 @@ class SegBase:
     # io
     #=========================
     
-    def load_state(self, state_file):
+    def load_state(self, seg_file):
         """ Load info from state file.
 
         Args:
-            state_file (str): Filename of the state file.
+            seg_file (str): Filename of the state file.
         """
-        state = np.load(state_file, allow_pickle=True)
+        state = np.load(seg_file, allow_pickle=True)
+        # load prog, labels
+        self.prog = state["prog"].item()
+        self.labels = state["labels"]
+        # load data
         self.args = state["args"].item()
         self.steps = state["steps"].item()
         self.results = state["results"].item()
@@ -282,16 +292,18 @@ class SegBase:
         if p.is_file():
             p.rename(filename+"~")
 
-    def save_state(self, state_file, compress=False, backup=False):
+    def save_state(self, seg_file, compress=False, backup=False):
         """ Save data to state file.
 
+        State file keys: prog,labels,info,args,steps,results
+
         Args:
-            state_file (str): Filename of the state file.
-            compress (bool): Whether to compress the npz. No compression saves time
-            backup (bool): Whether to backup state_file if it exists.
+            seg_file (str): Filename of the state file.
+            compress (bool): Whether to compress the npz. Compression requires more time.
+            backup (bool): Whether to backup seg_file if it exists.
         """
         if backup:
-            self.backup_file(state_file)
+            self.backup_file(seg_file)
 
         if compress:
             func_save = np.savez_compressed
@@ -299,8 +311,9 @@ class SegBase:
             func_save = np.savez
 
         func_save(
-            state_file,
+            seg_file,
             prog=self.prog,
+            labels=self.labels,
             info=self.info,
             args=self.args,
             steps=self.steps,
