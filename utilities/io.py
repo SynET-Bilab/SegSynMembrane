@@ -20,7 +20,7 @@ __all__ = [
 # tomo
 #=========================
 
-def read_tomo(tomo_file, mode="mmap", xrange=(None, None), yrange=(None, None), zrange=(None, None)):
+def read_tomo(tomo_file, mode="mmap", clip_low=(None,None,None), clip_high=(None,None,None)):
     """ Read tomo file.
     
     Tomo file is in mrc format.
@@ -30,7 +30,8 @@ def read_tomo(tomo_file, mode="mmap", xrange=(None, None), yrange=(None, None), 
     Args:
         tomo_file (str): Input filename for tomo.
         mode (str): Mode for opening the file, 'open' or 'mmap'.
-        xrange, yrange, zrange (2-tuple): Clip tomo to this range. E.g. xrange=(xmin,xmax), tomo[:,:,xmin:xmax].
+        clip_low, clip_high (3-tuple): Range for tomo clipping, in order [z,y,x].
+            E.g. tomo[clip_low[0]:clip_high[0],...].
 
     Returns:
         I (np.ndarray or np.memmap): 3d tomo image.
@@ -45,7 +46,7 @@ def read_tomo(tomo_file, mode="mmap", xrange=(None, None), yrange=(None, None), 
         raise ValueError("Mode should be 'open' or 'mmap'.")
 
     # setup clipping range
-    sub = (slice(*zrange), slice(*yrange), slice(*xrange))
+    sub = tuple(slice(low_i, high_i) for low_i, high_i in zip(clip_low, clip_high))
     
     with fopen(tomo_file, permissive=True) as mrc:
         # read subset of tomo
