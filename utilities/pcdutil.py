@@ -20,7 +20,7 @@ __all__ = [
     # mesh
     "reconstruct_mesh", "subdivide_mesh", "meshpoints_surround",
     # graph
-    "neighbors_graph", "graph_components", "neighboring_components",
+    "neighbors_graph", "graph_components", "neighboring_components", "simplify_pts_by_path",
     # sorting
     "sort_pcds_by_ref", "sort_pts_by_guide_2d", "sort_pts_by_guide_3d"
 ]
@@ -577,6 +577,52 @@ def neighboring_components(pts, r_thresh=1, n_keep=None):
     for size_i, gsub_i in graph_components(g, n_keep):
         pts_i = np.asarray(gsub_i.vs["coord"])
         yield (size_i, pts_i, gsub_i)
+
+def simplify_pts_by_path(pts, axisz=0, r_thresh=1.5):
+    """ Simplify points by keeping only ones along shortest paths.
+
+    Points are assumed to be sorted in each slice.
+    Shortest paths are constructed separately for each component in each slice.
+
+    Args:
+        pts (np.ndarray): Points with shape=(npts,3).
+        axisz (int): Axis for z coordinates, pts[:,axisz]=zs.
+        r_thresh (float): Distance threshold for point pairs to be counted as neighbors.
+            Defaults to 1.5, which is the separation between diagonally-connected pixels.
+    
+    Returns:
+        mask (np.ndarray): Mask with shape=(npts,). pts[mask] gives points to keep.
+    """
+    # mask to indicate which points to keep, len=npts
+    mask = np.zeros(len(pts), dtype=bool)
+
+    # iterate for each z
+    for z in sorted(np.unique(pts[:, axisz])):
+        # mask for pts at z (ptsz), len=npts
+        maskz = pts[:, axisz]==z
+        # mask for ptsz to keep, len=nptsz
+        keepz = np.zeros(np.sum(maskz), dtype=bool)
+
+        # graph for ptsz
+        gz = neighbors_graph(pts[maskz], r_thresh=r_thresh)
+        
+        # keep pts in the shortest path for each component
+        membership = np.asarray(gz.components().membership)
+        for i in sorted(np.unique(membership)):
+            # index of ptsz in comp i
+            idx_zi = np.argwhere(membership==i).ravel()
+            # get shortest path for comp i
+            vpath = gz.get_shortest_paths(
+                min(idx_zi), to=max(idx_zi),
+                weights=gz.es["dist"], output="vpath"
+            )[0]
+            # keep pts along vpath
+            keepz[vpath] = True
+
+        # set full-mask at path points to True
+        mask[maskz] = keepz
+    
+    return mask
 
 #=========================
 # sorting

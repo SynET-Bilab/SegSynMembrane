@@ -617,6 +617,11 @@ class SegBase:
         zyx_refine = etsynseg.pcdutil.sort_pts_by_guide_3d(
             zyx_refine, tomod["guide"]
         )
+        # simplify
+        mask_simp = etsynseg.pcdutil.simplify_pts_by_path(
+            zyx_refine, axisz=0, r_thresh=1.5
+        )
+        zyx_refine = zyx_refine[mask_simp]
 
         # save results
         self.steps["meshrefine"][f"zyx{label}"] = zyx_refine
