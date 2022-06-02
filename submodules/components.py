@@ -19,7 +19,7 @@ __all__ = [
 def divide_spectral_graph(g, n_clusts=2):
     """ Divide a connected graph into subgraphs using Leiden and spectral methods.
     
-    The input graph consists of one vertex for each point. Should contain "weights" in edge attributes.
+    The input graph consists of one vertex for each point. Should contain "weight" in edge attributes.
     The edge weights are use for clustering.
     Leiden clustering is applied to aggregate the graph of points and reduce the number of nodes.
     Spectral clustering is applied to cut the aggregated graph into n_clusts parts.
@@ -34,14 +34,14 @@ def divide_spectral_graph(g, n_clusts=2):
     # partition points using leiden
     community = g.community_leiden(
         objective_function="modularity",
-        weights=g.es["weights"]
+        weights=g.es["weight"]
     )
 
     # aggregate points to get graph for groups
     g_grps = community.cluster_graph(
-        combine_edges={"weights": "sum"}
+        combine_edges={"weight": "sum"}
     )
-    mat_grps = g_grps.get_adjacency_sparse(attribute="weights")
+    mat_grps = g_grps.get_adjacency_sparse(attribute="weight")
 
     # spectral clustering on groups
     clust_grps = sklearn.cluster.SpectralClustering(
@@ -96,15 +96,15 @@ def divide_spectral_points(zyx, orients, r_thresh, sigma_dO=np.pi/4, n_clusts=2)
     g_pts = pcdutil.neighbors_graph(
         zyx, orients=orients, r_thresh=r_thresh
     )
-    dorients = np.asarray(g_pts.es["dorients"])
-    g_pts.es["weights"] = np.exp(-0.5*(dorients/sigma_dO)**2)
+    dorients = np.asarray(g_pts.es["dorient"])
+    g_pts.es["weight"] = np.exp(-0.5*(dorients/sigma_dO)**2)
 
     # partition into subgraphs
     gsub_arr = divide_spectral_graph(g_pts, n_clusts)
 
     # output points
     zyx_clusts = [
-        np.asarray(g_i.vs["coords"])
+        np.asarray(g_i.vs["coord"])
         for g_i in gsub_arr
     ]
     return zyx_clusts
@@ -163,8 +163,8 @@ def extract_components_two(zyx, r_thresh=1, orients=None, sigma_dO=np.pi/4, min_
     g = pcdutil.neighbors_graph(
         zyx, r_thresh=r_thresh, orients=orients
     )
-    dorients = np.asarray(g.es["dorients"])
-    g.es["weights"] = np.exp(-0.5*(dorients/sigma_dO)**2)
+    dorients = np.asarray(g.es["dorient"])
+    g.es["weight"] = np.exp(-0.5*(dorients/sigma_dO)**2)
 
     # initial extraction of the larges two components
     comps_iter = pcdutil.graph_components(g, n_keep=2)
@@ -192,8 +192,8 @@ def extract_components_two(zyx, r_thresh=1, orients=None, sigma_dO=np.pi/4, min_
         size2 = gsub2.vcount()
 
     # get points from subgraphs
-    zyx1 = np.asarray(gsub1.vs["coords"])
-    zyx2 = np.asarray(gsub2.vs["coords"])
+    zyx1 = np.asarray(gsub1.vs["coord"])
+    zyx2 = np.asarray(gsub2.vs["coord"])
 
     return zyx1, zyx2
 

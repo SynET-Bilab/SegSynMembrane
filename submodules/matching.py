@@ -197,7 +197,7 @@ def bridge_gaps_2d(pts_cand, pts_gapped, orients_cand, r_thresh):
         if len(idx_comp_ingapped) > 0:
             idx_path = g_cand.get_shortest_paths(
                 min(idx_comp_ingapped), max(idx_comp_ingapped),
-                weights=g_cand.es["dorients"]
+                weights=g_cand.es["dorient"]
             )[0]
             pts_bridge.append(pts_cand[idx_path])
     

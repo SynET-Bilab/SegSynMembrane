@@ -499,10 +499,10 @@ def neighbors_graph(pts, r_thresh=1, orients=None):
     Given the output graph, edge weights or other metrics can be computed.
     
     Attributes of the output graph g:
-        g.vs["coords"]: copies pts, the coordinate of each vertex.
-        g.vs["orients"]: copies orients (if provided), the orientation at each point.
+        g.vs["coord"]: copies pts, the coordinate of each vertex.
+        g.vs["orient"]: copies orients (if provided), the orientation at each point.
         g.es["dist"]: distance between points.
-        g.es["dorients"]: orientational difference between two points, in [0,pi/2], (if orients is provided).
+        g.es["dorient"]: orientational difference between two points, in [0,pi/2], (if orients is provided).
 
     Args:
         pts (np.ndarray): Points with shape=(npts,dim).
@@ -525,14 +525,14 @@ def neighbors_graph(pts, r_thresh=1, orients=None):
     g = igraph.Graph()
     g.add_vertices(len(pts))
     g.add_edges(edges)
-    g.vs["coords"] = pts
+    g.vs["coord"] = pts
     g.es["dist"] = dr
 
     # if orientations are provided, add orientational differences
     if orients is not None:
         dO = orients_absdiff(orients[e1], orients[e2])
-        g.vs["orients"] = orients
-        g.es["dorients"] = dO
+        g.vs["orient"] = orients
+        g.es["dorient"] = dO
     return g
 
 def graph_components(g, n_keep=None):
@@ -575,7 +575,7 @@ def neighboring_components(pts, r_thresh=1, n_keep=None):
 
     # iteration
     for size_i, gsub_i in graph_components(g, n_keep):
-        pts_i = np.asarray(gsub_i.vs["coords"])
+        pts_i = np.asarray(gsub_i.vs["coord"])
         yield (size_i, pts_i, gsub_i)
 
 #=========================
