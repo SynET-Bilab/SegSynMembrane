@@ -114,6 +114,7 @@ def points_range(pts, margin=0):
     Args:
         pts (np.ndarray): Array of points with shape=(npts,dim).
         margin (float or tuple): Margin in each direction to be added to the range.
+            Actual margin = int(ceil(margin)).
 
     Returns:
         low (np.ndarray of int): Point at the lowest end, with shape=(dim,).
