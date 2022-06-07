@@ -112,16 +112,12 @@ class SegMembrano:
         nzyx = self.nzyxs[label]
 
         # clip points and tomo
-        clip_low, clip_high, _ = etsynseg.pcdutil.points_range(
-            zyx,
-            margin=np.max(np.abs(self.dists))
+        margin_nm = np.max(np.abs(self.dists)) * self.pixel_nm
+        I, clip_low, _ = etsynseg.modutil.read_tomo_clip(
+            self.tomo_file, zyx,
+            margin_nm=margin_nm, pixel_nm=self.pixel_nm
         )
         zyx -= clip_low
-        I = etsynseg.io.read_tomo(
-            self.tomo_file,
-            clip_low=clip_low,
-            clip_high=clip_high+1
-        )[0]
 
         # calc membrano values
         v = etsynseg.membranogram.interpolate_distarr(

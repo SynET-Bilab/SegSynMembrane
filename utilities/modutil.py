@@ -14,7 +14,7 @@ __all__ = [
     # regions from contour
     "region_surround_contour_slice", "region_surround_contour",
     # read tomo model
-    "regions_from_guide", "read_tomo_model"
+    "regions_from_guide", "read_tomo_model", "read_tomo_clip"
 ]
 
 #=========================
@@ -460,3 +460,36 @@ def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degr
         bound_minus=bound_minus
     )
     return tomod
+
+def read_tomo_clip(tomo_file, zyx, margin_nm=0, pixel_nm=None):
+    """ Read tomo, clip to the range of points (+margin).
+
+    Args:
+        tomo_file (str): Filename of tomo mrc.
+        zyx (np.ndarray): Points with shape=(npts,3), each element is [zi,yi,xi].
+        margin_nm (float): Margin (in nm) of clipped tomo from the range of points.
+        pixel_nm (float): Pixel size in nm. If None then read from tomo.
+
+    Returns:
+        I (np.ndarray): Clipped tomo, shape=[nz,ny,nx].
+        clip_low (np.ndarray): [z,y,x] at the lower corner for clipping.
+            zyx-clip_low gives coordinates in the clipped tomo.
+        pixel_nm (float): Pixel size in nm.
+    """
+    # read tomo
+    I, pixel_A = io.read_tomo(tomo_file, mode="mmap")
+    # get pixel size in nm
+    if pixel_nm is None:
+        pixel_nm = pixel_A / 10
+
+    # get clip range
+    margin = margin_nm / pixel_nm
+    clip_low, clip_high, _ = pcdutil.points_range(zyx, margin=margin)
+    # restrict to nonnegative values
+    clip_low = np.clip(clip_low, 0, np.inf).astype(int)
+
+    # clip tomo
+    sub = tuple(slice(low, high+1) for low, high in zip(clip_low, clip_high))
+    I = I[sub]
+
+    return I, clip_low, pixel_nm
