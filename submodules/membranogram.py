@@ -49,12 +49,19 @@ def interpolate_distarr(zyx, nzyx, dist_arr, I):
         v_arr (np.ndarray): Interpolated values at the distances, shape=(ndist,npts).
             v_arr[i]: values at zyx+dist_arr[i]*nzyx
     """
+    # init interpolator
+    I_interp = sp.interpolate.RegularGridInterpolator(
+        [np.arange(I.shape[i]) for i in range(3)], I,
+        method="linear"
+    )
     # init empty arrays
     v_arr = np.zeros((len(dist_arr), len(zyx)), dtype=float)
 
     # interpolate at dists
     def calc_one(i):
-        _, v_arr[i] = interpolate_dist(zyx, nzyx, dist_arr[i], I)
+        zyx_d = zyx + dist_arr[i]*nzyx
+        v_arr[i] = I_interp(zyx_d)
+
     pool = multiprocessing.dummy.Pool()
     pool.map(calc_one, range(len(dist_arr)))
     pool.close()
