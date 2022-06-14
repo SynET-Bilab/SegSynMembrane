@@ -41,6 +41,7 @@ segdrawmodel.sh: open mrc one by one for drawing models.
 segsbatchtemplate.sh: generate a template sbatch file.
 segonemem.py: segmemtation of one membrane.
 segview.py: visualize segmentation results.
+segmembrano.py: generate membranograms from segmentation.
 
 ## diagnosis for unsatisfying segmentations
 

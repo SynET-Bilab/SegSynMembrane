@@ -191,7 +191,7 @@ class SegMembrano:
             fig.savefig(save)
 
     def workflow(self):
-        """ Workflow of membranogram calculation and 
+        """ Workflow of membranogram calculation and plotting.
         """
         # membranogram calculation
         membnos = {}

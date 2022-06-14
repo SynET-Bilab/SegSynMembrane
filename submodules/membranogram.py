@@ -4,7 +4,6 @@ import multiprocessing.dummy
 import numpy as np
 import scipy as sp
 from sklearn import manifold
-from etsynseg import pcdutil
 
 __all__ = [
     "interpolate_dist", "interpolate_avg",
