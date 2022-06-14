@@ -101,11 +101,11 @@ class SegBase:
         )
 
         # results: coordinates are in the original range
-        # keys: zyxi, nzyxi, areai_nm2
+        # keys: xyzi, nxyzi, areai_nm2
         self.results = {}
         for i in self.labels:
-            self.results[f"zyx{i}"] = None
-            self.results[f"nzyx{i}"] = None
+            self.results[f"xyz{i}"] = None
+            self.results[f"nxyz{i}"] = None
             self.results[f"area{i}_nm2"] = None
 
     def register_map(self, func_map=map):
