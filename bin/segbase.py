@@ -102,7 +102,10 @@ class SegBase:
 
         # results: coordinates are in the original range
         # keys: xyzi, nxyzi, areai_nm2
-        self.results = {}
+        self.results = dict(
+            tomo_file=None,
+            pixel_nm=None,
+        )
         for i in self.labels:
             self.results[f"xyz{i}"] = None
             self.results[f"nxyz{i}"] = None
@@ -357,6 +360,12 @@ class SegBase:
         # update neigh thresh:
         # nm to pixel, constrain to >= 1
         tomod["neigh_thresh"] = max(args["neigh_thresh"]/tomod["pixel_nm"], 1)
+
+        # update results
+        self.results.update(dict(
+            tomo_file=args["tomo_file"],
+            pixel_nm=tomod["pixel_nm"]
+        ))
 
         # save
         self.steps["tomod"].update(tomod)
