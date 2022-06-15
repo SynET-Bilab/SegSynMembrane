@@ -287,7 +287,7 @@ def match_candidate_to_ref(zyx_cand, zyx_ref, guide, r_thresh):
     # bridge gaps
 
     # sort points
-    zyx_cand = pcdutil.sort_pts_by_guide_3d(zyx_cand, guide)
+    zyx_cand = pcdutil.sort_pts_by_guide(zyx_cand, guide)
     # extract orientation
     orients_cand = Ocand[tuple(zyx_cand.T)]
     
@@ -296,5 +296,5 @@ def match_candidate_to_ref(zyx_cand, zyx_ref, guide, r_thresh):
         zyx_cand, zyx_close, orients_cand, r_thresh=r_thresh
     )
     # sort
-    zyx_match = pcdutil.sort_pts_by_guide_3d(zyx_match, guide)
+    zyx_match = pcdutil.sort_pts_by_guide(zyx_match, guide)
     return zyx_match

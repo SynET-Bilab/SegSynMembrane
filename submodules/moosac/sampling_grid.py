@@ -27,7 +27,7 @@ class Grid:
         """
         # sort points by the guide
         self.guide = pcdutil.points_deduplicate(guide)
-        self.zyx = pcdutil.sort_pts_by_guide_3d(zyx, self.guide)
+        self.zyx = pcdutil.sort_pts_by_guide(zyx, self.guide)
         # setup basic info
         self.zs = sorted(np.unique(self.zyx[:, 0]))
         self.nz = len(self.zs)

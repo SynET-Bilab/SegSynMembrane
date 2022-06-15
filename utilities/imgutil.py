@@ -50,13 +50,14 @@ def scale_minmax(I, qrange=(0, 1), vrange=(0, 1)):
         I (np.ndarray): Image in 2d or 3d.
         qrange (2-tuple): Clip I to this quantile range.
         vrange (2-tuple): The target range of values.
+            Can be (max,min) to invert the image values.
 
     Returns:
         I_scaled (np.ndarray): The scaled image.
     """
     # calc quantiles
-    I_min = np.quantile(I, qrange[0])
-    I_max = np.quantile(I, qrange[1])
+    I_min = np.quantile(I, min(qrange))
+    I_max = np.quantile(I, max(qrange))
     I_diff = I_max - I_min
 
     if I_diff == 0:
