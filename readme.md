@@ -48,3 +48,11 @@ segmembrano.py: generate membranograms from segmentation.
 if two membranes are wrongly divided: refine model
 draw the guiding lines such that they separate pre from post.
 run with "segprepost.py runfine tomo_file model_file"
+
+## versions
+
+major.minor1.minor2
+
+- major: major change of io, algorithms
+- minor1: minor change of io
+- minor2: minor change of algorithms

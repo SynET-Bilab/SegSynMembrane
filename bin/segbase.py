@@ -101,8 +101,9 @@ class SegBase:
         )
 
         # results: coordinates are in the original range
-        # keys: xyzi, nxyzi, areai_nm2
+        # keys: version,tomo_file,pixel_nm,xyzi,nxyzi,areai_nm2
         self.results = dict(
+            version=etsynseg.__version__,
             tomo_file=None,
             pixel_nm=None,
         )
@@ -588,7 +589,7 @@ class SegBase:
             B_bound=tomod["bound"]
         )
         # sort
-        zyx_refine = etsynseg.pcdutil.sort_pts_by_guide_3d(zyx_refine, guide)
+        zyx_refine = etsynseg.pcdutil.sort_pts_by_guide(zyx_refine, guide)
         # save results
         self.steps["meshrefine"][f"zyx{label}"] = zyx_refine
         # log
@@ -623,7 +624,7 @@ class SegBase:
             B_bound=tomod["bound"]
         )
         # sort
-        zyx_refine = etsynseg.pcdutil.sort_pts_by_guide_3d(
+        zyx_refine = etsynseg.pcdutil.sort_pts_by_guide(
             zyx_refine, tomod["guide"]
         )
         # simplify

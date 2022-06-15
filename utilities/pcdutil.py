@@ -14,7 +14,7 @@ __all__ = [
     "points_range", "points_deduplicate", "points_deduplicate_count", "points_distance",
     "points_in_region", "orients_absdiff", "wireframe_length",
     # normals
-    "normals_gen_ref", "normals_pointcloud", "normals_points",
+    "normals_gen_ref", "normals_pointcloud", "normals_points", "normals_tangent",
     # convex hull
     "convex_hull", "points_in_hull",
     # mesh
@@ -22,7 +22,7 @@ __all__ = [
     # graph
     "neighbors_graph", "graph_components", "neighboring_components", "simplify_pts_by_path",
     # sorting
-    "sort_pcds_by_ref", "sort_pts_by_guide_2d", "sort_pts_by_guide_3d"
+    "sort_pcds_by_ref", "sort_pts_by_guide", "sort_pts_by_pca"
 ]
 
 
@@ -354,6 +354,21 @@ def normals_points(pts, sigma, pt_ref=None):
     normals = np.asarray(pcd.normals)
     return normals
 
+def normals_tangent(nzyx):
+    """ Get tangent direction at each point.
+
+    Args:
+        nzyx (np.ndarray): Normal of each point, shape=(npts,3), each item=[nzi,nyi,nxi].
+    
+    Returns:
+        tyx (np.ndarray): Tangent direction in yx-plane. Each item=[0,-nxi,nyi].
+        tz (np.ndarray): The other tangent direction. tz=cross(nzyx,tyx).
+    """
+    zeros = np.zeros(len(nzyx))
+    tyx = np.stack([zeros, -nzyx[:, 2], nzyx[:, 1]], axis=1)
+    tz = np.cross(nzyx, tyx)
+    return tyx, tz
+
 
 #=========================
 # convex hull
@@ -652,7 +667,7 @@ def sort_pcds_by_ref(pts_arr, pt_ref):
 
     return pts_sorted
 
-def sort_pts_by_guide_2d(pts, guide):
+def sort_pts_by_guide_slice(pts, guide):
     """ Sort 2d points by guiding line.
 
     Guide line points are assumed sorted.
@@ -690,7 +705,7 @@ def sort_pts_by_guide_2d(pts, guide):
     idx_pts = df["idx_pts"].values.astype(int)
     return idx_pts
 
-def sort_pts_by_guide_3d(zyx, guide):
+def sort_pts_by_guide(zyx, guide):
     """ Sort 3d points by guiding lines slice by slice.
 
     Guide line points are assumed sorted in each xy-slice.
@@ -713,9 +728,39 @@ def sort_pts_by_guide_3d(zyx, guide):
     for z in sorted(np.unique(zyx[:, 0])):
         zyx_i = zyx[zyx[:, 0]==z]
         guide_i = guide[guide[:, 0]==z]
-        idx_i = sort_pts_by_guide_2d(zyx_i, guide_i)
+        idx_i = sort_pts_by_guide_slice(zyx_i, guide_i)
         zyx_sorted.append(zyx_i[idx_i])
     
     # collect slices
     zyx_sorted = np.concatenate(zyx_sorted, axis=0)
+    return zyx_sorted
+
+def sort_pts_by_pca(zyx):
+    """ Sort points by PCA.
+
+    Points are assumed to spread wider in xy than in z.
+    PCA is calculated for x,y coordinates of all points.
+    Then points in each xy-slice are sorted by 1st PC.
+
+    Args:
+        zyx (np.ndarray): 3d points, with shape=(npts,3). Each point is [zi,yi,xi].
+
+    Returns:
+        zyx_sorted (np.ndarray): Points sorted in each slice, with shape=(npts,3).
+    """
+    # fit pca
+    pca = decomposition.PCA(n_components=1)
+    pca.fit(zyx[:, 1:])
+
+    # sort for each z
+    z_arr = sorted(np.unique(zyx[:, 0]))
+    zyx_sorted_arr = []
+    for z in z_arr:
+        zyx_z = zyx[zyx[:, 0] == z]
+        pc1_z = pca.transform(zyx_z[:, 1:])[:, 0]
+        idx_sort = np.argsort(pc1_z)
+        zyx_sorted_arr.append(zyx_z[idx_sort])
+
+    # concat
+    zyx_sorted = np.concatenate(zyx_sorted_arr)
     return zyx_sorted

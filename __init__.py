@@ -1,5 +1,5 @@
 __author__ = "Zhenghan Liao"
-__version__ = "0.2"
+__version__ = "1.2.0"
 
 # dependencies = [
 ## conda-forge
@@ -13,15 +13,20 @@ __version__ = "0.2"
 # open3d > 0.15
 # ]
 
+# utilities
 from .utilities import imgutil, pcdutil, miscutil
 from .utilities import io, plot
 from .utilities import bspline
 from .utilities import modutil
 
+# submodules - segmentation
 from .submodules import features, nonmaxsup, dtvoting
 from .submodules import detecting, components
 from .submodules import moosac, matching, meshrefine
-from .submodules import membranogram
 
+# submodules - auxiliary
+from .submodules import membranogram, memsampling
+
+# executable scripts
 from .bin import segbase
 from .bin import segprepost, segonemem
