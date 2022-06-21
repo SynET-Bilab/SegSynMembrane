@@ -7,7 +7,6 @@ import textwrap
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
-import napari
 import etsynseg
 
 __all__ = [
@@ -749,7 +748,7 @@ class SegBase:
             cmap_Is=cmap_Is, visible_Is=visible_Is
         )
         # run napari: otherwise the window will not sustain
-        napari.run()
+        etsynseg.plot.napari.run()
 
     def show_segpcds(self, labels=None):
         """ Draw segmentation as pointclouds.

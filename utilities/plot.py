@@ -4,8 +4,10 @@
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-import napari
-import open3d
+try:
+    import napari
+except ImportError:
+    print("Failed to import napari. Do not use etsynseg.plot.imshow3d.")
 from etsynseg import pcdutil
 
 __all__ = [
