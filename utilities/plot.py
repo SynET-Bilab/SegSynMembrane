@@ -8,6 +8,7 @@ try:
     import napari
 except ImportError:
     print("Failed to import napari. Do not use etsynseg.plot.imshow3d.")
+import open3d
 from etsynseg import pcdutil
 
 __all__ = [
@@ -298,7 +299,8 @@ def imoverlay(im_dict, shape=None,
 
 def imshow3d(
         I, Is_overlay=(),
-        vecs_zyx=(), vecs_dir=(), vec_width=0.1,
+        vecs_zyx=(), vecs_dir=None,
+        vec_size=0, vec_width=0.1, vec_length=1,
         name_I="image", name_Is=None, name_vecs=None,
         cmap_Is=None, cmap_vecs=None,
         visible_Is=True, visible_vecs=True
@@ -310,9 +312,12 @@ def imshow3d(
     Args:
         I (np.ndarray): The main image, with shape=(nz,ny,nx).
         Is_overlay (list of np.ndarray): A list of overlaying images, each with shape=(nz,ny,nx).
-        vecs_zyx (list of np.ndarray): A list of vector positions, each with shape=(npts,3) and each position is [zi,yi,xi].
-        vecs_dir (list of np.ndarray): A list of vector directions, each with shape=(npts,3) and each direction is [vzi,vyi,vxi].
+        vecs_zyx (list of np.ndarray): A list of vector positions, each with shape=(nptsi,3) and the column is orderd as z-y-x.
+        vecs_dir (list of np.ndarray): A list of vector directions, each with shape=(nptsi,3) and the column is ordered as z-y-x.
+            vecs_dir[i] can be set to None to skip plotting its directions.
+        vec_size (float): The size of points for vector locations.
         vec_width (float): The width of vectors.
+        vec_length (float): Multiplicative length for vectors.
         name_I (str), name_Is (list of str), name_vecs (list of str): The names for the main image, overlaying images, vectors.
         cmap_Is, cmap_vecs (list of str): A list of colormaps for overlaying images, vectors. Default=['green','yellow','cyan','magenta','bop blue','bop orange','bop purple','red','blue'].
         visible_Is, visible_vecs (list of bool): A list to indicate whether each image or vector is visible.
@@ -335,6 +340,8 @@ def imshow3d(
     if visible_Is in [True, False]:
         visible_Is = [visible_Is for _ in range(len(Is_overlay))]
     # vecs
+    if vecs_dir is None:
+        vecs_dir = [None for _ in range(len(vecs_zyx))]
     if name_vecs is None:
         name_vecs = [f"vector {i+1}" for i in range(len(vecs_zyx))]
     if visible_vecs in [True, False]:
@@ -361,19 +368,34 @@ def imshow3d(
 
     # view vectors
     for i in range(len(vecs_zyx)):
+        # get locations, flip y
         zyx = vecs_zyx[i]
+        zyx[:, 1] = I.shape[1] - zyx[:, 1] - 1
+        # plot locations
+        if vec_size > 0:
+            viewer.add_points(
+                zyx, name=name_vecs[i],
+                size=vec_size, edge_width=0,
+                opacity=1, visible=visible_vecs[i],
+                n_dimensional=True, face_color=cmap_vecs[i]
+            )
+
+        # get directions
         dzyx = vecs_dir[i]
+        # skip if None
+        if dzyx is None:
+            continue
         # construct vector according to napari's requirement
         # flip y, as is done to the image
         vec = np.zeros((len(zyx), 2, 3))
         vec[:, 0, :] = zyx
-        vec[:, 0, 1] = I.shape[1] - zyx[:, 1] - 1
         vec[:, 1, :] = dzyx
         vec[:, 1, 1] = -dzyx[:, 1]
         # add vector layer
         viewer.add_vectors(
-            vec, name=name_vecs[i], opacity=1, visible=visible_vecs[i],
-            edge_width=vec_width, edge_color=cmap_vecs[i]
+            vec, name=name_vecs[i],
+            edge_width=vec_width, length=vec_length,
+            opacity=1, visible=visible_vecs[i], edge_color=cmap_vecs[i]
         )
     return viewer
 
