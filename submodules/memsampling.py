@@ -256,7 +256,7 @@ def extract_box_3d(I, zyx, nzyx, box_rn, box_rt):
 
     Returns:
         ext_boxes (np.ndarray): Extracted box for each point, shape=(npts,*ext_shape).
-            ext_shape is the shape of each extracted box.
+            ext_shape is the shape of each extracted box, [nz,ny,nx].
     """
     # setup box
     box_coos = gen_box_coords(box_rn, box_rt)
@@ -280,7 +280,7 @@ def extract_box_2drot(I, zyx, nzyx, box_rn, box_rt):
 
     Returns:
         ext_boxes (np.ndarray): Extracted box for each point, shape=(npts,*ext_shape).
-            ext_shape is the shape of each extracted box.
+            ext_shape is the shape of each extracted box, [ny,nx].
     """
     # setup box
     box_coos = gen_box_coords(box_rn, box_rt)
