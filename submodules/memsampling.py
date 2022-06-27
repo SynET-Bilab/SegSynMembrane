@@ -199,7 +199,7 @@ def points_nms_graph(pts, values, r_thresh):
 # box extraction: tensor
 #=========================
 
-def extract_box_tensor(I, zyx, nzyx, box_coos, box_locs):
+def extract_box_tensor(I, zyx, nzyx, box_coos, box_locs, normalize):
     """ Extract box for each point. Can be adapted to different boxes 
 
     Args:
@@ -208,6 +208,7 @@ def extract_box_tensor(I, zyx, nzyx, box_coos, box_locs):
         nzyx (np.ndarray): Normal of each point, shape=(npts,3), each item=[nzi,nyi,nxi].
         box_coos (np.ndarray): The coordinate of each pixel in the sampling box, shape=(npx,dim_box).
         box_locs (np.ndarray): The location in the extracted box corresponding to each pixel, shape=(npx,dim_ext).
+        normalize (bool): Whether to z-score each box.
 
     Returns:
         ext_boxes (np.ndarray): Extracted box for each point, shape=(npts,*ext_shape).
@@ -236,6 +237,11 @@ def extract_box_tensor(I, zyx, nzyx, box_coos, box_locs):
         v_coos = I_interp(zyx_coos)
         # convert to extracted box
         ext_boxes[i][tuple(ext_locs.T)] = mat_coo2loc @ v_coos
+        # normalize
+        if normalize:
+            box_mean = np.mean(ext_boxes[i], keepdims=True)
+            box_std = np.std(ext_boxes[i], keepdims=True)
+            ext_boxes[i] = (ext_boxes[i] - box_mean) / box_std
 
     # parallel processing over sampling pixels
     pool = multiprocessing.dummy.Pool()
@@ -244,7 +250,7 @@ def extract_box_tensor(I, zyx, nzyx, box_coos, box_locs):
 
     return ext_boxes
 
-def extract_box_3d(I, zyx, nzyx, box_rn, box_rt):
+def extract_box_3d(I, zyx, nzyx, box_rn, box_rt, normalize=True):
     """ Extract 3d box for each point.
 
     Args:
@@ -252,7 +258,8 @@ def extract_box_3d(I, zyx, nzyx, box_rn, box_rt):
         zyx (np.ndarray): Position of each point, shape=(npts,3), each item=[zi,yi,xi].
         nzyx (np.ndarray): Normal of each point, shape=(npts,3), each item=[nzi,nyi,nxi].
         box_rn (2-tuple of float): (min,max) extensions in normal direction.
-        box_rt (float): max extension in tangent direction.
+        box_rt (float): Max extension in tangent direction.
+        normalize (bool): Whether to z-score each box.
 
     Returns:
         ext_boxes (np.ndarray): Extracted box for each point, shape=(npts,*ext_shape).
@@ -264,11 +271,13 @@ def extract_box_3d(I, zyx, nzyx, box_rn, box_rt):
     # extract
     ext_boxes = extract_box_tensor(
         I, zyx, nzyx,
-        box_coos=box_coos, box_locs=box_locs
+        box_coos=box_coos, box_locs=box_locs,
+        normalize=normalize
     )
+
     return ext_boxes
 
-def extract_box_2drot(I, zyx, nzyx, box_rn, box_rt):
+def extract_box_2drot(I, zyx, nzyx, box_rn, box_rt, normalize=True):
     """ Extract 2d box for each point. Rotational averaged along normal axis.
 
     Args:
@@ -277,6 +286,7 @@ def extract_box_2drot(I, zyx, nzyx, box_rn, box_rt):
         nzyx (np.ndarray): Normal of each point, shape=(npts,3), each item=[nzi,nyi,nxi].
         box_rn (2-tuple of float): (min,max) extensions in normal direction.
         box_rt (float): max extension in tangent direction.
+        normalize (bool): Whether to z-score each box.
 
     Returns:
         ext_boxes (np.ndarray): Extracted box for each point, shape=(npts,*ext_shape).
@@ -292,6 +302,7 @@ def extract_box_2drot(I, zyx, nzyx, box_rn, box_rt):
     # extract
     ext_boxes = extract_box_tensor(
         I, zyx, nzyx,
-        box_coos=box_coos, box_locs=box_locs
+        box_coos=box_coos, box_locs=box_locs,
+        normalize=normalize
     )
     return ext_boxes
