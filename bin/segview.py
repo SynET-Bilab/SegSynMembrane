@@ -16,7 +16,7 @@ def build_argparser():
         View membrane segmentation results.
         
         Usage:
-            segview.py mode state.npz
+            segview.py mode state.npz -t tomo.mrc
         
         Modes:
             args: print args
@@ -33,6 +33,7 @@ def build_argparser():
         "args", "steps", "3d", "moosac"
     ])
     parser.add_argument("input", type=str, help="Input state file.")
+    parser.add_argument("-t", "--tomo_file", type=str, default=None, help="Tomo file. Defaults to the one in seg_file.")
     return parser
 
 
@@ -51,6 +52,7 @@ if __name__ == '__main__':
     if mode == "args":
         seg.show_args()
     elif mode == "steps":
+        seg.tomo_reload(args["tomo_file"])
         seg.show_steps()
     elif mode == "3d":
         seg.show_segpcds()

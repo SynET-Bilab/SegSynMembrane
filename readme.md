@@ -49,10 +49,17 @@ if two membranes are wrongly divided: refine model
 draw the guiding lines such that they separate pre from post.
 run with "segprepost.py runfine tomo_file model_file"
 
-## versions
+## changelog
+
+### version convention
 
 major.minor1.minor2
 
 - major: major change of io, algorithms
 - minor1: minor change of io
 - minor2: minor change of algorithms
+
+### versions
+
+- v1.2.0: Enriched seg_file. Added version,tomo_file,pixel_nm to results.
+- v1.2.1: Reduced the size of seg_file from outputs of segbase,segprepost,segonemem. (Removed attribute tomo after detect. Reload/specify when needed.)

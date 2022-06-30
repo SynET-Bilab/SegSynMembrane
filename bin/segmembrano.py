@@ -24,7 +24,7 @@ class SegMembrano:
         Generate membranograms.
         
         Usage:
-            segmembrano.py name-seg.npz -t tomo.mrc -o outputs -d <start> <stop> <step>
+            segmembrano.py name-seg.npz -t tomo.mrc -o outputs --dists <start> <stop> <step>
                 tomo: if not provided, then use the tomo file in name-seg.npz
                 outputs: if not provided, then set as name-seg-membno
                 dists: average membranograms over a range of distances, range(start,stop,step), from the membrane
@@ -41,8 +41,8 @@ class SegMembrano:
         parser.add_argument("-o", "--outputs", type=str, default=None, help="Basename for output files. Defaults to 'seg_file-membno'.")
 
         # options
-        parser.add_argument("-d", "--dists", type=float, nargs=3, default=[0,1,1], help="Distances to be evaluated at, formatted as (start,stop,step) in nm, where the stopping point is not included.")
-        parser.add_argument("-l", "--labels", type=int, nargs='+', default=None, help="Labels of components to be plotted. Defaults to all components.")
+        parser.add_argument("--dists", type=float, nargs=3, default=[0,1,1], help="Distances to be evaluated at, formatted as (start,stop,step) in nm, where the stopping point is not included.")
+        parser.add_argument("--labels", type=int, nargs='+', default=None, help="Labels of components to be plotted. Defaults to all components.")
         
         # assign to self
         self.argparser = parser
@@ -57,10 +57,6 @@ class SegMembrano:
         Args:
             args (dict or argparse.Namespace): Args as a dict, or from parser.parse_args.
         """
-        # conversion
-        if type(args) is not dict:
-            args = vars(args)
-
         # load seg_file
         seg_file = args["seg_file"]
         seg = etsynseg.segbase.SegBase().load_state(seg_file)
@@ -68,11 +64,7 @@ class SegMembrano:
 
         # read tomo filename from arg or seg
         if args["tomo_file"] is None:
-            tomo_file = (pathlib.Path(seg_file).parent/seg.args["tomo_file"]).resolve()
-            if not tomo_file.is_file():
-                raise FileNotFoundError(f"Default tomo file not found: {tomo_file}")
-            self.tomo_file = str(tomo_file)
-
+            self.tomo_file = seg.args["tomo_file"]
         else:
             self.tomo_file = args["tomo_file"]
 
