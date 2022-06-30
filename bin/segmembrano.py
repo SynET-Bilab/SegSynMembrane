@@ -33,7 +33,7 @@ class SegMembrano:
         parser = argparse.ArgumentParser(
             prog="segmembrano.py",
             description=description,
-            formatter_class=etsynseg.segbase.HelpFormatterCustom
+            formatter_class=etsynseg.miscutil.HelpFormatterCustom
         )
         # input/output
         parser.add_argument("seg_file", type=str, help="Segmentation state file, generated from segprepost/segonemem.py.")

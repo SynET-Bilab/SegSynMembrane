@@ -1,9 +1,11 @@
 """ Utils: misc utilities.
 """
 import time
+import argparse
 
 __all__ = [
-    "Timer"
+    "Timer",
+    "HelpFormatterCustom"
 ]
 
 
@@ -50,3 +52,20 @@ class Timer:
         if self.return_format == "string":
             del_t = f"{del_t:.1f}s"
         return del_t
+
+class HelpFormatterCustom(argparse.ArgumentDefaultsHelpFormatter):
+    """ Custom parser format with helper and defaults.
+
+    Example:
+    parser = argparse.ArgumentParser(
+        ...
+        formatter_class=HelpFormatterCustom
+    )
+    """
+    # RawDescriptionHelpFormatter
+    def _fill_text(self, text, width, indent):
+        return ''.join(indent + line for line in text.splitlines(keepends=True))
+    
+    # MetavarTypeHelpFormatter
+    def _get_default_metavar_for_optional(self, action):
+        return action.type.__name__

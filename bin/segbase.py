@@ -10,19 +10,8 @@ import matplotlib.pyplot as plt
 import etsynseg
 
 __all__ = [
-    "HelpFormatterCustom",
     "SegBase"
 ]
-
-
-class HelpFormatterCustom(argparse.ArgumentDefaultsHelpFormatter):
-    # RawDescriptionHelpFormatter
-    def _fill_text(self, text, width, indent):
-        return ''.join(indent + line for line in text.splitlines(keepends=True))
-    
-    # MetavarTypeHelpFormatter
-    def _get_default_metavar_for_optional(self, action):
-        return action.type.__name__
 
 class SegBase:
     """ Base class for segmentation.
@@ -153,7 +142,7 @@ class SegBase:
         parser = argparse.ArgumentParser(
             prog=f"{self.prog}.py",
             description=description,
-            formatter_class=HelpFormatterCustom
+            formatter_class=etsynseg.miscutil.HelpFormatterCustom
         )
         # mode
         parser.add_argument("mode", type=str, choices=[

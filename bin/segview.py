@@ -27,7 +27,7 @@ def build_argparser():
     parser = argparse.ArgumentParser(
         prog="segview.py",
         description=description,
-        formatter_class=etsynseg.segbase.HelpFormatterCustom
+        formatter_class=etsynseg.miscutil.HelpFormatterCustom
     )
     parser.add_argument("mode", type=str, choices=[
         "args", "steps", "3d", "moosac"
