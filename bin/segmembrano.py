@@ -55,7 +55,7 @@ class SegMembrano:
             dists,zyxs,nzyxs
 
         Args:
-            args (dict or argparse.Namespace): Args as a dict, or from parser.parse_args.
+            args (dict): Args as a dict.
         """
         # load seg_file
         seg_file = args["seg_file"]

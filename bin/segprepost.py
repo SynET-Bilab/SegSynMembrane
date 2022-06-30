@@ -100,7 +100,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
     def final_outputs(self):
         """ Final outputs.
         """
-        self.tomo_reload()
+        self.reload_tomo()
         self.output_model(self.args["outputs"]+".mod")
         self.output_slices(self.args["outputs"]+".png", nslice=5)
 
@@ -117,7 +117,7 @@ class SegPrePost(etsynseg.segbase.SegBase):
 
         # detecting
         self.detect()
-        self.tomo_remove()
+        self.remove_tomo()
 
         # extract components
         if mode in ["runfine"]:

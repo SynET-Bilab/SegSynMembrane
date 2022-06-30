@@ -52,7 +52,7 @@ if __name__ == '__main__':
     if mode == "args":
         seg.show_args()
     elif mode == "steps":
-        seg.tomo_reload(args["tomo_file"])
+        seg.reload_tomo(args["tomo_file"])
         seg.show_steps()
     elif mode == "3d":
         seg.show_segpcds()

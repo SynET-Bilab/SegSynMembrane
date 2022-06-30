@@ -312,39 +312,6 @@ class SegBase:
             results=self.results
         )
     
-    def tomo_remove(self):
-        """ Remove tomo (self.steps["tomod"]["I"]) to save space.
-
-        Tomo can be removed after self.detect.
-        Reload before self.show_steps or self.output_slices.
-        """
-        self.steps["tomod"]["I"] = None
-
-    def tomo_reload(self, tomo_file=None):
-        """ Reload tomo and clip.
-
-        If self.steps["tomod"]["I"] is not None, skip reloading.
-        If self.steps["tomod"]["I"] is None, assign it to the reloaded-clipped tomo.
-
-        Args:
-            tomo_file (str): Filename of tomo. If None, then use self.args["tomo_file"].
-        """
-        # skip if tomo exists
-        if self.steps["tomod"]["I"] is not None:
-            return
-
-        # setup tomo_file
-        if tomo_file is None:
-            tomo_file = self.args["tomo_file"]
-        # read tomo, clip properly
-        tomod = self.steps["tomod"]
-        I, _ = etsynseg.io.read_tomo(
-            tomo_file,
-            clip_low=tomod["clip_low"],
-            clip_high=tomod["clip_low"]+tomod["shape"]
-        )
-        # assign
-        self.steps["tomod"]["I"] = I
 
     #=========================
     # steps
@@ -397,6 +364,38 @@ class SegBase:
         self.logger.info(f"""loaded data: {self.timer.click()}""")
         self.save_state(args["outputs_state"])
         self.logger.info("saved state")
+
+    def remove_tomo(self):
+        """ Remove tomo (self.steps["tomod"]["I"]) to save space.
+
+        Tomo can be removed after self.detect.
+        Reload before self.show_steps or self.output_slices.
+        """
+        self.steps["tomod"]["I"] = None
+
+    def reload_tomo(self, tomo_file=None):
+        """ Reload tomo and clip. Skip if tomo is already set.
+
+        Setting up self.steps["tomod"]["I"]
+
+        Args:
+            tomo_file (str): Filename of tomo. If None, then use self.args["tomo_file"].
+        """
+        # skip if tomo exists
+        if self.steps["tomod"]["I"] is not None:
+            return
+
+        # setup tomo_file
+        if tomo_file is None:
+            tomo_file = self.args["tomo_file"]
+        # read tomo, clip properly
+        clip_low = self.steps["tomod"]["clip_low"]
+        clip_high = clip_low + self.steps["tomod"]["shape"]
+        I, _ = etsynseg.io.read_tomo(
+            tomo_file, clip_low=clip_low, clip_high=clip_high
+        )
+        # assign
+        self.steps["tomod"]["I"] = I
 
     def detect(self):
         """ Detect membrane-candidates from the image.
@@ -733,7 +732,7 @@ class SegBase:
         tomod = self.steps["tomod"]
 
         # image
-        self.tomo_reload()
+        self.reload_tomo()
         I = tomod["I"]
         name_I = "clipped tomo"
 
@@ -874,7 +873,7 @@ class SegBase:
         iz_max = np.max(contour_bound[:, 0])
         iz_arr = np.linspace(iz_min, iz_max, nslice, dtype=int)
         # im dict
-        self.tomo_reload()
+        self.reload_tomo()
         I = self.steps["tomod"]["I"]
         im_dict = {
             # label z in range of original tomo
