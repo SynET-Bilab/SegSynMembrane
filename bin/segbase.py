@@ -180,11 +180,12 @@ class SegBase:
         # assign to self
         self.argparser = parser
 
-    def load_args(self, args):
+    def load_args(self, args, argv=None):
         """ Load args into self.args.
 
         Args:
             args (dict or argparse.Namespace): Args as a dict, or from parser.parse_args.
+            argv (list): Results of sys.argv, for logging commands used.
         """
         # conversion
         if type(args) is not dict:
@@ -240,10 +241,11 @@ class SegBase:
         self.logger.addHandler(log_handler)
         self.logger.setLevel("INFO")
 
-        # log
-        # mode
+        # initial log
+        # basics
         self.logger.info(f"----{self.prog}----")
-        self.logger.info(f"""mode: {args["mode"]}""")
+        if argv is not None:
+            self.logger.info(f"command: {''.join(argv)}")
         # inputs
         if args["mode"] in ["run", "runfine"]:
             self.logger.info(f"""inputs: {self.args["tomo_file"]} {self.args["model_file"]}""")
@@ -251,6 +253,7 @@ class SegBase:
             self.logger.info(f"""inputs: {args["inputs"][0]}""")
         # outputs
         self.logger.info(f"""outputs: {self.args["outputs"]}""")
+        
         # save state, backup for the first time
         if args["mode"] in ["run", "runfine", "contrefine"]:
             self.save_state(self.args["outputs_state"], backup=True)
@@ -278,7 +281,7 @@ class SegBase:
         return self
 
     def backup_file(self, filename):
-        """ if file exists, rename to filename~
+        """ If file exists, rename to filename~
         """
         p = pathlib.Path(filename)
         if p.is_file():

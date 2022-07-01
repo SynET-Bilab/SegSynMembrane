@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 """ Segmentation of one membrane.
 """
+
+import sys
 import multiprocessing
 import etsynseg
 
@@ -121,8 +123,9 @@ if __name__ == "__main__":
     seg = SegOneMem()
     
     # parse and load args
-    args = vars(seg.argparser.parse_args())
-    seg.load_args(args)
+    argv = sys.argv
+    args = vars(seg.argparser.parse_args(argv[1:]))
+    seg.load_args(args, argv=argv)
     
     # workflow
     # read mode from args, not seg.args

@@ -2,6 +2,7 @@
 """ Segmentation of pre- and post-synapses.
 """
 
+import sys
 import multiprocessing
 import etsynseg
 
@@ -151,8 +152,9 @@ if __name__ == "__main__":
     seg = SegPrePost()
     
     # parse and load args
-    args = vars(seg.argparser.parse_args())
-    seg.load_args(args)
+    argv = sys.argv
+    args = vars(seg.argparser.parse_args(argv[1:]))
+    seg.load_args(args, argv=argv)
     
     # workflow
     # read mode from args, not seg.args
