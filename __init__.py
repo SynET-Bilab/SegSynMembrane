@@ -30,3 +30,4 @@ from .submodules import membranogram, memsampling
 # executable scripts
 from .bin import segbase
 from .bin import segprepost, segonemem
+from .bin import segmembrano, segsampling

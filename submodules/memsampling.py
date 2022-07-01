@@ -156,10 +156,10 @@ def extract_box_avg(I, zyx, nzyx, box_rn, box_rt):
     lock = multiprocessing.dummy.Lock()
     pool = multiprocessing.dummy.Pool()
     # sum values for i'th chunk of box_coos
-    def calc_one(i):
+    def calc_one(ichunk):
         values_i = np.zeros(npts)
-        for j in box_coos_chunk[i]:
-            bc_j = box_coos[j]
+        for i in box_coos_chunk[ichunk]:
+            bc_j = box_coos[i]
             zyx_j = zyx + bc_j[0]*nzyx + bc_j[1]*tyx + bc_j[2]*tz
             values_i[:] += I_interp(zyx_j)
         # lock when writing to the shared array
@@ -203,28 +203,32 @@ def extract_box_tensor(I, zyx, nzyx, box_coos, box_locs, normalize):
     grids = [np.arange(I.shape[i]) for i in range(3)]
     I_interp = sp.interpolate.RegularGridInterpolator(grids, I)
 
-    # extracted box for each point
+    # extract box for each point
     ext_boxes = np.zeros((npts, *ext_shape))
-
-    def calc_one(i):
-        # points at box_coos
-        zyx_coos = (
-            zyx[i] + box_coos[:, :1]*nzyx[i]
-            + box_coos[:, 1:2]*tyx[i] + box_coos[:, 2:]*tz[i]
-        )
-        # values at box_coos
-        v_coos = I_interp(zyx_coos)
-        # convert to extracted box
-        ext_boxes[i][tuple(ext_locs.T)] = mat_coo2loc @ v_coos
-        # normalize
-        if normalize:
-            box_mean = np.mean(ext_boxes[i], keepdims=True)
-            box_std = np.std(ext_boxes[i], keepdims=True)
-            ext_boxes[i] = (ext_boxes[i] - box_mean) / box_std
+    # split points into chunks: use all available threads
+    nthreads = os.cpu_count()
+    points_chunk = np.array_split(np.arange(npts), nthreads)
+    # process each chunk
+    def calc_one(ichunk):
+        # process each point in the chunk
+        for i in points_chunk[ichunk]:
+            zyx_coos = (
+                zyx[i] + box_coos[:, :1]*nzyx[i]
+                + box_coos[:, 1:2]*tyx[i] + box_coos[:, 2:]*tz[i]
+            )
+            # values at box_coos
+            v_coos = I_interp(zyx_coos)
+            # convert to extracted box
+            ext_boxes[i][tuple(ext_locs.T)] = mat_coo2loc @ v_coos
+            # normalize
+            if normalize:
+                box_mean = np.mean(ext_boxes[i], keepdims=True)
+                box_std = np.std(ext_boxes[i], keepdims=True)
+                ext_boxes[i] = (ext_boxes[i] - box_mean) / box_std
 
     # parallel processing over sampling pixels
     pool = multiprocessing.dummy.Pool()
-    pool.map(calc_one, range(npts))
+    pool.map(calc_one, range(nthreads))
     pool.close()
 
     return ext_boxes
@@ -403,16 +407,17 @@ def classify_2drot_init(box_rn, box_rt):
     ext_shape, ext_locs, mat_coo2loc = gen_box_mapping(box_coos, box_locs)
 
     # assign values at object's coordinates to 1
-    # membrane: horizontal plate
-    values_mem = (box_coos[:, 0]**2<=1).astype(int)
+    # membrane: horizontal plate, located at 0 or the bottom of box
+    mem_loc = max(box_rn[0], 0)
+    values_mem = ((box_coos[:, 0]-mem_loc)**2<=1).astype(int)
     # particle: vertical stick + membrane
-    values_part = values_mem + (box_coos[:, 1]**2+box_coos[:, 2]**2 <=1).astype(int)
+    values_part = (box_coos[:, 1]**2+box_coos[:, 2]**2 <=1).astype(int)
+    values_part = ((values_mem + values_part)>0).astype(int)
 
     # generate images: assign pixels corresponding to objects to 1
-    # use mat@values to binarize the result
     means_init = np.zeros((2, *ext_shape), dtype=float)
-    means_init[0][tuple(ext_locs.T)] = (mat_coo2loc @ values_part)>0
-    means_init[1][tuple(ext_locs.T)] = (mat_coo2loc @ values_mem)>0
+    means_init[0][tuple(ext_locs.T)] = mat_coo2loc @ values_part
+    means_init[1][tuple(ext_locs.T)] = mat_coo2loc @ values_mem
     return means_init
 
 def classify_2drot_boxes(boxes, box_rn, box_rt):
@@ -434,7 +439,9 @@ def classify_2drot_boxes(boxes, box_rn, box_rt):
     # reshape (n,ny,nx) to (n,ny*nx); z-score for each row
     def preprocess(arr):
         arr = arr.reshape((len(arr), -1))
-        arr = (arr - np.mean(arr, axis=1))/np.std(arr, axis=1)
+        arr_mean = np.mean(arr, axis=1, keepdims=True)
+        arr_std = np.std(arr, axis=1, keepdims=True)
+        arr = (arr - arr_mean)/arr_std
         return arr
     means_init = preprocess(means_init)
     boxes_flat = preprocess(boxes)
