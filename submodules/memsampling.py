@@ -1,18 +1,24 @@
 """ memsampling: importance sampling on the segmentation
 """
+import os
 import numpy as np
 import scipy as sp
 import multiprocessing.dummy
+from sklearn import mixture
 
-import etsynseg
+from etsynseg import pcdutil
 
 __all__ = [
     # box setups
     "gen_box_coords", "gen_box_mapping",
     # box extraction: scalar
-    "extract_box_avg", "points_nms_graph",
+    "extract_box_avg",
     # box extraction: tensor
-    "extract_box_tensor", "extract_box_3d", "extract_box_2drot"
+    "extract_box_tensor", "extract_box_3d", "extract_box_2drot",
+    # local max
+    "localmax_neighbors", "localmax_perslice", "localmax_exclusion",
+    # classification
+    "classify_2drot_init", "classify_2drot_boxes"
 ]
 
 
@@ -63,7 +69,8 @@ def gen_box_mapping(box_coos, box_locs):
     Inputs: pixel coordinates in the sampling box and corresponding locations in the extracted box.
     Outputs:
         ext_box = np.zeros(ext_shape)
-        ext_box[tuple(ext_locs.T)] = mat_coo2loc @ values_coo
+        # values_coos: same len as box_coos
+        ext_box[tuple(ext_locs.T)] = mat_coo2loc @ values_coos
 
     Args:
         box_coos (np.ndarray): The coordinate of each pixel in the sampling box.
@@ -114,7 +121,7 @@ def gen_box_mapping(box_coos, box_locs):
 # box extraction: scalar
 #=========================
 
-def extract_box_avg(I, zyx, nzyx, box_rn, box_rt, chunksize=10):
+def extract_box_avg(I, zyx, nzyx, box_rn, box_rt):
     """ Calculate the average pixel values in the sampling box of each point.
 
     Parallel processing: assumed npts >> the number of sampling box pixels,
@@ -126,13 +133,12 @@ def extract_box_avg(I, zyx, nzyx, box_rn, box_rt, chunksize=10):
         nzyx (np.ndarray): Normal of each point, shape=(npts,3), each item=[nzi,nyi,nxi].
         box_rn (2-tuple of float): (min,max) extensions in normal direction.
         box_rt (float): max extension in tangent direction.
-        chunksize (int): The size of chunk for parallel processing.
 
     Returns:
         values (np.ndarray): Value for each point, shape=(npts,).
     """
     # setup: sampling boxes, numbers
-    tyx, tz = etsynseg.pcdutil.normals_tangent(nzyx)
+    tyx, tz = pcdutil.normals_tangent(nzyx)
     box_coos = gen_box_coords(box_rn, box_rt)
     npts = len(zyx)
     ncoos = len(box_coos)
@@ -143,12 +149,16 @@ def extract_box_avg(I, zyx, nzyx, box_rn, box_rt, chunksize=10):
 
     # values for each membrane point
     values = np.zeros(npts)
+    # split box_coos into chunks: use all available threads
+    nthreads = os.cpu_count()
+    box_coos_chunk = np.array_split(np.arange(len(box_coos)), nthreads)
+    # pool
     lock = multiprocessing.dummy.Lock()
-    # sum values for each chunk of sampling pixels
-
+    pool = multiprocessing.dummy.Pool()
+    # sum values for i'th chunk of box_coos
     def calc_one(i):
         values_i = np.zeros(npts)
-        for j in range(i, min(i+chunksize, ncoos)):
+        for j in box_coos_chunk[i]:
             bc_j = box_coos[j]
             zyx_j = zyx + bc_j[0]*nzyx + bc_j[1]*tyx + bc_j[2]*tz
             values_i[:] += I_interp(zyx_j)
@@ -157,42 +167,12 @@ def extract_box_avg(I, zyx, nzyx, box_rn, box_rt, chunksize=10):
         values[:] += values_i
         lock.release()
     # parallel processing over sampling pixels
-    pool = multiprocessing.dummy.Pool()
-    pool.map(calc_one, range(0, ncoos, chunksize))
+    pool.map(calc_one, range(nthreads))
     pool.close()
 
     # average
     values = values / ncoos
     return values
-
-def points_nms_graph(pts, values, r_thresh):
-    """ Non-maximum suppression of points based on neighbors graph.
-    
-    Find sampling points with values larger than all its neighbors in the graph.
-
-    Args:
-        pts (np.ndarray): Position of points, shape=(npts,dim).
-        values (np.ndarray): Value for each point, shape=(npts,).
-        r_thresh (float): Distance threshold for neighbors in graph construction.
-
-    Returns:
-        mask (np.ndarray): Mask of bool, shape=(npts,). True at points which are local max, False otherwise.
-    """
-    # construct graph
-    g = etsynseg.pcdutil.neighbors_graph(pts, r_thresh=r_thresh)
-
-    # find if each point is local max
-    npts = len(pts)
-    mask = np.zeros(npts, dtype=bool)
-
-    def calc_one(i):
-        mask[i] = values[i] > np.max(values[g.neighbors(i)])
-
-    pool = multiprocessing.dummy.Pool()
-    pool.map(calc_one, range(npts))
-    pool.close()
-
-    return mask
 
 
 #=========================
@@ -215,10 +195,9 @@ def extract_box_tensor(I, zyx, nzyx, box_coos, box_locs, normalize):
             ext_shape is the shape of each extracted box.
     """
     # setup: sampling boxes, numbers
-    tyx, tz = etsynseg.pcdutil.normals_tangent(nzyx)
+    tyx, tz = pcdutil.normals_tangent(nzyx)
     ext_shape, ext_locs, mat_coo2loc = gen_box_mapping(box_coos, box_locs)
     npts = len(zyx)
-    # npx = len(px_coords)
 
     # image interpolation
     grids = [np.arange(I.shape[i]) for i in range(3)]
@@ -306,3 +285,166 @@ def extract_box_2drot(I, zyx, nzyx, box_rn, box_rt, normalize=True):
         normalize=normalize
     )
     return ext_boxes
+
+
+#=========================
+# local max
+#=========================
+
+def localmax_neighbors(zyx, values, r_thresh):
+    """ Find points with values larger than all its neighbors.
+
+    Args:
+        zyx (np.ndarray): Position of points, shape=(npts,dim).
+        values (np.ndarray): Value for each point, shape=(npts,).
+        r_thresh (float): Distance threshold for neighbors in graph construction.
+
+    Returns:
+        mask (np.ndarray): Mask of bool, shape=(npts,).
+            zyx[mask] gives the selected points.
+    """
+    # construct graph
+    g = pcdutil.neighbors_graph(zyx, r_thresh=r_thresh)
+
+    # find if each point is local max
+    npts = len(zyx)
+    mask = np.zeros(npts, dtype=bool)
+
+    def calc_one(i):
+        mask[i] = values[i] > np.max(values[g.neighbors(i)])
+
+    pool = multiprocessing.dummy.Pool()
+    pool.map(calc_one, range(npts))
+    pool.close()
+
+    return mask
+
+def localmax_perslice(zyx, values, r_thresh):
+    """ Find points with values larger than all its neighbors in the same xy-slice.
+
+    Args:
+        zyx (np.ndarray): Position of points, shape=(npts,dim).
+        values (np.ndarray): Value for each point, shape=(npts,).
+        r_thresh (float): Distance threshold for neighbors in graph construction.
+
+    Returns:
+        mask (np.ndarray): Mask of bool, shape=(npts,).
+            zyx[mask] gives the selected points.
+    """
+    mask = np.zeros(len(zyx), dtype=bool)
+    # local max in each slice
+    for z in np.unique(zyx[:, 0]):
+        mask_z = zyx[:, 0] == z
+        mask_z_nms = localmax_neighbors(
+            zyx[mask_z], values[mask_z],
+            r_thresh=r_thresh
+        )
+        mask[mask_z] = mask_z_nms
+    return mask
+
+def localmax_exclusion(zyx, values, r_thresh):
+    """ Find the point with the largest value, then exclude this point and its neighbors, iteratively find the next largest one.
+
+    Args:
+        zyx (np.ndarray): Position of points, shape=(npts,dim).
+        values (np.ndarray): Value for each point, shape=(npts,).
+        r_thresh (float): Distance threshold for neighbors in graph construction.
+
+    Returns:
+        mask (np.ndarray): Mask of bool, shape=(npts,).
+            zyx[mask] gives the selected points.
+    """
+    # construct graph
+    g = pcdutil.neighbors_graph(zyx, r_thresh=r_thresh)
+    g.vs["id"] = np.arange(g.vcount())
+    g.vs["value"] = values
+
+    # iteratively find the largest, and delete graph vertices
+    id_arr = []
+    while g.vcount() > 0:
+        # current index of the max point
+        imax = np.argmax(g.vs["value"])
+        # save the original index of the max point
+        id_arr.append(g.vs[imax]["id"])
+        # update graph: delete max point and neighbors
+        g.delete_vertices([imax, *g.neighbors(imax)])
+    id_arr = np.asarray(id_arr)
+
+    # make mask
+    mask = np.zeros(len(zyx), dtype=bool)
+    mask[id_arr] = True
+    return mask
+
+
+#=========================
+# classification
+#=========================
+
+def classify_2drot_init(box_rn, box_rt):
+    """ Initial means for classification on 2drot boxes.
+
+    Args:
+        box_rn (2-tuple of float): (min,max) extensions in normal direction.
+        box_rt (float): max extension in tangent direction.
+    
+    Returns:
+        means_init (np.ndarray): Initial mean for clusters. Shape=(2,ny,nx).
+            means_init[0]: A particle-shaped image.
+            means_init[1]: A membrane-shaped image.
+    """
+    # setup boxes the same way as in extract_box_2drot()
+    # especially the mapping from coordinates to pixels
+    box_coos = gen_box_coords(box_rn, box_rt)
+    box_locs = np.stack([
+        box_coos[:, 0]-box_coos[:, 0].min(),
+        np.ceil(np.sqrt(box_coos[:, 1]**2+box_coos[:, 2]**2))
+    ], axis=1
+    ).astype(int)
+    ext_shape, ext_locs, mat_coo2loc = gen_box_mapping(box_coos, box_locs)
+
+    # assign values at object's coordinates to 1
+    # membrane: horizontal plate
+    values_mem = (box_coos[:, 0]**2<=1).astype(int)
+    # particle: vertical stick + membrane
+    values_part = values_mem + (box_coos[:, 1]**2+box_coos[:, 2]**2 <=1).astype(int)
+
+    # generate images: assign pixels corresponding to objects to 1
+    # use mat@values to binarize the result
+    means_init = np.zeros((2, *ext_shape), dtype=float)
+    means_init[0][tuple(ext_locs.T)] = (mat_coo2loc @ values_part)>0
+    means_init[1][tuple(ext_locs.T)] = (mat_coo2loc @ values_mem)>0
+    return means_init
+
+def classify_2drot_boxes(boxes, box_rn, box_rt):
+    """ GMM classification of 2drot boxes into particle-like and membrane-like clusters.
+
+    Args:
+        boxes (np.ndarray): Results of extract_box_2drot(). Shape=(nboxes,ny,nx).
+        box_rn (tuple), box_rt (float): Ranges of the box. See doc of extract_box_2drot().
+            Values should be the same as ones used in extract_box_2drot().
+    
+    Returns:
+        memberships (np.ndarray): Membership of each box. Shape=(nboxes,).
+            0 for particle-like, 1 for membrane-like.
+    """
+    # initialize mean
+    means_init = classify_2drot_init(box_rn, box_rt)
+    
+    # preprocess data
+    # reshape (n,ny,nx) to (n,ny*nx); z-score for each row
+    def preprocess(arr):
+        arr = arr.reshape((len(arr), -1))
+        arr = (arr - np.mean(arr, axis=1))/np.std(arr, axis=1)
+        return arr
+    means_init = preprocess(means_init)
+    boxes_flat = preprocess(boxes)
+
+    # clustering
+    clust = mixture.GaussianMixture(
+        n_components=2,
+        covariance_type="diag",
+        means_init=means_init
+    )
+    clust.fit(boxes_flat)
+    memberships = clust.predict(boxes_flat)
+    return memberships
