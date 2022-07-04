@@ -531,24 +531,30 @@ def neighbors_graph(pts, r_thresh=1, orients=None):
     # get pairs within r_thresh
     kdtree = sp.spatial.KDTree(pts)
     edges = kdtree.query_pairs(r=r_thresh)
-    edges = np.asarray(tuple(edges))
-
-    # distance in each pair
-    e1, e2 = np.transpose(edges)
-    dr = np.linalg.norm(pts[e1]-pts[e2], axis=1)
+    edges = list(edges)  # convert set to list
     
     # make graph
     g = igraph.Graph()
     g.add_vertices(len(pts))
     g.add_edges(edges)
     g.vs["coord"] = pts
-    g.es["dist"] = dr
+
+    # distance of each pair
+    if len(edges) > 0:
+        e1, e2 = np.transpose(edges)
+        g.es["dist"] = np.linalg.norm(pts[e1]-pts[e2], axis=1)
+    else:
+        g.es["dist"] = []
 
     # if orientations are provided, add orientational differences
     if orients is not None:
-        dO = orients_absdiff(orients[e1], orients[e2])
-        g.vs["orient"] = orients
-        g.es["dorient"] = dO
+        if len(edges) > 0:
+            dO = orients_absdiff(orients[e1], orients[e2])
+            g.vs["orient"] = orients
+            g.es["dorient"] = dO
+        else:
+            g.vs["orient"] = []
+            g.es["dorient"] = []
     return g
 
 def graph_components(g, n_keep=None):

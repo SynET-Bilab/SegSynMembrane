@@ -411,7 +411,8 @@ def classify_2drot_init(box_rn, box_rt):
     mem_loc = max(box_rn[0], 0)
     values_mem = ((box_coos[:, 0]-mem_loc)**2<=1).astype(int)
     # particle: vertical stick + membrane
-    values_part = (box_coos[:, 1]**2+box_coos[:, 2]**2 <=1).astype(int)
+    part_rt = 1
+    values_part = (box_coos[:, 1]**2+box_coos[:, 2]**2<=part_rt).astype(int)
     values_part = ((values_mem + values_part)>0).astype(int)
 
     # generate images: assign pixels corresponding to objects to 1
@@ -437,14 +438,15 @@ def classify_2drot_boxes(boxes, box_rn, box_rt):
     
     # preprocess data
     # reshape (n,ny,nx) to (n,ny*nx); z-score for each row
-    def preprocess(arr):
+    def preprocess(arr, axis2d=1):
         arr = arr.reshape((len(arr), -1))
-        arr_mean = np.mean(arr, axis=1, keepdims=True)
-        arr_std = np.std(arr, axis=1, keepdims=True)
+        arr_mean = np.mean(arr, axis=axis2d, keepdims=True)
+        arr_std = np.std(arr, axis=axis2d, keepdims=True)
+        arr_std[np.isclose(arr_std, 0)] = 1
         arr = (arr - arr_mean)/arr_std
         return arr
-    means_init = preprocess(means_init)
-    boxes_flat = preprocess(boxes)
+    means_init = preprocess(means_init, axis2d=1)
+    boxes_flat = preprocess(boxes, axis2d=1)
 
     # clustering
     clust = mixture.GaussianMixture(
