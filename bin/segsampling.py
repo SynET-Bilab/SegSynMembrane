@@ -498,7 +498,7 @@ class SegSampling:
         # outputs
         outputs = self.args["outputs"]
         self.remove_tomo()
-        self.save_state(outputs+".npz")
+        self.save_state(outputs+".npz", backup=True)
         self.output_class(fig_file=outputs+".png")
         self.output_boxes(tomo_file=outputs+".mrc")
         self.logger.info(f"generated outputs: {self.timer.click()}")

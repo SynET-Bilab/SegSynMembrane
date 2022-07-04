@@ -315,7 +315,11 @@ def localmax_neighbors(zyx, values, r_thresh):
     mask = np.zeros(npts, dtype=bool)
 
     def calc_one(i):
-        mask[i] = values[i] > np.max(values[g.neighbors(i)])
+        neigh_i = g.neighbors(i)
+        if len(neigh_i) > 0:
+            mask[i] = values[i] > np.max(values[neigh_i])
+        else:
+            mask[i] = True
 
     pool = multiprocessing.dummy.Pool()
     pool.map(calc_one, range(npts))
