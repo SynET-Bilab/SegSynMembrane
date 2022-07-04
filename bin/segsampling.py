@@ -38,7 +38,7 @@ class SegSampling:
             pixel_nm=None, zyx=None, nzyx=None,
             Ic=None, clip_low=None, shape=None,zyxc=None,
             values=None, mask_sub0=None,
-            boxes_sub1=None, mask_sub1=None,
+            boxes_sub2=None, mask_sub1=None,
             member_sub2=None, mask_sub2=None
         )
         
@@ -271,7 +271,7 @@ class SegSampling:
         """ Averaging for each point. Find per-xy local max.
 
         Updated attributes:
-        steps: values, mask_sub0
+        steps: values, mask_sub0, mask_sub1
         """
         # load info
         px = self.steps["pixel_nm"]
@@ -295,48 +295,49 @@ class SegSampling:
         )
         self.steps["mask_sub0"] = mask_sub0
 
+        # simplify by exclusion
+        r_thresh = self.args["r_exclude"]/px
+        mask_sub1 = etsynseg.memsampling.localmax_exclusion(
+            zyxc[mask_sub0], values[mask_sub0],
+            r_thresh=r_thresh
+        )
+        self.steps["mask_sub1"] = mask_sub1
+
     def sampling_classify(self):
         """ Classify local maxes. Simplify by exclusion.
 
         Updated attributes:
-        steps: boxes_sub1, member_sub1, mask_sub1, mask_sub2
+        steps: boxes_sub2, member_sub2, mask_sub2
         """
         # load info
         px = self.steps["pixel_nm"]
         Ic = self.steps["Ic"]
         zyxc = self.steps["zyxc"]
         nzyx = self.steps["nzyx"]
-        values = self.steps["values"]
         mask_sub0 = self.steps["mask_sub0"]
+        mask_sub1 = self.steps["mask_sub1"]
 
         # extract boxes
         box_classify = np.asarray(self.args["box_classify"])/px
-        boxes_sub1 = etsynseg.memsampling.extract_box_2drot(
-            Ic, zyxc[mask_sub0], nzyx[mask_sub0],
+        boxes_sub2 = etsynseg.memsampling.extract_box_2drot(
+            Ic,
+            zyxc[mask_sub0][mask_sub1],
+            nzyx[mask_sub0][mask_sub1],
             box_rn=box_classify[:2],
             box_rt=box_classify[2],
             normalize=True
         )
-        self.steps["boxes_sub1"] = boxes_sub1
+        self.steps["boxes_sub2"] = boxes_sub2
 
         # classification
-        member_sub1 = etsynseg.memsampling.classify_2drot_boxes(
-            boxes_sub1,
+        member_sub2 = etsynseg.memsampling.classify_2drot_boxes(
+            boxes_sub2,
             box_rn=box_classify[:2],
             box_rt=box_classify[2]
         )
-        self.steps["member_sub1"] = member_sub1
+        self.steps["member_sub2"] = member_sub2
+        self.steps["mask_sub2"] = member_sub2==0
 
-        # simplify by exclusion
-        mask_sub1 = member_sub1==0
-        r_thresh = self.args["r_exclude"]/px
-        mask_sub2 = etsynseg.memsampling.localmax_exclusion(
-            zyxc[mask_sub0][mask_sub1],
-            values[mask_sub0][mask_sub1],
-            r_thresh=r_thresh
-        )
-        self.steps["mask_sub1"] = mask_sub1
-        self.steps["mask_sub2"] = mask_sub2
 
     def final_results(self):
         """ Update attributes in self.results.
@@ -370,12 +371,12 @@ class SegSampling:
         """
         # setup, preprocess
         # boxes
-        boxes = self.steps["boxes_sub1"]
+        boxes = self.steps["boxes_sub2"]
         emb = decomposition.PCA(n_components=2).fit_transform(
             boxes.reshape((len(boxes), -1))
         )
         # memberships
-        member = self.steps["member_sub1"]
+        member = self.steps["member_sub2"]
         nclass = len(np.unique(member))
 
         # plotting
@@ -414,9 +415,9 @@ class SegSampling:
             tomo_file (str): Filename for saving the boxes.
         """
         steps = self.steps
-        boxes_sub3 = steps["boxes_sub1"][steps["mask_sub1"]][steps["mask_sub2"]]
+        boxes_sub2 = steps["boxes_sub2"]
         etsynseg.io.write_tomo(
-            tomo_file, boxes_sub3, pixel_A=steps["pixel_nm"]*10
+            tomo_file, boxes_sub2, pixel_A=steps["pixel_nm"]*10
         )
 
     def show_steps(self):
@@ -458,9 +459,9 @@ class SegSampling:
             cmap_vecs.append(cmap)
         # points: segmentation, class1/2, simplified
         vecs_append([], "segmentation", "green")
-        vecs_append([steps[f"mask_sub{i}"] for i in range(2)], "class 1", "blue")
-        vecs_append([steps["mask_sub0"], steps["member_sub1"]!=0], "other classes", "red")
-        vecs_append([steps[f"mask_sub{i}"] for i in range(3)], "excluded", "yellow", show_dir=True)
+        vecs_append([steps[f"mask_sub{i}"] for i in range(2)], "local max", "blue")
+        vecs_append([steps[f"mask_sub{i}"] for i in range(3)], "class 1", "yellow", show_dir=True)
+        vecs_append([steps["mask_sub0"], steps["mask_sub1"], steps["member_sub2"]!=0], "other classes", "red")
 
         # show plots
         etsynseg.plot.imshow3d(
