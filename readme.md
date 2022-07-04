@@ -1,6 +1,7 @@
 # readme
 
 ## steps for using etsynseg
+
 (on siat-icbi hpc)
 
 step 0: update module path (needed for the first time)
@@ -63,3 +64,4 @@ major.minor1.minor2
 
 - v1.2.0: Enriched seg_file. Added version,tomo_file,pixel_nm to results.
 - v1.2.1: Reduced the size of seg_file from outputs of segbase,segprepost,segonemem. (Removed attribute tomo after detect. Reload/specify when needed.)
+- v1.3.0: Added segsampling.py for density-based sampling on the segmentation.

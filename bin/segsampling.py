@@ -295,7 +295,6 @@ class SegSampling:
         )
         self.steps["mask_sub0"] = mask_sub0
 
-
     def sampling_classify(self):
         """ Classify local maxes. Simplify by exclusion.
 
