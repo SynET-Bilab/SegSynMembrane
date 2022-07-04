@@ -154,7 +154,7 @@ class SegSampling:
         # initial log
         self.logger.info(f"----{self.prog}----")
         if argv is not None:
-            self.logger.info(f"command: {''.join(argv)}")
+            self.logger.info(f"command: {' '.join(argv)}")
         self.logger.info(f"""outputs: {self.args["outputs"]}""")
 
 
@@ -223,7 +223,6 @@ class SegSampling:
         margin_nm = 2 + np.max(
             [*self.args["box_localmax"], *self.args["box_classify"]]
         )
-        print("margin", margin_nm)
         # load tomo, clip
         Ic, clip_low, _ = etsynseg.modutil.read_tomo_clip(
             self.args["tomo_file"], self.steps["zyx"],
@@ -441,6 +440,7 @@ class SegSampling:
         cmap_vecs = []
         # append data to vecs arrays
         def vecs_append(mask_seq, name, cmap, show_dir=False):
+            # mask_seq: e.g. zyxc_sub = zyxc[mask_seq[0]][mask_seq[1]]...
             # add points: subset
             zyxc_sub = steps["zyxc"]
             for mask in mask_seq:
@@ -459,8 +459,8 @@ class SegSampling:
             cmap_vecs.append(cmap)
         # points: segmentation, class1/2, simplified
         vecs_append([], "segmentation", "green")
-        vecs_append([steps[f"mask_sub{i}"] for i in range(2)], "particle-like", "blue")
-        vecs_append([steps["mask_sub0"], steps["member_sub1"]==1], "membrane-like", "red")
+        vecs_append([steps[f"mask_sub{i}"] for i in range(2)], "class 1", "blue")
+        vecs_append([steps["mask_sub0"], steps["member_sub1"]!=0], "other classes", "red")
         vecs_append([steps[f"mask_sub{i}"] for i in range(3)], "excluded", "yellow", show_dir=True)
 
         # show plots

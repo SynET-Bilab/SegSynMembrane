@@ -245,7 +245,7 @@ class SegBase:
         # basics
         self.logger.info(f"----{self.prog}----")
         if argv is not None:
-            self.logger.info(f"command: {''.join(argv)}")
+            self.logger.info(f"command: {' '.join(argv)}")
         # inputs
         if args["mode"] in ["run", "runfine"]:
             self.logger.info(f"""inputs: {self.args["tomo_file"]} {self.args["model_file"]}""")
