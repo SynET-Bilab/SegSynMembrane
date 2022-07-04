@@ -415,7 +415,7 @@ def classify_2drot_init(box_rn, box_rt):
     mem_loc = max(box_rn[0], 0)
     values_mem = ((box_coos[:, 0]-mem_loc)**2<=1).astype(int)
     # particle: vertical stick + membrane
-    part_rt = 1
+    part_rt = max(box_rt/2, 1)
     values_part = (box_coos[:, 1]**2+box_coos[:, 2]**2<=part_rt).astype(int)
     values_part = ((values_mem + values_part)>0).astype(int)
 
