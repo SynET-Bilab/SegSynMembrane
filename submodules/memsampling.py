@@ -12,7 +12,7 @@ __all__ = [
     # box setups
     "gen_box_coords", "gen_box_mapping",
     # box extraction: scalar
-    "extract_box_avg",
+    "extract_box_avg", "extract_box_avg_frac",
     # box extraction: tensor
     "extract_box_tensor", "extract_box_3d", "extract_box_2drot",
     # local max
@@ -174,6 +174,54 @@ def extract_box_avg(I, zyx, nzyx, box_rn, box_rt):
     values = values / ncoos
     return values
 
+def extract_box_avg_frac(I, zyx, nzyx, box_rn, box_rt, include_frac=1):
+    """ Calculate the average pixel values in the top fraction of the sampling box of each point.
+
+    Args:
+        I (np.ndarray): Tomo, shape=(nz,ny,nx).
+        zyx (np.ndarray): Position of each point, shape=(npts,3), each item=[zi,yi,xi].
+        nzyx (np.ndarray): Normal of each point, shape=(npts,3), each item=[nzi,nyi,nxi].
+        box_rn (2-tuple of float): (min,max) extensions in normal direction.
+        box_rt (float): max extension in tangent direction.
+        include_frac (float): Only include pixels with values in the top fraction when calculating box averages.
+
+    Returns:
+        values (np.ndarray): Value for each point, shape=(npts,).
+    """
+    # setup: sampling boxes, numbers
+    tyx, tz = pcdutil.normals_tangent(nzyx)
+    box_coos = gen_box_coords(box_rn, box_rt)
+    npts = len(zyx)
+
+    # image interpolation
+    grids = [np.arange(I.shape[i]) for i in range(3)]
+    I_interp = sp.interpolate.RegularGridInterpolator(grids, I)
+
+    # values for each membrane point
+    values = np.zeros(npts)
+    # split box_coos into chunks: use all available threads
+    nthreads = os.cpu_count()
+    points_chunk = np.array_split(np.arange(npts), nthreads)
+    # pool
+    pool = multiprocessing.dummy.Pool()
+    # sum values for i'th chunk of box_coos
+
+    def calc_one(ichunk):
+        for i in points_chunk[ichunk]:
+            zyx_coos = (
+                zyx[i] + box_coos[:, :1]*nzyx[i]
+                + box_coos[:, 1:2]*tyx[i] + box_coos[:, 2:]*tz[i]
+            )
+            # values at box_coos
+            v_coos = I_interp(zyx_coos)
+            mask_frac = v_coos >= np.quantile(v_coos, 1-include_frac)
+            values[i] = np.mean(v_coos[mask_frac])
+
+    # parallel processing over sampling pixels
+    pool.map(calc_one, range(nthreads))
+    pool.close()
+    return values
+
 
 #=========================
 # box extraction: tensor
@@ -295,13 +343,14 @@ def extract_box_2drot(I, zyx, nzyx, box_rn, box_rt, normalize=True):
 # local max
 #=========================
 
-def localmax_neighbors(zyx, values, r_thresh):
-    """ Find points with values larger than all its neighbors.
+def localmax_neighbors(zyx, values, r_thresh, include_eq=True):
+    """ Find points with values greater than (optionally equal to) max of its neighbors.
 
     Args:
         zyx (np.ndarray): Position of points, shape=(npts,dim).
         values (np.ndarray): Value for each point, shape=(npts,).
         r_thresh (float): Distance threshold for neighbors in graph construction.
+        include_eq (bool): Whether to include points equal to max of neighbors.
 
     Returns:
         mask (np.ndarray): Mask of bool, shape=(npts,).
@@ -317,7 +366,10 @@ def localmax_neighbors(zyx, values, r_thresh):
     def calc_one(i):
         neigh_i = g.neighbors(i)
         if len(neigh_i) > 0:
-            mask[i] = values[i] > np.max(values[neigh_i])
+            if include_eq:
+                mask[i] = values[i] >= np.max(values[neigh_i])
+            else:
+                mask[i] = values[i] > np.max(values[neigh_i])
         else:
             mask[i] = True
 
@@ -327,13 +379,14 @@ def localmax_neighbors(zyx, values, r_thresh):
 
     return mask
 
-def localmax_perslice(zyx, values, r_thresh):
+def localmax_perslice(zyx, values, r_thresh, include_eq=True):
     """ Find points with values larger than all its neighbors in the same xy-slice.
 
     Args:
         zyx (np.ndarray): Position of points, shape=(npts,dim).
         values (np.ndarray): Value for each point, shape=(npts,).
         r_thresh (float): Distance threshold for neighbors in graph construction.
+        include_eq (bool): Whether to include points equal to max of neighbors.
 
     Returns:
         mask (np.ndarray): Mask of bool, shape=(npts,).
@@ -345,7 +398,8 @@ def localmax_perslice(zyx, values, r_thresh):
         mask_z = zyx[:, 0] == z
         mask_z_nms = localmax_neighbors(
             zyx[mask_z], values[mask_z],
-            r_thresh=r_thresh
+            r_thresh=r_thresh,
+            include_eq=include_eq
         )
         mask[mask_z] = mask_z_nms
     return mask
