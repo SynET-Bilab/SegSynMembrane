@@ -2,6 +2,7 @@
 """
 
 import tempfile
+from pathlib import Path
 import subprocess
 import numpy as np
 import pandas as pd
@@ -150,6 +151,11 @@ def read_model(model_file, dtype_z=int):
         cmd = f"model2point -ob {model_file} {point_file} >/dev/null"
         subprocess.run(cmd, shell=True, check=True)
 
+        # remove backup point_file~ created by model2point
+        bak_file = Path(f"{point_file}~")
+        if bak_file.exists():
+            bak_file.unlink()
+
         # point to DataFrame
         model = read_point(point_file, dtype_z=dtype_z)
         
@@ -167,6 +173,9 @@ def write_model(model_file, model):
         model (np.ndarray or pd.DataFrame): Data for the model. Will be converted by np.asarray.
     """
     model = np.asarray(model)
+
+    if len(model) < 1:
+        raise RuntimeError("No points found in the model.")
 
     with tempfile.NamedTemporaryFile(suffix=".pt", dir=".") as temp_file:
         # save as point file
