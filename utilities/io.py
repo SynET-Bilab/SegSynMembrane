@@ -144,7 +144,7 @@ def read_model(model_file, dtype_z=int):
     Returns:
         model (pd.DataFrame): Dataframe object for the points, with columns=[object,contour,x,y,z].
     """
-    with tempfile.NamedTemporaryFile(suffix=".pt") as temp_file:
+    with tempfile.NamedTemporaryFile(suffix=".pt", dir=".") as temp_file:
         # model2point
         point_file = temp_file.name
         cmd = f"model2point -ob {model_file} {point_file} >/dev/null"
@@ -168,7 +168,7 @@ def write_model(model_file, model):
     """
     model = np.asarray(model)
 
-    with tempfile.NamedTemporaryFile(suffix=".pt") as temp_file:
+    with tempfile.NamedTemporaryFile(suffix=".pt", dir=".") as temp_file:
         # save as point file
         # format: int for object,contour; float for x,y,z
         point_file = temp_file.name
