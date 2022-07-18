@@ -808,7 +808,9 @@ class SegBase:
             mpop_i = etsynseg.moosac.MOOPop().init_from_state(
                 self.steps["moosac"][f"mpopz{i}"]
             )
-            mpop_i.plot_logs(title=f"MOOSAC trajectory for component {i}")
+            n_uz = mpop_i.mootools.n_uz
+            n_vxy = mpop_i.mootools.n_vxy
+            mpop_i.plot_logs(title=f"MOOSAC trajectory for component {i} (nz={n_uz},nxy={n_vxy})")
             plt.show()
 
     #=========================
