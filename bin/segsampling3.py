@@ -87,7 +87,7 @@ class SegSampling:
         # options
         parser.add_argument("--label", type=int, default=1, help="The label of segment component to be sampled on.")
         parser.add_argument("--spacing_xy", type=float, default=5, help="Spacing (in nm) between sampling boxes in xy direction.")
-        parser.add_argument("--spacing_z", type=float, default=5, help="Spacing (in nm) between sampling boxes in z direction.")
+        parser.add_argument("--spacing_z", type=float, default=3, help="Spacing (in nm) between sampling boxes in z direction.")
         
         # assign to self
         self.argparser = parser
@@ -268,21 +268,24 @@ class SegSampling:
         """
         # load info
         px = self.steps["pixel_nm"]
-        Ic = self.steps["Ic"]
+        # Ic = self.steps["Ic"]
         zyxc = self.steps["zyxc"]
-        nzyx = self.steps["nzyx"]
+        # nzyx = self.steps["nzyx"]
         
         # spacing in pixel, minimum 1
         spacing_xy = max(1, int(np.round(self.args["spacing_xy"] / px)))
         spacing_z = max(1, int(np.round(self.args["spacing_z"] / px)))
         
         # set values
+        # make sampled points a large value + random number to break degeneracy
         values = np.ones(len(zyxc), dtype=int)
         z_arr = np.round(zyxc[:, 0]).astype(int)
-        for z in np.unique(z_arr)[::spacing_z]:
+        for z in np.unique(z_arr)[np.random.randint(0, spacing_z)::spacing_z]:
             mask_z = z_arr==z
             values_z = np.ones(np.sum(mask_z))
-            values_z[::spacing_xy] = 2
+            values_z[np.random.randint(0, spacing_xy)::spacing_xy] = 10
+            mask_zxy = values_z==10
+            values_z[mask_zxy] += np.random.rand(np.sum(mask_zxy))
             values[mask_z] = values_z
         self.steps["values"] = values
 
