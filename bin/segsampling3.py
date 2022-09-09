@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-""" Sampling on membranes: average local pixels -> find local max.
+""" Sampling on membranes: uniform sampling.
 """
 
 import sys
@@ -8,9 +8,9 @@ import textwrap
 import pathlib
 import logging
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib import gridspec
-from sklearn import decomposition
+# import matplotlib.pyplot as plt
+# from matplotlib import gridspec
+# from sklearn import decomposition
 
 import etsynseg
 
@@ -29,7 +29,7 @@ class SegSampling:
         self.args = dict(
             mode=None, inputs=None, outputs=None,
             seg_file=None, samp_file=None, tomo_file=None,
-            labels=None, box_localmax=None, r_exclude=None
+            labels=None, spacing_xy=None, spacing_z=None
         )
 
         # intermediate results: length unit is pixel, coordinates are clipped
@@ -37,8 +37,7 @@ class SegSampling:
         self.steps = dict(
             pixel_nm=None, zyx=None, nzyx=None,
             Ic=None, clip_low=None, shape=None,zyxc=None,
-            values=None, mask_sub0=None,
-            boxes_sub2=None, mask_sub1=None,
+            values=None, mask_sub0=None, mask_sub1=None
         )
         
         # results: coordinates are in the original range
@@ -65,17 +64,17 @@ class SegSampling:
         """
         # parser
         description = textwrap.dedent("""
-        Sampling on membranes: average local pixels -> find local max.
+        Sampling on membranes: uniform sampling.
         
         Usage:
-            segsampling2.py run name-seg.npz -t tomo.mrc -o outputs
-            segsampling2.py show name-samp.npz
+            segsampling3.py run name-seg.npz -t tomo.mrc -o outputs
+            segsampling3.py show name-samp.npz
                 tomo: if not provided, then use the tomo file in name-seg.npz
                 outputs: if not provided, then set as name-seg-sampling
         """)
 
         parser = argparse.ArgumentParser(
-            prog="segsampling2.py",
+            prog="segsampling3.py",
             description=description,
             formatter_class=etsynseg.miscutil.HelpFormatterCustom
         )
@@ -87,8 +86,8 @@ class SegSampling:
 
         # options
         parser.add_argument("--label", type=int, default=1, help="The label of segment component to be sampled on.")
-        parser.add_argument("--box_localmax", type=float, nargs=3, default=(3, 10, 4), help="Geometry of cylindrical box for local max calculations. 3-tuple for lengths (in nm) in normal/tangent directions starting from the segmentation, (lower end in normal, higher end in normal, radius in tangent). Can be set to slightly larger than the target particle. Can exclude the membrane by raising the lower end in normal.")
-        parser.add_argument("--r_exclude", type=float, default=2, help="Radius of exclusion (in nm). The final sampling points are no closer than this value.")
+        parser.add_argument("--spacing_xy", type=float, default=5, help="Spacing (in nm) between sampling boxes in xy direction.")
+        parser.add_argument("--spacing_z", type=float, default=5, help="Spacing (in nm) between sampling boxes in z direction.")
         
         # assign to self
         self.argparser = parser
@@ -123,10 +122,9 @@ class SegSampling:
         set_arg("outputs", outputs_default)
         # set label
         set_arg("label")
-        # set boxes
-        set_arg("box_localmax")
-        # set exclusion
-        set_arg("r_exclude")
+        # set spacing
+        set_arg("spacing_xy")
+        set_arg("spacing_z")
 
         # get data from seg
         # pixel size
@@ -217,7 +215,7 @@ class SegSampling:
             rescale (bool): Whether to rescale tomo to range 1 to 0.
         """
         # set margin, add some additional space
-        margin_nm = 2 + np.max(self.args["box_localmax"])
+        margin_nm = 5
         # load tomo, clip
         Ic, clip_low, _ = etsynseg.modutil.read_tomo_clip(
             self.args["tomo_file"], self.steps["zyx"],
@@ -262,7 +260,7 @@ class SegSampling:
         # assign
         self.steps["Ic"] = Ic
 
-    def sampling_localmax(self):
+    def sampling_uniform(self):
         """ Averaging for each point. Find per-xy local max.
 
         Updated attributes:
@@ -274,40 +272,26 @@ class SegSampling:
         zyxc = self.steps["zyxc"]
         nzyx = self.steps["nzyx"]
         
-        # values
-        box_localmax = np.asarray(self.args["box_localmax"])/px
-        values = etsynseg.memsampling.extract_box_avg(
-            Ic, zyxc, nzyx,
-            box_rn=box_localmax[:2],
-            box_rt=box_localmax[2]
-        )
+        # spacing in pixel, minimum 1
+        spacing_xy = max(1, int(np.round(self.args["spacing_xy"] / px)))
+        spacing_z = max(1, int(np.round(self.args["spacing_z"] / px)))
+        
+        # set values
+        values = np.ones(len(zyxc), dtype=int)
+        z_arr = np.round(zyxc[:, 0]).astype(int)
+        for z in np.unique(z_arr)[::spacing_z]:
+            mask_z = z_arr==z
+            values_z = np.ones(np.sum(mask_z))
+            values_z[::spacing_xy] = 2
+            values[mask_z] = values_z
         self.steps["values"] = values
 
         # per-slice localmax
-        # r_thresh: 1.5 px as the min separation
+        # r_thresh: 1 px as the min separation
         mask_sub0 = etsynseg.memsampling.localmax_perslice(
-            zyxc, values, r_thresh=1.5
+            zyxc, values, r_thresh=1, include_eq=False
         )
         self.steps["mask_sub0"] = mask_sub0
-
-        # simplify by exclusion
-        r_thresh = self.args["r_exclude"]/px
-        mask_sub1 = etsynseg.memsampling.localmax_exclusion(
-            zyxc[mask_sub0], values[mask_sub0],
-            r_thresh=r_thresh
-        )
-        self.steps["mask_sub1"] = mask_sub1
-
-        # extract boxes
-        boxes_sub2 = etsynseg.memsampling.extract_box_2drot(
-            Ic,
-            zyxc[mask_sub0][mask_sub1],
-            nzyx[mask_sub0][mask_sub1],
-            box_rn=box_localmax[:2],
-            box_rt=box_localmax[2],
-            normalize=True
-        )
-        self.steps["boxes_sub2"] = boxes_sub2
 
     def final_results(self):
         """ Update attributes in self.results.
@@ -318,7 +302,7 @@ class SegSampling:
 
         # selected points
         def subset(arr):
-            for i in range(2):
+            for i in range(1):
                 arr = arr[self.steps[f"mask_sub{i}"]]
             return arr
         self.results["xyz"] = etsynseg.pcdutil.reverse_coord(
@@ -331,55 +315,7 @@ class SegSampling:
 
     #=========================
     # outputs, show
-    #=========================
-    
-    def output_class(self, fig_file):
-        """ Plot classes (average, embedding). Save figure.
-
-        Args:
-            fig_file (str): Filename for saving the figure.
-        """
-        # setup, preprocess
-        # boxes
-        boxes = self.steps["boxes_sub2"]
-        emb = decomposition.PCA(n_components=2).fit_transform(
-            boxes.reshape((len(boxes), -1))
-        )
-
-        # plotting
-        # set grids, axes
-        fig = plt.figure(tight_layout=True)
-        gs = gridspec.GridSpec(1, 2)
-        ax_avg = fig.add_subplot(gs[0, 0])
-        ax_emb = fig.add_subplot(gs[:, 1:])
-        # plot avg
-        avg = np.mean(boxes, axis=0)
-        ax_avg.imshow(avg, origin="lower")
-        ax_avg.axis("off")
-        # plot embedding
-        ax_emb.scatter(
-            *emb.T,
-            label=f"n={len(boxes)}",
-            s=5, alpha=0.5
-        )
-        # set ax_emb
-        ax_emb.axis("off")
-        ax_emb.legend(loc=1, title="PC1,PC2")
-        
-        # save
-        fig.savefig(fig_file)
-
-    def output_boxes(self, tomo_file):
-        """ Save sampling boxes as mrcfile.
-
-        Args:
-            tomo_file (str): Filename for saving the boxes.
-        """
-        steps = self.steps
-        boxes_sub2 = steps["boxes_sub2"]
-        etsynseg.io.write_tomo(
-            tomo_file, boxes_sub2, pixel_A=steps["pixel_nm"]*10
-        )
+    #=========================    
 
     def show_steps(self):
         """ Visualize each step as 3d image using etsynseg.plot.imshow3d.
@@ -388,7 +324,7 @@ class SegSampling:
         self.reload_tomo()
         steps = self.steps
         # set vector length from box geometry
-        vec_length = self.args["box_localmax"][1]/steps["pixel_nm"]
+        vec_length = self.args["spacing_xy"]/steps["pixel_nm"]
 
         # preprocess tomo
         Ic = steps["Ic"]
@@ -420,8 +356,7 @@ class SegSampling:
             cmap_vecs.append(cmap)
         # points: segmentation, class1/2, simplified
         vecs_append([], "segmentation", "green")
-        vecs_append([steps[f"mask_sub{i}"] for i in range(1)], "local max", "blue")
-        vecs_append([steps[f"mask_sub{i}"] for i in range(2)], "excluded", "yellow", show_dir=True)
+        vecs_append([steps[f"mask_sub{i}"] for i in range(1)], "sampling boxes", "yellow", show_dir=True)
         
         # show plots
         etsynseg.plot.imshow3d(
@@ -448,8 +383,8 @@ class SegSampling:
         self.load_tomo_clip(rescale=True)
         self.logger.info(f"loaded data: {self.timer.click()}")
         # local max
-        self.sampling_localmax()
-        self.logger.info(f"finished finding localmax: {self.timer.click()}")
+        self.sampling_uniform()
+        self.logger.info(f"finished finding uniform: {self.timer.click()}")
         # results
         self.final_results()
 
@@ -457,8 +392,6 @@ class SegSampling:
         outputs = self.args["outputs"]
         self.remove_tomo()
         self.save_state(outputs+".npz", backup=True)
-        self.output_class(fig_file=outputs+".png")
-        self.output_boxes(tomo_file=outputs+".mrc")
         self.logger.info(f"generated outputs: {self.timer.click()}")
 
         # done

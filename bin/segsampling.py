@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-""" Sampling on membranes.
+""" Sampling on membranes: average local pixels -> find local max -> classify.
 """
 
 import sys
@@ -66,7 +66,7 @@ class SegSampling:
         """
         # parser
         description = textwrap.dedent("""
-        Sampling on membranes.
+        Sampling on membranes: average local pixels -> find local max -> classify.
         
         Usage:
             segsampling.py run name-seg.npz -t tomo.mrc -o outputs
