@@ -80,7 +80,7 @@ def points_orientation(zyx, sigma):
         orients (np.ndarray): Orientation at each point, ranged in [0,pi/2], shape=(npts,).
     """
     # convert to image, add margins
-    zyx_low, _, shape = pcdutil.points_range(zyx, margin=2*sigma)
+    zyx_low, _, shape = pcdutil.points_range(zyx, margin=2*sigma, clip_neg=True)
     zyx_clip = zyx - zyx_low
     B = pcdutil.points2pixels(zyx_clip, shape)
     # calc orientation

@@ -24,7 +24,7 @@ def refine_surface(
     """
     # constrain sigma_mesh < z-range/2 or xy-range/2
     # otherwise subdivision does not work
-    _, _, shape = pcdutil.points_range(zyx)
+    _, _, shape = pcdutil.points_range(zyx, clip_neg=False)
     sigma_mesh = np.min([
         sigma_mesh, shape[0]/2, np.linalg.norm(shape[1:])/2
     ])

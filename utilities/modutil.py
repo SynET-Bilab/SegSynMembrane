@@ -264,7 +264,8 @@ def region_surround_contour(zyx, nzyx, extend, cut_end=True):
     extend_max = int(max(extend))+1
     clip_low, _, clip_shape = pcdutil.points_range(
         zyx,
-        margin=(0, extend_max, extend_max)
+        margin=(0, extend_max, extend_max),
+        clip_neg=True
     )
     zyx_clip = zyx - clip_low
 
@@ -423,11 +424,15 @@ def read_tomo_model(tomo_file, model_file, extend_nm, pixel_nm=None, interp_degr
         interp_degree=interp_degree,
         cut_end=True
     )
+    # restrict guide and bound to >=0
+    guide = np.clip(guide, 0, np.inf).astype(int)
+    boundpts_minus = np.clip(boundpts_minus, 0, np.inf).astype(int)
+    boundpts_plus = np.clip(boundpts_plus, 0, np.inf).astype(int)
     # combine all parts of the bound
     boundpts = np.concatenate([guide, boundpts_plus, boundpts_minus], axis=0)
 
     # get clip range and raw shape from the mask
-    clip_low, _, shape = pcdutil.points_range(boundpts, margin=0)
+    clip_low, _, shape = pcdutil.points_range(boundpts, margin=0, clip_neg=True)
 
     # clip coordinates
     guide -= clip_low
@@ -484,9 +489,9 @@ def read_tomo_clip(tomo_file, zyx, margin_nm=0, pixel_nm=None):
 
     # get clip range
     margin = margin_nm / pixel_nm
-    clip_low, clip_high, _ = pcdutil.points_range(zyx, margin=margin)
-    # restrict to nonnegative values
-    clip_low = np.clip(clip_low, 0, np.inf).astype(int)
+    clip_low, clip_high, _ = pcdutil.points_range(zyx, margin=margin, clip_neg=True)
+    # # restrict to nonnegative values
+    # clip_low = np.clip(clip_low, 0, np.inf).astype(int)
 
     # clip tomo
     sub = tuple(slice(low, high+1) for low, high in zip(clip_low, clip_high))

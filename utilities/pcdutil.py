@@ -108,13 +108,14 @@ def points2pointcloud(pts, normals=None):
 # misc
 #=========================
 
-def points_range(pts, margin=0):
+def points_range(pts, margin=0, clip_neg=True):
     """ Calculate the range of points.
 
     Args:
-        pts (np.ndarray): Array of points with shape=(npts,dim).
+        pts (np.ndarray): Array of point coordinates with shape=(npts,dim).
         margin (float or tuple): Margin in each direction to be added to the range.
             Actual margin = int(ceil(margin)).
+        clip_neg (bool): Whether to clip negative values to 0 at lower-end.
 
     Returns:
         low (np.ndarray of int): Point at the lowest end, with shape=(dim,).
@@ -123,6 +124,8 @@ def points_range(pts, margin=0):
     """
     margin = np.ceil(np.asarray(margin)).astype(int)
     low = np.floor(np.min(pts, axis=0)).astype(int) - margin
+    if clip_neg:
+        low = np.clip(low, 0, np.inf).astype(int)
     high = np.ceil(np.max(pts, axis=0)).astype(int) + margin
     shape = tuple(high - low + 1)
     return low, high, shape
