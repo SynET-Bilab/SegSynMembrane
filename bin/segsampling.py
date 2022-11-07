@@ -84,11 +84,11 @@ class SegSampling:
         parser.add_argument("mode", type=str, choices=["run", "show"])
         parser.add_argument("inputs", type=str, help="Segmentation file for run mode; Sampling file for show mode.")
         parser.add_argument("-t", "--tomo_file", type=str, default=None, help="Tomo file. Defaults to the one in seg_file.")
-        parser.add_argument("-o", "--outputs", type=str, default=None, help="Basename for output files. Defaults to 'seg_file-membno'.")
+        parser.add_argument("-o", "--outputs", type=str, default=None, help="Basename for output files. Defaults to 'seg_file-samp'.")
 
         # options
         parser.add_argument("--label", type=int, default=1, help="The label of segment component to be sampled on.")
-        parser.add_argument("--box_localmax", type=float, nargs=3, default=(3, 10, 4), help="Geometry of cylindrical box for local max calculations. 3-tuple for lengths (in nm) in normal/tangent directions starting from the segmentation, (lower end in normal, higher end in normal, radius in tangent). Can be set to slightly larger than the target particle. Can exclude the membrane by raising the lower end in normal.")
+        parser.add_argument("--box_localmax", type=float, nargs=3, default=(3, 10, 4), help="Geometry of cylindrical box for local max calculations. 3-tuple for lengths (in nm) in normal/tangent directions starting from the sampling, (lower end in normal, higher end in normal, radius in tangent). Can be set to slightly larger than the target particle. Can exclude the membrane by raising the lower end in normal.")
         parser.add_argument("--box_classify", type=float, nargs=3, default=None, help="Box geometry for classification. 3-tuple similar to box_localmax. If None, then set to the same as box_localmax.")
         parser.add_argument("--r_exclude", type=float, default=2, help="Radius of exclusion (in nm). The final sampling points are no closer than this value.")
         
@@ -457,8 +457,8 @@ class SegSampling:
             # add name, cmap
             name_vecs.append(name)
             cmap_vecs.append(cmap)
-        # points: segmentation, class1/2, simplified
-        vecs_append([], "segmentation", "green")
+        # points: sampling, class1/2, simplified
+        vecs_append([], "sampling", "green")
         vecs_append([steps[f"mask_sub{i}"] for i in range(2)], "local max", "blue")
         vecs_append([steps[f"mask_sub{i}"] for i in range(3)], "class 1", "yellow", show_dir=True)
         vecs_append([steps["mask_sub0"], steps["mask_sub1"], steps["member_sub2"]!=0], "other classes", "red")
@@ -505,7 +505,7 @@ class SegSampling:
         self.logger.info(f"generated outputs: {self.timer.click()}")
 
         # done
-        self.logger.info(f"""segmentation finished: total {self.timer.total()}""")
+        self.logger.info(f"""sampling finished: total {self.timer.total()}""")
 
 
 if __name__ == "__main__":

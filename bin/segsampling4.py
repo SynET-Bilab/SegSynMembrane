@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-""" Sampling on membranes: uniform sampling.
+""" Sampling on membranes: uniform sampling (using exclusion, may be slow).
 """
 
 import sys
@@ -8,9 +8,6 @@ import textwrap
 import pathlib
 import logging
 import numpy as np
-# import matplotlib.pyplot as plt
-# from matplotlib import gridspec
-# from sklearn import decomposition
 
 import etsynseg
 
@@ -19,7 +16,7 @@ class SegSampling:
         """ Init.
         """
         # info
-        self.prog = "segsampling3"
+        self.prog = "segsampling4"
         self.info = """ Info of the attributes.
         args: Arguments received from the terminal. Length unit is nm.
         steps: Intermediate results. Coordinates: ranged in the clipped tomo, in units of pixels, the order is [z,y,x].
@@ -64,17 +61,17 @@ class SegSampling:
         """
         # parser
         description = textwrap.dedent("""
-        Sampling on membranes: uniform sampling (reused code, has bugs).
+        Sampling on membranes: uniform sampling (using exclusion, may be slow).
         
         Usage:
-            segsampling3.py run name-seg.npz -t tomo.mrc -o outputs
-            segsampling3.py show name-samp.npz
+            segsampling4.py run name-seg.npz -t tomo.mrc -o outputs
+            segsampling4.py show name-samp.npz
                 tomo: if not provided, then use the tomo file in name-seg.npz
                 outputs: if not provided, then set as name-seg-sampling
         """)
 
         parser = argparse.ArgumentParser(
-            prog="segsampling3.py",
+            prog="segsampling4.py",
             description=description,
             formatter_class=etsynseg.miscutil.HelpFormatterCustom
         )
@@ -86,8 +83,7 @@ class SegSampling:
 
         # options
         parser.add_argument("--label", type=int, default=1, help="The label of segment component to be sampled on.")
-        parser.add_argument("--spacing_xy", type=float, default=5, help="Spacing (in nm) between sampling boxes in xy direction.")
-        parser.add_argument("--spacing_z", type=float, default=3, help="Spacing (in nm) between sampling boxes in z direction.")
+        parser.add_argument("--r_exclude", type=float, default=10, help="Radius of exclusion (in nm). Sampling points are no closer than this value.")
         
         # assign to self
         self.argparser = parser
@@ -123,8 +119,7 @@ class SegSampling:
         # set label
         set_arg("label")
         # set spacing
-        set_arg("spacing_xy")
-        set_arg("spacing_z")
+        set_arg("r_exclude")
 
         # get data from seg
         # pixel size
@@ -268,31 +263,16 @@ class SegSampling:
         """
         # load info
         px = self.steps["pixel_nm"]
-        # Ic = self.steps["Ic"]
         zyxc = self.steps["zyxc"]
-        # nzyx = self.steps["nzyx"]
-        
-        # spacing in pixel, minimum 1
-        spacing_xy = max(1, int(np.round(self.args["spacing_xy"] / px)))
-        spacing_z = max(1, int(np.round(self.args["spacing_z"] / px)))
-        
-        # set values
-        # make sampled points a large value + random number to break degeneracy
+
+        # values
         values = np.ones(len(zyxc), dtype=int)
-        z_arr = np.round(zyxc[:, 0]).astype(int)
-        for z in np.unique(z_arr)[np.random.randint(0, spacing_z)::spacing_z]:
-            mask_z = z_arr==z
-            values_z = np.ones(np.sum(mask_z))
-            values_z[np.random.randint(0, spacing_xy)::spacing_xy] = 10
-            mask_zxy = values_z==10
-            values_z[mask_zxy] += np.random.rand(np.sum(mask_zxy))
-            values[mask_z] = values_z
         self.steps["values"] = values
 
-        # per-slice localmax
-        # r_thresh: 1 px as the min separation
-        mask_sub0 = etsynseg.memsampling.localmax_perslice(
-            zyxc, values, r_thresh=1, include_eq=False
+        # sampling by exclusion
+        r_thresh = self.args["r_exclude"]/px
+        mask_sub0 = etsynseg.memsampling.localmax_exclusion(
+            zyxc, values, r_thresh=r_thresh
         )
         self.steps["mask_sub0"] = mask_sub0
 
@@ -327,7 +307,7 @@ class SegSampling:
         self.reload_tomo()
         steps = self.steps
         # set vector length from box geometry
-        vec_length = self.args["spacing_xy"]/steps["pixel_nm"]
+        vec_length = self.args["r_exclude"]/steps["pixel_nm"]
 
         # preprocess tomo
         Ic = steps["Ic"]

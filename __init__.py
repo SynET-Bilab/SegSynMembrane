@@ -1,5 +1,5 @@
 __author__ = "Zhenghan Liao"
-__version__ = "1.3.3"
+__version__ = "1.3.4"
 
 # dependencies = [
 ## conda-forge

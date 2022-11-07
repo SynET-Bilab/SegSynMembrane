@@ -68,6 +68,7 @@ major.minor1.minor2
 - v1.2.1: Reduced the size of seg_file from outputs of segbase,segprepost,segonemem. (Removed attribute tomo after detect. Reload/specify when needed.)
 - v1.3.0: Added segsampling.py for density-based sampling on the segmentation.
 - v1.3.1: Added segsampling2.py (localmax only).
-- v1.3.2: Added segsampling3.py (uniform).
+- v1.3.2: Added segsampling3.py (uniform, but has bugs).
 - v1.3.3: Modified segdrawmodel.sh.
+- v1.3.4: Added segsampling4.py (uniform, but may be slow).
 
