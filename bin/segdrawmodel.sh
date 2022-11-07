@@ -5,65 +5,26 @@ echo ""
 echo "----segdrawmodel----"
 echo "Given a list of tomos, draw model one by one."
 echo "Usage: segdrawmodel.sh *.mrc"
+echo "Requirement: imod version that can create model file if not exists."
 echo ""
 
-# get empty model
-sh_path=$(which segdrawmodel.sh)
-mod_empty=${sh_path%/*}/empty.mod
-echo "Checking empty model: ${mod_empty}"
-if [[ -f $mod_empty ]]
-then
-    echo "Empty model found. Continue."
-else
-    echo "Empty model not found. Exiting."
-    exit
-fi
-echo ""
+
+# file counting
+ntot=$#
+icurr=0
+echo "Tomos (n=$ntot): $@"
 
 # iterate over tomos
 for fmrc in $@
 do
-    echo ""
-    echo "--${fmrc}--"
-
-    # default mod filename
-    fmod="${fmrc%.*}.mod"
-    echo "Default model name: ${fmod}"
-    
-    # prompt for existence
-    if [[ -f $fmod ]]
-    then
-        echo "The model file exists."
-    fi
-    
-    # draw
-    read -p "Draw model? yes(y,default)/skip(s)/exit(e): " open_mod
-    case $open_mod in
-	s* ) 
-        echo "Skipping."
-        continue
-        ;;
-	e* )
-        echo "Exiting." 
-        break
-        ;;
-	* )
-        # copy/paste an empty model file if it does not exist
-        if [[ ! -f $fmod ]]
-        then
-            cp $mod_empty $fmod
-        fi
-        echo "3dmod -m $fmrc $fmod"
-	    3dmod -m $fmrc $fmod
-
-        # whether to delete the model file
-        read -p "successful? yes(y,default)/no(n,delete model): " succ_mod
-        case $succ_mod in
-        n* ) 
-            echo "rm $fmod"
-            rm $fmod ;;
-        * ) ;;
-        esac
+    # setup
+    icurr=$(( $icurr + 1 ))
+    fmod="${fmrc/.mrc/.mod}"
+    # draw on mod file
+    echo -n "($icurr/$ntot) open $fmrc $fmod? yes(y,default)/skip(s): "
+    read selection
+    case $selection in
+    s* ) echo "skipping"; continue ;;
+    * ) 3dmod -E v $fmrc $fmod ;;
     esac
-done 
-
+done

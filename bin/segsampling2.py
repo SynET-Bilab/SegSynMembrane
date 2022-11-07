@@ -19,7 +19,7 @@ class SegSampling:
         """ Init.
         """
         # info
-        self.prog = "segsampling"
+        self.prog = "segsampling2"
         self.info = """ Info of the attributes.
         args: Arguments received from the terminal. Length unit is nm.
         steps: Intermediate results. Coordinates: ranged in the clipped tomo, in units of pixels, the order is [z,y,x].

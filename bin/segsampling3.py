@@ -19,7 +19,7 @@ class SegSampling:
         """ Init.
         """
         # info
-        self.prog = "segsampling"
+        self.prog = "segsampling3"
         self.info = """ Info of the attributes.
         args: Arguments received from the terminal. Length unit is nm.
         steps: Intermediate results. Coordinates: ranged in the clipped tomo, in units of pixels, the order is [z,y,x].
@@ -64,7 +64,7 @@ class SegSampling:
         """
         # parser
         description = textwrap.dedent("""
-        Sampling on membranes: uniform sampling.
+        Sampling on membranes: uniform sampling (reused code, has bugs).
         
         Usage:
             segsampling3.py run name-seg.npz -t tomo.mrc -o outputs
