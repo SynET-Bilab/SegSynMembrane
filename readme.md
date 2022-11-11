@@ -71,4 +71,5 @@ major.minor1.minor2
 - v1.3.2: Added segsampling3.py (uniform, but has bugs).
 - v1.3.3: Modified segdrawmodel.sh.
 - v1.3.4: Added segsampling4.py (uniform, but may be slow).
+- v1.3.5: memsampling.py: dealt with interpolation bounds error 
 

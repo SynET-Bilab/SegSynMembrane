@@ -145,7 +145,11 @@ def extract_box_avg(I, zyx, nzyx, box_rn, box_rt):
 
     # image interpolation
     grids = [np.arange(I.shape[i]) for i in range(3)]
-    I_interp = sp.interpolate.RegularGridInterpolator(grids, I)
+    I_interp = sp.interpolate.RegularGridInterpolator(
+        grids, I,
+        bounds_error=False,
+        fill_value=np.min(I)
+    )
 
     # values for each membrane point
     values = np.zeros(npts)
@@ -195,7 +199,11 @@ def extract_box_avg_frac(I, zyx, nzyx, box_rn, box_rt, include_frac=1):
 
     # image interpolation
     grids = [np.arange(I.shape[i]) for i in range(3)]
-    I_interp = sp.interpolate.RegularGridInterpolator(grids, I)
+    I_interp = sp.interpolate.RegularGridInterpolator(
+        grids, I,
+        bounds_error=False,
+        fill_value=np.min(I)
+    )
 
     # values for each membrane point
     values = np.zeros(npts)
@@ -249,7 +257,11 @@ def extract_box_tensor(I, zyx, nzyx, box_coos, box_locs, normalize):
 
     # image interpolation
     grids = [np.arange(I.shape[i]) for i in range(3)]
-    I_interp = sp.interpolate.RegularGridInterpolator(grids, I)
+    I_interp = sp.interpolate.RegularGridInterpolator(
+        grids, I,
+        bounds_error=False,
+        fill_value=np.min(I)
+    )
 
     # extract box for each point
     ext_boxes = np.zeros((npts, *ext_shape))
